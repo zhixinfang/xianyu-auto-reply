@@ -4,13 +4,13 @@ on:
   workflow_dispatch:
     inputs:
       force_build:
-        description: '强制构建镜像（即使没有上游变更）'
+        description: '强制构建镜像'
         required: false
         type: boolean
         default: false
   schedule:
-    - cron: '0 3 * * *'  # 凌晨3点（UTC）
-    - cron: '0 10 * * *'  # 北京时间晚上6点（UTC+8）
+    - cron: '0 3 * * *'  # UTC时间3点（北京时间11点）
+    - cron: '0 10 * * *' # UTC时间10点（北京时间18点）
 
 jobs:
   sync:
@@ -27,16 +27,14 @@ jobs:
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@users.noreply.github.com"
 
-      - name: Add Upstream
+      - name: Sync Upstream
+        id: check
         run: |
           git remote add upstream https://github.com/zhinianboke/xianyu-auto-reply.git || true
           git fetch upstream
-
-      - name: Check Changes
-        id: check
-        run: |
+          
           if [ "${{ inputs.force_build }}" = "true" ]; then
-            echo "🟡 手动触发构建，跳过变更检测"
+            echo "🟡 手动触发构建模式"
             echo "changes_detected=true" >> $GITHUB_OUTPUT
           elif ! git diff --quiet HEAD upstream/main; then
             echo "🔵 检测到上游变更"
@@ -44,7 +42,7 @@ jobs:
             git push origin main
             echo "changes_detected=true" >> $GITHUB_OUTPUT
           else
-            echo "🟢 无变更"
+            echo "🟢 无新变更"
             echo "changes_detected=false" >> $GITHUB_OUTPUT
           fi
 
@@ -58,7 +56,7 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Login to Registry
+      - name: Login to Docker Hub
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_HUB_USERNAME }}
@@ -69,22 +67,10 @@ jobs:
         with:
           context: .
           push: true
-          tags: |
-            ${{ secrets.DOCKER_HUB_USERNAME }}/xianyu-auto-reply:latest
-            ${{ secrets.DOCKER_HUB_USERNAME }}/xianyu-auto-reply:${{ github.run_id }}
+          tags: ${{ secrets.DOCKER_HUB_USERNAME }}/xianyu-auto-reply:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Notification
-        if: always()
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const time = new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: `⏰ 同步完成于北京时间 ${time}\n` +
-                     `📦 镜像版本: ${{ secrets.DOCKER_HUB_USERNAME }}/xianyu-auto-reply:${{ github.run_id }}`
-            })
+      - name: Completion Notice
+        run: |
+          echo "✅ 镜像已构建并推送为: ${{ secrets.DOCKER_HUB_USERNAME }}/xianyu-auto-reply:latest"
