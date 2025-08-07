@@ -1,19 +1,26 @@
-name: Sync Upstream & Build Docker
+name: Sync & Build
 
 on:
   workflow_dispatch:
+    inputs:
+      force_build:
+        description: '强制构建镜像（即使没有上游变更）'
+        required: false
+        type: boolean
+        default: false
   schedule:
-    - cron: '0 3 * * *'  # 每天UTC时间3点自动运行
+    - cron: '0 3 * * *'  # 凌晨3点（UTC）
+    - cron: '0 10 * * *'  # 北京时间晚上6点（UTC+8）
 
 jobs:
   sync:
     runs-on: ubuntu-latest
     outputs:
-      changed: ${{ steps.detect.outputs.changed }}
+      should_build: ${{ steps.check.outputs.changes_detected || inputs.force_build }}
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # 获取完整提交历史
+          fetch-depth: 0
 
       - name: Configure Git
         run: |
@@ -25,38 +32,33 @@ jobs:
           git remote add upstream https://github.com/zhinianboke/xianyu-auto-reply.git || true
           git fetch upstream
 
-      - name: Detect Changes
-        id: detect
+      - name: Check Changes
+        id: check
         run: |
-          if ! git diff --quiet HEAD upstream/main; then
-            echo "检测到上游变更！"
-            echo "changed=true" >> $GITHUB_OUTPUT
+          if [ "${{ inputs.force_build }}" = "true" ]; then
+            echo "🟡 手动触发构建，跳过变更检测"
+            echo "changes_detected=true" >> $GITHUB_OUTPUT
+          elif ! git diff --quiet HEAD upstream/main; then
+            echo "🔵 检测到上游变更"
+            git merge -X theirs upstream/main
+            git push origin main
+            echo "changes_detected=true" >> $GITHUB_OUTPUT
           else
-            echo "无变更"
-            echo "changed=false" >> $GITHUB_OUTPUT
+            echo "🟢 无变更"
+            echo "changes_detected=false" >> $GITHUB_OUTPUT
           fi
-
-      - name: Merge Changes
-        if: steps.detect.outputs.changed == 'true'
-        run: |
-          git merge --no-commit upstream/main
-          git commit -m "🔀 自动同步上游 $(date +'%Y-%m-%d')"
-          git push origin main
 
   build:
     needs: sync
-    if: needs.sync.outputs.changed == 'true'  # 仅在检测到变更时构建
+    if: needs.sync.outputs.should_build == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Login to Docker Hub
+      - name: Login to Registry
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_HUB_USERNAME }}
@@ -69,11 +71,20 @@ jobs:
           push: true
           tags: |
             ${{ secrets.DOCKER_HUB_USERNAME }}/xianyu-auto-reply:latest
-            ${{ secrets.DOCKER_HUB_USERNAME }}/xianyu-auto-reply:$(date +'%Y%m%d')
+            ${{ secrets.DOCKER_HUB_USERNAME }}/xianyu-auto-reply:${{ github.run_id }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
-      - name: Notify
-        run: |
-          curl -X POST \
-            -H "Content-Type: application/json" \
-            -d '{"text":"✅ 已自动同步上游并构建镜像: \nhttps://hub.docker.com/r/${{ secrets.DOCKER_HUB_USERNAME }}/xianyu-auto-reply"}' \
-            ${{ secrets.SLACK_WEBHOOK_URL }}
+      - name: Notification
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const time = new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `⏰ 同步完成于北京时间 ${time}\n` +
+                     `📦 镜像版本: ${{ secrets.DOCKER_HUB_USERNAME }}/xianyu-auto-reply:${{ github.run_id }}`
+            })
