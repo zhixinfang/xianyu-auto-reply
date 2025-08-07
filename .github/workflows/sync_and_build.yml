@@ -1,0 +1,79 @@
+name: Sync Upstream & Build Docker
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 3 * * *'  # 每天UTC时间3点自动运行
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.detect.outputs.changed }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # 获取完整提交历史
+
+      - name: Configure Git
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@users.noreply.github.com"
+
+      - name: Add Upstream
+        run: |
+          git remote add upstream https://github.com/zhinianboke/xianyu-auto-reply.git || true
+          git fetch upstream
+
+      - name: Detect Changes
+        id: detect
+        run: |
+          if ! git diff --quiet HEAD upstream/main; then
+            echo "检测到上游变更！"
+            echo "changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "无变更"
+            echo "changed=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Merge Changes
+        if: steps.detect.outputs.changed == 'true'
+        run: |
+          git merge --no-commit upstream/main
+          git commit -m "🔀 自动同步上游 $(date +'%Y-%m-%d')"
+          git push origin main
+
+  build:
+    needs: sync
+    if: needs.sync.outputs.changed == 'true'  # 仅在检测到变更时构建
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_TOKEN }}
+
+      - name: Build and Push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ secrets.DOCKER_HUB_USERNAME }}/xianyu-auto-reply:latest
+            ${{ secrets.DOCKER_HUB_USERNAME }}/xianyu-auto-reply:$(date +'%Y%m%d')
+
+      - name: Notify
+        run: |
+          curl -X POST \
+            -H "Content-Type: application/json" \
+            -d '{"text":"✅ 已自动同步上游并构建镜像: \nhttps://hub.docker.com/r/${{ secrets.DOCKER_HUB_USERNAME }}/xianyu-auto-reply"}' \
+            ${{ secrets.SLACK_WEBHOOK_URL }}
