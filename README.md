@@ -358,51 +358,57 @@ python Start.py
 
 ## 📁 核心文件功能说明
 
-### 🚀 启动和核心模块
-- **`Start.py`** - 项目启动入口，初始化CookieManager和FastAPI服务，管理多账号任务
-- **`XianyuAutoAsync.py`** - 闲鱼WebSocket连接核心，处理消息收发、自动回复、自动发货
-- **`reply_server.py`** - FastAPI Web服务器，提供完整的管理界面和RESTful API接口
-- **`cookie_manager.py`** - 多账号Cookie管理器，负责账号任务的启动、停止和状态管理
+### 🚀 核心启动模块
+- **`Start.py`** - 项目启动入口，初始化CookieManager和FastAPI服务，从数据库加载账号任务并启动后台API服务
+- **`XianyuAutoAsync.py`** - 闲鱼WebSocket连接核心，处理消息收发、自动回复、自动发货、商品信息收集
+- **`reply_server.py`** - FastAPI Web服务器，提供完整的管理界面和RESTful API接口，支持多用户系统
+- **`cookie_manager.py`** - 多账号Cookie管理器，负责账号任务的启动、停止、状态管理和线程安全操作
 
 ### 🗄️ 数据和配置管理
-- **`db_manager.py`** - SQLite数据库管理器，支持多用户数据隔离、自动迁移、版本管理
-- **`config.py`** - 全局配置文件管理器，加载YAML配置和环境变量
-- **`global_config.yml`** - 全局配置文件，包含WebSocket、API、自动回复等所有配置项
+- **`db_manager.py`** - SQLite数据库管理器，支持多用户数据隔离、自动迁移、版本管理、完整的CRUD操作
+- **`config.py`** - 全局配置文件管理器，加载YAML配置和环境变量，提供配置项访问接口
+- **`global_config.yml`** - 全局配置文件，包含WebSocket、API、自动回复、AI等所有系统配置项
 
 ### 🤖 智能功能模块
-- **`ai_reply_engine.py`** - AI智能回复引擎，支持OpenAI、通义千问等多种AI模型
-- **`secure_confirm_ultra.py`** - 自动确认发货模块，采用多层加密保护核心业务逻辑
-- **`secure_freeshipping_ultra.py`** - 自动免拼发货模块，支持批量处理和异常恢复
-- **`file_log_collector.py`** - 实时日志收集器，提供Web界面日志查看和管理
+- **`ai_reply_engine.py`** - AI智能回复引擎，支持OpenAI、通义千问等多种AI模型，意图识别和上下文管理
+- **`secure_confirm_ultra.py`** - 自动确认发货模块，采用多层加密保护，调用闲鱼API确认发货状态
+- **`secure_freeshipping_ultra.py`** - 自动免拼发货模块，支持批量处理、异常恢复和智能匹配
+- **`file_log_collector.py`** - 实时日志收集器，提供Web界面日志查看、搜索和管理功能
 
-### 🛠️ 工具模块
-- **`utils/xianyu_utils.py`** - 闲鱼API工具函数，包含加密解密、签名生成、数据解析
-- **`utils/message_utils.py`** - 消息格式化和处理工具，支持变量替换和模板渲染
-- **`utils/ws_utils.py`** - WebSocket客户端封装，提供连接管理和重连机制
-- **`utils/item_search.py`** - 商品搜索功能，基于Playwright获取真实闲鱼数据
-- **`utils/order_detail_fetcher.py`** - 订单详情获取工具，支持多规格商品信息解析
-- **`utils/image_utils.py`** - 图片处理工具，支持压缩、格式转换、尺寸调整
-- **`utils/image_uploader.py`** - 图片上传到CDN工具，支持闲鱼图片服务器上传
-- **`utils/qr_login.py`** - 二维码登录功能，支持扫码获取Cookie
+### 🛠️ 工具模块 (`utils/`)
+- **`xianyu_utils.py`** - 闲鱼API核心工具，包含加密算法、签名生成、数据解析、Cookie处理
+- **`message_utils.py`** - 消息处理工具，格式化消息内容、变量替换、内容过滤和模板渲染
+- **`ws_utils.py`** - WebSocket客户端封装，处理连接管理、心跳检测、重连机制和消息队列
+- **`qr_login.py`** - 二维码登录功能，生成登录二维码、状态检测、Cookie获取和验证
+- **`item_search.py`** - 商品搜索功能，基于Playwright获取真实闲鱼商品数据，支持分页和过滤
+- **`order_detail_fetcher.py`** - 订单详情获取工具，解析订单信息、买家信息、SKU详情，支持缓存优化
+- **`image_utils.py`** - 图片处理工具，支持压缩、格式转换、尺寸调整、水印添加
+- **`image_uploader.py`** - 图片上传工具，支持多种CDN服务商，自动压缩和格式优化
 
-### 🌐 前端界面
-- **`static/index.html`** - 主管理界面，集成账号管理、系统监控、功能配置
-- **`static/login.html`** - 用户登录页面，支持图形验证码和记住登录状态
-- **`static/register.html`** - 用户注册页面，支持邮箱验证和实时验证
-- **`static/user_management.html`** - 用户管理页面，管理员专用功能
-- **`static/data_management.html`** - 数据管理页面，支持Excel导入导出和批量操作
-- **`static/log_management.html`** - 日志管理页面，实时日志查看和过滤
-- **`static/item_search.html`** - 商品搜索页面，获取真实闲鱼商品数据
-- **`static/js/app.js`** - 主要JavaScript逻辑，处理前端交互和API调用
-- **`static/css/style.css`** - 自定义样式文件，美化界面和响应式设计
+### 🌐 前端界面 (`static/`)
+- **`index.html`** - 主管理界面，包含账号管理、关键词管理、系统监控、实时状态显示
+- **`login.html`** - 用户登录页面，支持图形验证码、记住登录状态、多重安全验证
+- **`register.html`** - 用户注册页面，支持邮箱验证码、实时验证、密码强度检测
+- **`user_management.html`** - 用户管理页面，管理员专用，用户增删改查、权限管理
+- **`data_management.html`** - 数据管理页面，支持Excel导入导出、数据备份、批量操作
+- **`log_management.html`** - 日志管理页面，实时日志查看、日志搜索过滤、日志下载
+- **`item_search.html`** - 商品搜索页面，获取真实闲鱼商品数据，支持多条件搜索
+- **`js/app.js`** - 主要JavaScript逻辑，处理前端交互、API调用、实时更新
+- **`css/`** - 模块化样式文件，包含布局、组件、主题等分类样式，响应式设计
+- **`xianyu_js_version_2.js`** - 闲鱼JavaScript工具库，加密解密、数据处理、API封装
+- **`lib/`** - 前端依赖库，包含Bootstrap、jQuery、Chart.js等第三方库
 
 ### 🐳 部署配置
-- **`Dockerfile`** - Docker镜像构建文件，包含Python环境、Playwright浏览器等
-- **`docker-compose.yml`** - Docker Compose配置，支持一键部署和Nginx反向代理
-- **`docker-deploy.sh`** - Docker部署管理脚本，提供构建、启动、监控等功能
+- **`Dockerfile`** - Docker镜像构建文件，包含Python环境、Playwright浏览器、系统依赖
+- **`Dockerfile-cn`** - 中国镜像源版本，优化国内网络环境下的构建速度
+- **`docker-compose.yml`** - Docker Compose配置，支持一键部署、Nginx反向代理、资源限制
+- **`docker-compose-cn.yml`** - 中国镜像源版本，适配国内网络环境
+- **`docker-deploy.sh`** - Docker部署管理脚本，提供构建、启动、监控、日志查看等功能
+- **`docker-deploy.bat`** - Windows版本部署脚本，支持Windows环境一键部署
+- **`entrypoint.sh`** - Docker容器启动脚本，处理环境初始化和服务启动
 - **`nginx/nginx.conf`** - Nginx反向代理配置，支持负载均衡和SSL终端
-- **`.env`** - 环境变量配置文件，包含所有可配置的系统参数
-- **`requirements.txt`** - Python依赖包列表，精简版本无冗余依赖
+- **`.env`** - 环境变量配置文件，包含所有可配置的系统参数和敏感信息
+- **`requirements.txt`** - Python依赖包列表，精简版本无冗余依赖，按功能分类组织
 
 ## ⚙️ 配置说明
 

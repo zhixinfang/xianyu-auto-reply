@@ -477,6 +477,9 @@ async def data_management_page():
         return HTMLResponse('<h3>Data management page not found</h3>')
 
 
+
+
+
 # 商品搜索页面路由
 @app.get('/item_search.html', response_class=HTMLResponse)
 async def item_search_page():
@@ -1893,8 +1896,8 @@ def update_keywords_with_item_id(cid: str, body: KeywordWithItemIdIn, current_us
         reply = kw_data.get('reply', '').strip()
         item_id = kw_data.get('item_id', '').strip() or None
 
-        if not keyword or not reply:
-            raise HTTPException(status_code=400, detail="关键词和回复内容不能为空")
+        if not keyword:
+            raise HTTPException(status_code=400, detail="关键词不能为空")
 
         # 检查当前提交的关键词中是否有重复
         keyword_key = f"{keyword}|{item_id or ''}"
@@ -2105,8 +2108,8 @@ async def import_keywords(cid: str, file: UploadFile = File(...), current_user: 
             item_id = str(row['商品ID']).strip() if pd.notna(row['商品ID']) and str(row['商品ID']).strip() else None
             reply = str(row['关键词内容']).strip()
 
-            if not keyword or not reply:
-                continue  # 跳过空行
+            if not keyword:
+                continue  # 跳过没有关键词的行
 
             # 检查是否重复
             key = f"{keyword}|{item_id or ''}"
@@ -3661,7 +3664,7 @@ def get_table_data(table_name: str, admin_user: Dict[str, Any] = Depends(require
             'users', 'cookies', 'cookie_status', 'keywords', 'default_replies', 'default_reply_records',
             'ai_reply_settings', 'ai_conversations', 'ai_item_cache', 'item_info',
             'message_notifications', 'cards', 'delivery_rules', 'notification_channels',
-            'user_settings', 'system_settings', 'email_verifications', 'captcha_codes'
+            'user_settings', 'system_settings', 'email_verifications', 'captcha_codes', 'orders'
         ]
 
         if table_name not in allowed_tables:
@@ -3698,7 +3701,7 @@ def delete_table_record(table_name: str, record_id: str, admin_user: Dict[str, A
             'users', 'cookies', 'cookie_status', 'keywords', 'default_replies', 'default_reply_records',
             'ai_reply_settings', 'ai_conversations', 'ai_item_cache', 'item_info',
             'message_notifications', 'cards', 'delivery_rules', 'notification_channels',
-            'user_settings', 'system_settings', 'email_verifications', 'captcha_codes'
+            'user_settings', 'system_settings', 'email_verifications', 'captcha_codes', 'orders'
         ]
 
         if table_name not in allowed_tables:
@@ -3738,7 +3741,7 @@ def clear_table_data(table_name: str, admin_user: Dict[str, Any] = Depends(requi
             'cookies', 'cookie_status', 'keywords', 'default_replies', 'default_reply_records',
             'ai_reply_settings', 'ai_conversations', 'ai_item_cache', 'item_info',
             'message_notifications', 'cards', 'delivery_rules', 'notification_channels',
-            'user_settings', 'system_settings', 'email_verifications', 'captcha_codes'
+            'user_settings', 'system_settings', 'email_verifications', 'captcha_codes', 'orders'
         ]
 
         # 不允许清空用户表

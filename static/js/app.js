@@ -25,6 +25,14 @@ let itemsPerPage = 20; // 每页显示数量
 let totalItemsPages = 0; // 总页数
 let currentSearchKeyword = ''; // 当前搜索关键词
 
+// 订单列表搜索和分页相关变量
+let allOrdersData = []; // 存储所有订单数据
+let filteredOrdersData = []; // 存储过滤后的订单数据
+let currentOrdersPage = 1; // 当前页码
+let ordersPerPage = 20; // 每页显示数量
+let totalOrdersPages = 0; // 总页数
+let currentOrderSearchKeyword = ''; // 当前搜索关键词
+
 // ================================
 // 通用功能 - 菜单切换和导航
 // ================================
@@ -68,6 +76,9 @@ function showSection(sectionName) {
         break;
     case 'items':           // 【商品管理菜单】
         loadItems();
+        break;
+    case 'orders':          // 【订单管理菜单】
+        loadOrders();
         break;
     case 'auto-reply':      // 【自动回复菜单】
         refreshAccountList();
@@ -191,6 +202,9 @@ async function loadDashboard() {
 
         dashboardData.totalKeywords = totalKeywords;
 
+        // 加载订单数量
+        await loadOrdersCount();
+
         // 更新仪表盘显示
         updateDashboardStats(accountsWithKeywords.length, totalKeywords, enabledAccounts);
         updateDashboardAccountsList(accountsWithKeywords);
@@ -200,6 +214,30 @@ async function loadDashboard() {
     showToast('加载仪表盘数据失败', 'danger');
     } finally {
     toggleLoading(false);
+    }
+}
+
+// 加载订单数量
+async function loadOrdersCount() {
+    try {
+        const token = localStorage.getItem('auth_token');
+        const response = await fetch('/admin/data/orders', {
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+
+        const data = await response.json();
+        if (data.success) {
+            const ordersCount = data.data ? data.data.length : 0;
+            document.getElementById('totalOrders').textContent = ordersCount;
+        } else {
+            console.error('加载订单数量失败:', data.message);
+            document.getElementById('totalOrders').textContent = '0';
+        }
+    } catch (error) {
+        console.error('加载订单数量失败:', error);
+        document.getElementById('totalOrders').textContent = '0';
     }
 }
 
@@ -610,8 +648,8 @@ async function addKeyword() {
     const reply = document.getElementById('newReply').value.trim();
     const itemId = document.getElementById('newItemIdSelect').value.trim();
 
-    if (!keyword || !reply) {
-    showToast('请填写关键词和回复内容', 'warning');
+    if (!keyword) {
+    showToast('请填写关键词', 'warning');
     return;
     }
 
@@ -1757,10 +1795,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     if (value.length > 0) {
         e.target.style.borderColor = '#10b981';
-        if (replyInput.value.trim().length > 0) {
+        // 只要关键词有内容就可以添加，不需要回复内容
         addBtn.style.opacity = '1';
         addBtn.style.transform = 'scale(1)';
-        }
     } else {
         e.target.style.borderColor = '#e5e7eb';
         addBtn.style.opacity = '0.7';
@@ -1770,17 +1807,21 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     document.getElementById('newReply')?.addEventListener('input', function(e) {
     const value = e.target.value.trim();
-    const addBtn = document.querySelector('.add-btn');
     const keywordInput = document.getElementById('newKeyword');
 
+    // 回复内容可以为空，只需要关键词有内容即可
     if (value.length > 0) {
         e.target.style.borderColor = '#10b981';
-        if (keywordInput.value.trim().length > 0) {
-        addBtn.style.opacity = '1';
-        addBtn.style.transform = 'scale(1)';
-        }
     } else {
         e.target.style.borderColor = '#e5e7eb';
+    }
+
+    // 按钮状态只依赖关键词是否有内容
+    const addBtn = document.querySelector('.add-btn');
+    if (keywordInput.value.trim().length > 0) {
+        addBtn.style.opacity = '1';
+        addBtn.style.transform = 'scale(1)';
+    } else {
         addBtn.style.opacity = '0.7';
         addBtn.style.transform = 'scale(0.95)';
     }
@@ -6981,3 +7022,693 @@ async function updateRegistrationSettings() {
         showToast('更新注册设置失败', 'danger');
     }
 }
+
+// ================================
+// 订单管理功能
+// ================================
+
+// 加载订单列表
+async function loadOrders() {
+    try {
+        // 先加载Cookie列表用于筛选
+        await loadOrderCookieFilter();
+
+        // 加载订单列表
+        await refreshOrdersData();
+    } catch (error) {
+        console.error('加载订单列表失败:', error);
+        showToast('加载订单列表失败', 'danger');
+    }
+}
+
+// 只刷新订单数据，不重新加载筛选器
+async function refreshOrdersData() {
+    try {
+        const selectedCookie = document.getElementById('orderCookieFilter').value;
+        if (selectedCookie) {
+            await loadOrdersByCookie();
+        } else {
+            await loadAllOrders();
+        }
+    } catch (error) {
+        console.error('刷新订单数据失败:', error);
+        showToast('刷新订单数据失败', 'danger');
+    }
+}
+
+// 加载Cookie筛选选项
+async function loadOrderCookieFilter() {
+    try {
+        const response = await fetch(`${apiBase}/admin/data/orders`, {
+            headers: {
+                'Authorization': `Bearer ${authToken}`
+            }
+        });
+
+        const data = await response.json();
+        if (data.success && data.data) {
+            // 提取唯一的cookie_id
+            const cookieIds = [...new Set(data.data.map(order => order.cookie_id).filter(id => id))];
+
+            const select = document.getElementById('orderCookieFilter');
+            if (select) {
+                select.innerHTML = '<option value="">所有账号</option>';
+
+                cookieIds.forEach(cookieId => {
+                    const option = document.createElement('option');
+                    option.value = cookieId;
+                    option.textContent = cookieId;
+                    select.appendChild(option);
+                });
+            }
+        }
+    } catch (error) {
+        console.error('加载Cookie选项失败:', error);
+    }
+}
+
+// 加载所有订单
+async function loadAllOrders() {
+    try {
+        const response = await fetch(`${apiBase}/admin/data/orders`, {
+            headers: {
+                'Authorization': `Bearer ${authToken}`
+            }
+        });
+
+        const data = await response.json();
+        if (data.success) {
+            allOrdersData = data.data || [];
+            // 按创建时间倒序排列
+            allOrdersData.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+            // 应用当前筛选条件
+            filterOrders();
+        } else {
+            console.error('加载订单失败:', data.message);
+            showToast('加载订单数据失败: ' + data.message, 'danger');
+        }
+    } catch (error) {
+        console.error('加载订单失败:', error);
+        showToast('加载订单数据失败，请检查网络连接', 'danger');
+    }
+}
+
+// 根据Cookie加载订单
+async function loadOrdersByCookie() {
+    const selectedCookie = document.getElementById('orderCookieFilter').value;
+    if (!selectedCookie) {
+        await loadAllOrders();
+        return;
+    }
+
+    try {
+        const response = await fetch(`${apiBase}/admin/data/orders`, {
+            headers: {
+                'Authorization': `Bearer ${authToken}`
+            }
+        });
+
+        const data = await response.json();
+        if (data.success) {
+            // 筛选指定Cookie的订单
+            allOrdersData = (data.data || []).filter(order => order.cookie_id === selectedCookie);
+            // 按创建时间倒序排列
+            allOrdersData.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+            // 应用当前筛选条件
+            filterOrders();
+        } else {
+            console.error('加载订单失败:', data.message);
+            showToast('加载订单数据失败: ' + data.message, 'danger');
+        }
+    } catch (error) {
+        console.error('加载订单失败:', error);
+        showToast('加载订单数据失败，请检查网络连接', 'danger');
+    }
+}
+
+// 筛选订单
+function filterOrders() {
+    const searchKeyword = document.getElementById('orderSearchInput')?.value.toLowerCase() || '';
+    const statusFilter = document.getElementById('orderStatusFilter')?.value || '';
+
+    filteredOrdersData = allOrdersData.filter(order => {
+        // 搜索关键词筛选（订单ID或商品ID）
+        const matchesSearch = !searchKeyword ||
+            (order.order_id && order.order_id.toLowerCase().includes(searchKeyword)) ||
+            (order.item_id && order.item_id.toLowerCase().includes(searchKeyword));
+
+        // 状态筛选
+        const matchesStatus = !statusFilter || order.order_status === statusFilter;
+
+        return matchesSearch && matchesStatus;
+    });
+
+    currentOrderSearchKeyword = searchKeyword;
+    currentOrdersPage = 1; // 重置到第一页
+
+    updateOrdersDisplay();
+}
+
+// 更新订单显示
+function updateOrdersDisplay() {
+    displayOrders();
+    updateOrdersPagination();
+    updateOrdersSearchStats();
+}
+
+// 显示订单列表
+function displayOrders() {
+    const tbody = document.getElementById('ordersTableBody');
+    if (!tbody) return;
+
+    if (filteredOrdersData.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="10" class="text-center text-muted py-4">
+                    <i class="bi bi-inbox display-6 d-block mb-2"></i>
+                    ${currentOrderSearchKeyword ? '没有找到匹配的订单' : '暂无订单数据'}
+                </td>
+            </tr>
+        `;
+        return;
+    }
+
+    // 计算分页
+    totalOrdersPages = Math.ceil(filteredOrdersData.length / ordersPerPage);
+    const startIndex = (currentOrdersPage - 1) * ordersPerPage;
+    const endIndex = startIndex + ordersPerPage;
+    const pageOrders = filteredOrdersData.slice(startIndex, endIndex);
+
+    // 生成表格行
+    tbody.innerHTML = pageOrders.map(order => createOrderRow(order)).join('');
+}
+
+// 创建订单行HTML
+function createOrderRow(order) {
+    const statusClass = getOrderStatusClass(order.order_status);
+    const statusText = getOrderStatusText(order.order_status);
+
+    return `
+        <tr>
+            <td>
+                <input type="checkbox" class="order-checkbox" value="${order.order_id}">
+            </td>
+            <td>
+                <span class="text-truncate d-inline-block" style="max-width: 120px;" title="${order.order_id}">
+                    ${order.order_id}
+                </span>
+            </td>
+            <td>
+                <span class="text-truncate d-inline-block" style="max-width: 100px;" title="${order.item_id || ''}">
+                    ${order.item_id || '-'}
+                </span>
+            </td>
+            <td>
+                <span class="text-truncate d-inline-block" style="max-width: 80px;" title="${order.buyer_id || ''}">
+                    ${order.buyer_id || '-'}
+                </span>
+            </td>
+            <td>
+                ${order.spec_name && order.spec_value ?
+                    `<small class="text-muted">${order.spec_name}:</small><br>${order.spec_value}` :
+                    '-'
+                }
+            </td>
+            <td>${order.quantity || '-'}</td>
+            <td>
+                <span class="text-success fw-bold">¥${order.amount || '0.00'}</span>
+            </td>
+            <td>
+                <span class="badge ${statusClass}">${statusText}</span>
+            </td>
+            <td>
+                <span class="text-truncate d-inline-block" style="max-width: 80px;" title="${order.cookie_id || ''}">
+                    ${order.cookie_id || '-'}
+                </span>
+            </td>
+            <td>
+                <div class="btn-group btn-group-sm" role="group">
+                    <button class="btn btn-outline-primary btn-sm" onclick="showOrderDetail('${order.order_id}')" title="查看详情">
+                        <i class="bi bi-eye"></i>
+                    </button>
+                    <button class="btn btn-outline-danger btn-sm" onclick="deleteOrder('${order.order_id}')" title="删除">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                </div>
+            </td>
+        </tr>
+    `;
+}
+
+// 获取订单状态样式类
+function getOrderStatusClass(status) {
+    const statusMap = {
+        'processing': 'bg-warning text-dark',
+        'processed': 'bg-info text-white',
+        'completed': 'bg-success text-white',
+        'unknown': 'bg-secondary text-white'
+    };
+    return statusMap[status] || 'bg-secondary text-white';
+}
+
+// 获取订单状态文本
+function getOrderStatusText(status) {
+    const statusMap = {
+        'processing': '处理中',
+        'processed': '已处理',
+        'completed': '已完成',
+        'unknown': '未知'
+    };
+    return statusMap[status] || '未知';
+}
+
+// 更新订单分页
+function updateOrdersPagination() {
+    const pageInfo = document.getElementById('ordersPageInfo');
+    const pageInput = document.getElementById('ordersPageInput');
+    const totalPagesSpan = document.getElementById('ordersTotalPages');
+
+    if (pageInfo) {
+        const startIndex = (currentOrdersPage - 1) * ordersPerPage + 1;
+        const endIndex = Math.min(currentOrdersPage * ordersPerPage, filteredOrdersData.length);
+        pageInfo.textContent = `显示第 ${startIndex}-${endIndex} 条，共 ${filteredOrdersData.length} 条记录`;
+    }
+
+    if (pageInput) {
+        pageInput.value = currentOrdersPage;
+    }
+
+    if (totalPagesSpan) {
+        totalPagesSpan.textContent = totalOrdersPages;
+    }
+
+    // 更新分页按钮状态
+    const firstPageBtn = document.getElementById('ordersFirstPage');
+    const prevPageBtn = document.getElementById('ordersPrevPage');
+    const nextPageBtn = document.getElementById('ordersNextPage');
+    const lastPageBtn = document.getElementById('ordersLastPage');
+
+    if (firstPageBtn) firstPageBtn.disabled = currentOrdersPage === 1;
+    if (prevPageBtn) prevPageBtn.disabled = currentOrdersPage === 1;
+    if (nextPageBtn) nextPageBtn.disabled = currentOrdersPage === totalOrdersPages || totalOrdersPages === 0;
+    if (lastPageBtn) lastPageBtn.disabled = currentOrdersPage === totalOrdersPages || totalOrdersPages === 0;
+}
+
+// 更新搜索统计信息
+function updateOrdersSearchStats() {
+    const searchStats = document.getElementById('orderSearchStats');
+    const searchStatsText = document.getElementById('orderSearchStatsText');
+
+    if (searchStats && searchStatsText) {
+        if (currentOrderSearchKeyword) {
+            searchStatsText.textContent = `搜索 "${currentOrderSearchKeyword}" 找到 ${filteredOrdersData.length} 个结果`;
+            searchStats.style.display = 'block';
+        } else {
+            searchStats.style.display = 'none';
+        }
+    }
+}
+
+// 跳转到指定页面
+function goToOrdersPage(page) {
+    if (page < 1 || page > totalOrdersPages) return;
+
+    currentOrdersPage = page;
+    updateOrdersDisplay();
+}
+
+// 初始化订单搜索功能
+function initOrdersSearch() {
+    // 初始化分页大小
+    const pageSizeSelect = document.getElementById('ordersPageSize');
+    if (pageSizeSelect) {
+        ordersPerPage = parseInt(pageSizeSelect.value) || 20;
+        pageSizeSelect.addEventListener('change', changeOrdersPageSize);
+    }
+
+    // 初始化搜索输入框事件监听器
+    const searchInput = document.getElementById('orderSearchInput');
+    if (searchInput) {
+        // 使用防抖来避免频繁搜索
+        let searchTimeout;
+        searchInput.addEventListener('input', function() {
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(() => {
+                filterOrders();
+            }, 300); // 300ms 防抖延迟
+        });
+    }
+
+    // 初始化页面输入框事件监听器
+    const pageInput = document.getElementById('ordersPageInput');
+    if (pageInput) {
+        pageInput.addEventListener('keydown', handleOrdersPageInput);
+    }
+}
+
+// 处理分页大小变化
+function changeOrdersPageSize() {
+    const pageSizeSelect = document.getElementById('ordersPageSize');
+    if (pageSizeSelect) {
+        ordersPerPage = parseInt(pageSizeSelect.value) || 20;
+        currentOrdersPage = 1; // 重置到第一页
+        updateOrdersDisplay();
+    }
+}
+
+// 处理页面输入
+function handleOrdersPageInput(event) {
+    if (event.key === 'Enter') {
+        const pageInput = document.getElementById('ordersPageInput');
+        if (pageInput) {
+            const page = parseInt(pageInput.value);
+            if (page >= 1 && page <= totalOrdersPages) {
+                goToOrdersPage(page);
+            } else {
+                pageInput.value = currentOrdersPage; // 恢复当前页码
+                showToast('页码超出范围', 'warning');
+            }
+        }
+    }
+}
+
+// 刷新订单列表
+async function refreshOrders() {
+    await refreshOrdersData();
+    showToast('订单列表已刷新', 'success');
+}
+
+// 清空订单筛选条件
+function clearOrderFilters() {
+    const searchInput = document.getElementById('orderSearchInput');
+    const statusFilter = document.getElementById('orderStatusFilter');
+    const cookieFilter = document.getElementById('orderCookieFilter');
+
+    if (searchInput) searchInput.value = '';
+    if (statusFilter) statusFilter.value = '';
+    if (cookieFilter) cookieFilter.value = '';
+
+    filterOrders();
+    showToast('筛选条件已清空', 'info');
+}
+
+// 显示订单详情
+async function showOrderDetail(orderId) {
+    try {
+        const order = allOrdersData.find(o => o.order_id === orderId);
+        if (!order) {
+            showToast('订单不存在', 'warning');
+            return;
+        }
+
+        // 创建模态框内容
+        const modalContent = `
+            <div class="modal fade" id="orderDetailModal" tabindex="-1">
+                <div class="modal-dialog modal-lg">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title">
+                                <i class="bi bi-receipt-cutoff me-2"></i>
+                                订单详情
+                            </h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <h6>基本信息</h6>
+                                    <table class="table table-sm">
+                                        <tr><td>订单ID</td><td>${order.order_id}</td></tr>
+                                        <tr><td>商品ID</td><td>${order.item_id || '未知'}</td></tr>
+                                        <tr><td>买家ID</td><td>${order.buyer_id || '未知'}</td></tr>
+                                        <tr><td>Cookie账号</td><td>${order.cookie_id || '未知'}</td></tr>
+                                        <tr><td>订单状态</td><td><span class="badge ${getOrderStatusClass(order.order_status)}">${getOrderStatusText(order.order_status)}</span></td></tr>
+                                    </table>
+                                </div>
+                                <div class="col-md-6">
+                                    <h6>商品信息</h6>
+                                    <table class="table table-sm">
+                                        <tr><td>规格名称</td><td>${order.spec_name || '无'}</td></tr>
+                                        <tr><td>规格值</td><td>${order.spec_value || '无'}</td></tr>
+                                        <tr><td>数量</td><td>${order.quantity || '1'}</td></tr>
+                                        <tr><td>金额</td><td>¥${order.amount || '0.00'}</td></tr>
+                                    </table>
+                                </div>
+                            </div>
+                            <div class="row mt-3">
+                                <div class="col-12">
+                                    <h6>时间信息</h6>
+                                    <table class="table table-sm">
+                                        <tr><td>创建时间</td><td>${formatDateTime(order.created_at)}</td></tr>
+                                        <tr><td>更新时间</td><td>${formatDateTime(order.updated_at)}</td></tr>
+                                    </table>
+                                </div>
+                            </div>
+                            <div class="row mt-3">
+                                <div class="col-12">
+                                    <h6>商品详情</h6>
+                                    <div id="itemDetailContent">
+                                        <div class="text-center">
+                                            <div class="spinner-border spinner-border-sm" role="status">
+                                                <span class="visually-hidden">加载中...</span>
+                                            </div>
+                                            <span class="ms-2">正在加载商品详情...</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        // 移除已存在的模态框
+        const existingModal = document.getElementById('orderDetailModal');
+        if (existingModal) {
+            existingModal.remove();
+        }
+
+        // 添加新模态框到页面
+        document.body.insertAdjacentHTML('beforeend', modalContent);
+
+        // 显示模态框
+        const modal = new bootstrap.Modal(document.getElementById('orderDetailModal'));
+        modal.show();
+
+        // 异步加载商品详情
+        if (order.item_id) {
+            loadItemDetailForOrder(order.item_id, order.cookie_id);
+        }
+
+    } catch (error) {
+        console.error('显示订单详情失败:', error);
+        showToast('显示订单详情失败', 'danger');
+    }
+}
+
+// 为订单加载商品详情
+async function loadItemDetailForOrder(itemId, cookieId) {
+    try {
+        const token = localStorage.getItem('auth_token');
+
+        // 尝试从数据库获取商品信息
+        let response = await fetch(`${apiBase}/items/${cookieId}/${itemId}`, {
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+
+        const content = document.getElementById('itemDetailContent');
+        if (!content) return;
+
+        if (response.ok) {
+            const data = await response.json();
+            const item = data.item;
+
+            content.innerHTML = `
+                <div class="card">
+                    <div class="card-body">
+                        <h6 class="card-title">${item.item_title || '商品标题未知'}</h6>
+                        <p class="card-text">${item.item_description || '暂无描述'}</p>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <small class="text-muted">分类：${item.item_category || '未知'}</small>
+                            </div>
+                            <div class="col-md-6">
+                                <small class="text-muted">价格：${item.item_price || '未知'}</small>
+                            </div>
+                        </div>
+                        ${item.item_detail ? `
+                            <div class="mt-2">
+                                <small class="text-muted">详情：</small>
+                                <div class="border p-2 mt-1" style="max-height: 200px; overflow-y: auto;">
+                                    <small>${item.item_detail}</small>
+                                </div>
+                            </div>
+                        ` : ''}
+                    </div>
+                </div>
+            `;
+        } else {
+            content.innerHTML = `
+                <div class="alert alert-warning">
+                    <i class="bi bi-exclamation-triangle me-2"></i>
+                    无法获取商品详情信息
+                </div>
+            `;
+        }
+    } catch (error) {
+        console.error('加载商品详情失败:', error);
+        const content = document.getElementById('itemDetailContent');
+        if (content) {
+            content.innerHTML = `
+                <div class="alert alert-danger">
+                    <i class="bi bi-exclamation-triangle me-2"></i>
+                    加载商品详情失败：${error.message}
+                </div>
+            `;
+        }
+    }
+}
+
+// 删除订单
+async function deleteOrder(orderId) {
+    try {
+        const confirmed = confirm(`确定要删除订单吗？\n\n订单ID: ${orderId}\n\n此操作不可撤销！`);
+        if (!confirmed) {
+            return;
+        }
+
+        const response = await fetch(`${apiBase}/admin/data/orders/delete`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${authToken}`
+            },
+            body: JSON.stringify({ record_id: orderId })
+        });
+
+        if (response.ok) {
+            showToast('订单删除成功', 'success');
+            // 刷新列表
+            await refreshOrdersData();
+        } else {
+            const error = await response.text();
+            showToast(`删除失败: ${error}`, 'danger');
+        }
+    } catch (error) {
+        console.error('删除订单失败:', error);
+        showToast('删除订单失败', 'danger');
+    }
+}
+
+// 批量删除订单
+async function batchDeleteOrders() {
+    const checkboxes = document.querySelectorAll('.order-checkbox:checked');
+    if (checkboxes.length === 0) {
+        showToast('请先选择要删除的订单', 'warning');
+        return;
+    }
+
+    const orderIds = Array.from(checkboxes).map(cb => cb.value);
+    const confirmed = confirm(`确定要删除选中的 ${orderIds.length} 个订单吗？\n\n此操作不可撤销！`);
+
+    if (!confirmed) return;
+
+    try {
+        let successCount = 0;
+        let failCount = 0;
+
+        for (const orderId of orderIds) {
+            try {
+                const response = await fetch(`${apiBase}/admin/data/orders/delete`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${authToken}`
+                    },
+                    body: JSON.stringify({ record_id: orderId })
+                });
+
+                if (response.ok) {
+                    successCount++;
+                } else {
+                    failCount++;
+                }
+            } catch (error) {
+                failCount++;
+            }
+        }
+
+        if (successCount > 0) {
+            showToast(`成功删除 ${successCount} 个订单${failCount > 0 ? `，${failCount} 个失败` : ''}`,
+                     failCount > 0 ? 'warning' : 'success');
+            await refreshOrdersData();
+        } else {
+            showToast('批量删除失败', 'danger');
+        }
+
+    } catch (error) {
+        console.error('批量删除订单失败:', error);
+        showToast('批量删除订单失败', 'danger');
+    }
+}
+
+// 切换全选订单
+function toggleSelectAllOrders(checkbox) {
+    const orderCheckboxes = document.querySelectorAll('.order-checkbox');
+    orderCheckboxes.forEach(cb => {
+        cb.checked = checkbox.checked;
+    });
+
+    updateBatchDeleteOrdersButton();
+}
+
+// 更新批量删除按钮状态
+function updateBatchDeleteOrdersButton() {
+    const checkboxes = document.querySelectorAll('.order-checkbox:checked');
+    const batchDeleteBtn = document.getElementById('batchDeleteOrdersBtn');
+
+    if (batchDeleteBtn) {
+        batchDeleteBtn.disabled = checkboxes.length === 0;
+    }
+}
+
+// 格式化日期时间
+function formatDateTime(dateString) {
+    if (!dateString) return '未知时间';
+
+    try {
+        const date = new Date(dateString);
+        return date.toLocaleString('zh-CN', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+    } catch (error) {
+        return dateString;
+    }
+}
+
+// 页面加载完成后初始化订单搜索功能
+document.addEventListener('DOMContentLoaded', function() {
+    // 延迟初始化，确保DOM完全加载
+    setTimeout(() => {
+        initOrdersSearch();
+
+        // 绑定复选框变化事件
+        document.addEventListener('change', function(e) {
+            if (e.target.classList.contains('order-checkbox')) {
+                updateBatchDeleteOrdersButton();
+            }
+        });
+    }, 100);
+});

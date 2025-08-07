@@ -49,6 +49,11 @@
   color: var(--warning-color);
 }
 
+.stat-icon.info {
+  background: rgba(59, 130, 246, 0.1);
+  color: #3b82f6;
+}
+
 .stat-number {
   font-size: 2rem;
   font-weight: 700;

@@ -43,6 +43,12 @@
         </a>
       </div>
       <div class="nav-item">
+        <a href="#" class="nav-link" onclick="showSection('orders')">
+          <i class="bi bi-receipt-cutoff"></i>
+          订单管理
+        </a>
+      </div>
+      <div class="nav-item">
         <a href="#" class="nav-link" onclick="showSection('auto-reply')">
           <i class="bi bi-chat-left-text"></i>
           自动回复
@@ -163,6 +169,13 @@
             </div>
             <div class="stat-number" id="activeAccounts">0</div>
             <div class="stat-label">启用账号数</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon info">
+              <i class="bi bi-receipt-cutoff"></i>
+            </div>
+            <div class="stat-number" id="totalOrders">0</div>
+            <div class="stat-label">总订单数</div>
           </div>
         </div>
 
@@ -443,6 +456,137 @@
       </div>
     </div>
 
+    <!-- 订单管理内容 -->
+    <div id="orders-section" class="content-section">
+      <div class="content-header">
+        <h2 class="mb-0">
+          <i class="bi bi-receipt-cutoff me-2"></i>
+          订单管理
+        </h2>
+        <p class="text-muted mb-0">查看和管理所有订单信息</p>
+      </div>
+      <div class="content-body">
+        <!-- Cookie筛选器 -->
+        <div class="row mb-3">
+          <div class="col-md-4">
+            <label class="form-label">筛选账号</label>
+            <select class="form-select" id="orderCookieFilter" onchange="loadOrdersByCookie()">
+              <option value="">所有账号</option>
+            </select>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">订单状态</label>
+            <select class="form-select" id="orderStatusFilter" onchange="filterOrders()">
+              <option value="">所有状态</option>
+              <option value="processing">处理中</option>
+              <option value="processed">已处理</option>
+              <option value="completed">已完成</option>
+              <option value="unknown">未知</option>
+            </select>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">&nbsp;</label>
+            <div class="d-flex gap-2">
+              <button class="btn btn-outline-primary" onclick="refreshOrders()">
+                <i class="bi bi-arrow-clockwise"></i> 刷新
+              </button>
+              <button class="btn btn-outline-secondary" onclick="clearOrderFilters()">
+                <i class="bi bi-x-circle"></i> 清空筛选
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 订单列表 -->
+        <div class="card">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <div class="d-flex align-items-center gap-3">
+              <input type="text" class="form-control" id="orderSearchInput"
+                     placeholder="搜索订单ID或商品ID..." style="width: 300px;">
+              <h5 class="mb-0">订单列表</h5>
+            </div>
+            <button class="btn btn-sm btn-outline-danger" onclick="batchDeleteOrders()" id="batchDeleteOrdersBtn" disabled>
+              <i class="bi bi-trash"></i> 批量删除
+            </button>
+          </div>
+          <div class="card-body">
+            <!-- 搜索统计信息 -->
+            <div id="orderSearchStats" class="text-muted small mb-2" style="display: none;">
+              <i class="bi bi-search me-1"></i>
+              <span id="orderSearchStatsText"></span>
+            </div>
+            <div class="table-responsive">
+              <table class="table table-hover">
+                <thead>
+                  <tr>
+                    <th style="width: 5%">
+                      <input type="checkbox" id="selectAllOrders" onchange="toggleSelectAllOrders(this)">
+                    </th>
+                    <th style="width: 15%">订单ID</th>
+                    <th style="width: 12%">商品ID</th>
+                    <th style="width: 10%">买家ID</th>
+                    <th style="width: 12%">规格信息</th>
+                    <th style="width: 8%">数量</th>
+                    <th style="width: 10%">金额</th>
+                    <th style="width: 8%">状态</th>
+                    <th style="width: 10%">账号ID</th>
+                    <th style="width: 10%">操作</th>
+                  </tr>
+                </thead>
+                <tbody id="ordersTableBody">
+                  <tr>
+                    <td colspan="10" class="text-center text-muted">加载中...</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- 分页控件 -->
+          <div class="card-footer" id="ordersPagination">
+            <div class="d-flex justify-content-between align-items-center">
+              <div class="text-muted small">
+                <span id="ordersPageInfo">显示第 1-10 条，共 0 条记录</span>
+              </div>
+              <div class="d-flex align-items-center gap-2">
+                <div class="btn-group" role="group">
+                  <button type="button" class="btn btn-outline-secondary btn-sm" id="ordersFirstPage" onclick="goToOrdersPage(1)" disabled>
+                    <i class="bi bi-chevron-double-left"></i>
+                  </button>
+                  <button type="button" class="btn btn-outline-secondary btn-sm" id="ordersPrevPage" onclick="goToOrdersPage(currentOrdersPage - 1)" disabled>
+                    <i class="bi bi-chevron-left"></i>
+                  </button>
+                </div>
+
+                <div class="d-flex align-items-center gap-2 mx-2">
+                  <span class="text-muted small">第</span>
+                  <input type="number" class="form-control form-control-sm" id="ordersPageInput"
+                         style="width: 60px;" min="1" value="1">
+                  <span class="text-muted small">页，共 <span id="ordersTotalPages">0</span> 页</span>
+                </div>
+
+                <div class="btn-group" role="group">
+                  <button type="button" class="btn btn-outline-secondary btn-sm" id="ordersNextPage" onclick="goToOrdersPage(currentOrdersPage + 1)" disabled>
+                    <i class="bi bi-chevron-right"></i>
+                  </button>
+                  <button type="button" class="btn btn-outline-secondary btn-sm" id="ordersLastPage" onclick="goToOrdersPage(totalOrdersPages)" disabled>
+                    <i class="bi bi-chevron-double-right"></i>
+                  </button>
+                </div>
+
+                <select class="form-select form-select-sm ms-2" id="ordersPageSize" style="width: auto;">
+                  <option value="10">10条/页</option>
+                  <option value="20" selected>20条/页</option>
+                  <option value="50">50条/页</option>
+                  <option value="100">100条/页</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- 自动回复内容 -->
     <div id="auto-reply-section" class="content-section">
       <div class="content-header">
@@ -511,8 +655,8 @@
                 <input type="text" id="newKeyword" placeholder="例如：你好">
               </div>
               <div class="input-field">
-                <label>自动回复内容</label>
-                <input type="text" id="newReply" placeholder="例如：您好，欢迎咨询！有什么可以帮助您的吗？">
+                <label>自动回复内容（可选）</label>
+                <input type="text" id="newReply" placeholder="例如：您好，欢迎咨询！留空表示不回复">
               </div>
               <div class="input-field">
                 <label>商品ID（可选）</label>
@@ -535,7 +679,9 @@
                 <strong>支持变量：</strong>
                 <code>{send_user_name}</code> 用户昵称，
                 <code>{send_user_id}</code> 用户ID，
-                <code>{send_message}</code> 用户消息
+                <code>{send_message}</code> 用户消息<br>
+                <i class="bi bi-info-circle me-1"></i>
+                <strong>提示：</strong>回复内容留空时，匹配到关键词但不会自动回复，可用于屏蔽特定消息
               </small>
             </div>
           </div>

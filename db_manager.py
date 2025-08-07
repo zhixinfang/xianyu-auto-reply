@@ -212,6 +212,24 @@ class DBManager:
             )
             ''')
 
+            # 创建订单表
+            cursor.execute('''
+            CREATE TABLE IF NOT EXISTS orders (
+                order_id TEXT PRIMARY KEY,
+                item_id TEXT,
+                buyer_id TEXT,
+                spec_name TEXT,
+                spec_value TEXT,
+                quantity TEXT,
+                amount TEXT,
+                order_status TEXT DEFAULT 'unknown',
+                cookie_id TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (cookie_id) REFERENCES cookies(id) ON DELETE CASCADE
+            )
+            ''')
+
             # 检查并添加 user_id 列（用于数据库迁移）
             try:
                 self._execute_sql(cursor, "SELECT user_id FROM cards LIMIT 1")
@@ -4017,6 +4035,138 @@ class DBManager:
                 logger.error(f"获取表数据失败: {table_name} - {e}")
                 return [], []
 
+    def insert_or_update_order(self, order_id: str, item_id: str = None, buyer_id: str = None,
+                              spec_name: str = None, spec_value: str = None, quantity: str = None,
+                              amount: str = None, order_status: str = None, cookie_id: str = None):
+        """插入或更新订单信息"""
+        with self.lock:
+            try:
+                cursor = self.conn.cursor()
+
+                # 检查订单是否已存在
+                cursor.execute("SELECT order_id FROM orders WHERE order_id = ?", (order_id,))
+                existing = cursor.fetchone()
+
+                if existing:
+                    # 更新现有订单
+                    update_fields = []
+                    update_values = []
+
+                    if item_id is not None:
+                        update_fields.append("item_id = ?")
+                        update_values.append(item_id)
+                    if buyer_id is not None:
+                        update_fields.append("buyer_id = ?")
+                        update_values.append(buyer_id)
+                    if spec_name is not None:
+                        update_fields.append("spec_name = ?")
+                        update_values.append(spec_name)
+                    if spec_value is not None:
+                        update_fields.append("spec_value = ?")
+                        update_values.append(spec_value)
+                    if quantity is not None:
+                        update_fields.append("quantity = ?")
+                        update_values.append(quantity)
+                    if amount is not None:
+                        update_fields.append("amount = ?")
+                        update_values.append(amount)
+                    if order_status is not None:
+                        update_fields.append("order_status = ?")
+                        update_values.append(order_status)
+                    if cookie_id is not None:
+                        update_fields.append("cookie_id = ?")
+                        update_values.append(cookie_id)
+
+                    if update_fields:
+                        update_fields.append("updated_at = CURRENT_TIMESTAMP")
+                        update_values.append(order_id)
+
+                        sql = f"UPDATE orders SET {', '.join(update_fields)} WHERE order_id = ?"
+                        cursor.execute(sql, update_values)
+                        logger.info(f"更新订单信息: {order_id}")
+                else:
+                    # 插入新订单
+                    cursor.execute('''
+                    INSERT INTO orders (order_id, item_id, buyer_id, spec_name, spec_value,
+                                      quantity, amount, order_status, cookie_id)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ''', (order_id, item_id, buyer_id, spec_name, spec_value,
+                          quantity, amount, order_status or 'unknown', cookie_id))
+                    logger.info(f"插入新订单: {order_id}")
+
+                self.conn.commit()
+                return True
+
+            except Exception as e:
+                logger.error(f"插入或更新订单失败: {order_id} - {e}")
+                self.conn.rollback()
+                return False
+
+    def get_order_by_id(self, order_id: str):
+        """根据订单ID获取订单信息"""
+        with self.lock:
+            try:
+                cursor = self.conn.cursor()
+                cursor.execute('''
+                SELECT order_id, item_id, buyer_id, spec_name, spec_value,
+                       quantity, amount, order_status, cookie_id, created_at, updated_at
+                FROM orders WHERE order_id = ?
+                ''', (order_id,))
+
+                row = cursor.fetchone()
+                if row:
+                    return {
+                        'order_id': row[0],
+                        'item_id': row[1],
+                        'buyer_id': row[2],
+                        'spec_name': row[3],
+                        'spec_value': row[4],
+                        'quantity': row[5],
+                        'amount': row[6],
+                        'order_status': row[7],
+                        'cookie_id': row[8],
+                        'created_at': row[9],
+                        'updated_at': row[10]
+                    }
+                return None
+
+            except Exception as e:
+                logger.error(f"获取订单信息失败: {order_id} - {e}")
+                return None
+
+    def get_orders_by_cookie(self, cookie_id: str, limit: int = 100):
+        """根据Cookie ID获取订单列表"""
+        with self.lock:
+            try:
+                cursor = self.conn.cursor()
+                cursor.execute('''
+                SELECT order_id, item_id, buyer_id, spec_name, spec_value,
+                       quantity, amount, order_status, created_at, updated_at
+                FROM orders WHERE cookie_id = ?
+                ORDER BY created_at DESC LIMIT ?
+                ''', (cookie_id, limit))
+
+                orders = []
+                for row in cursor.fetchall():
+                    orders.append({
+                        'order_id': row[0],
+                        'item_id': row[1],
+                        'buyer_id': row[2],
+                        'spec_name': row[3],
+                        'spec_value': row[4],
+                        'quantity': row[5],
+                        'amount': row[6],
+                        'order_status': row[7],
+                        'created_at': row[8],
+                        'updated_at': row[9]
+                    })
+
+                return orders
+
+            except Exception as e:
+                logger.error(f"获取Cookie订单列表失败: {cookie_id} - {e}")
+                return []
+
     def delete_table_record(self, table_name: str, record_id: str):
         """删除指定表的指定记录"""
         with self.lock:
@@ -4036,7 +4186,8 @@ class DBManager:
                     'notification_channels': 'id',
                     'user_settings': 'id',
                     'email_verifications': 'id',
-                    'captcha_codes': 'id'
+                    'captcha_codes': 'id',
+                    'orders': 'order_id'
                 }
 
                 primary_key = primary_key_map.get(table_name, 'id')
