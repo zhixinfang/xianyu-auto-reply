@@ -77,6 +77,9 @@ function showSection(sectionName) {
     case 'items':           // 【商品管理菜单】
         loadItems();
         break;
+    case 'items-reply':           // 【商品回复管理菜单】
+        loadItemsReplay();
+        break;
     case 'orders':          // 【订单管理菜单】
         loadOrders();
         break;
@@ -4877,7 +4880,7 @@ async function toggleItemMultiSpec(cookieId, itemId, isMultiSpec) {
 async function loadItems() {
     try {
     // 先加载Cookie列表用于筛选
-    await loadCookieFilter();
+    await loadCookieFilter('itemCookieFilter');
 
     // 加载商品列表
     await refreshItemsData();
@@ -4903,7 +4906,7 @@ async function refreshItemsData() {
 }
 
 // 加载Cookie筛选选项
-async function loadCookieFilter() {
+async function loadCookieFilter(id) {
     try {
     const response = await fetch(`${apiBase}/cookies/details`, {
         headers: {
@@ -4913,7 +4916,7 @@ async function loadCookieFilter() {
 
     if (response.ok) {
         const accounts = await response.json();
-        const select = document.getElementById('itemCookieFilter');
+        const select = document.getElementById(id);
 
         // 保存当前选择的值
         const currentValue = select.value;
@@ -5645,6 +5648,455 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+}
+
+// ================================
+// 【商品回复管理菜单】相关功能
+// ================================
+
+// 加载商品回复列表
+async function loadItemsReplay() {
+    try {
+    // 先加载Cookie列表用于筛选
+    await loadCookieFilter('itemReplayCookieFilter');
+    await loadCookieFilterPlus('editReplyCookieIdSelect');
+    // 加载商品列表
+    await refreshItemsReplayData();
+    } catch (error) {
+    console.error('加载商品列表失败:', error);
+    showToast('加载商品列表失败', 'danger');
+    }
+}
+
+// 只刷新商品回复数据，不重新加载筛选器
+async function refreshItemsReplayData() {
+    try {
+    const selectedCookie = document.getElementById('itemCookieFilter').value;
+    if (selectedCookie) {
+        await loadItemsReplayByCookie();
+    } else {
+        await loadAllItemReplays();
+    }
+    } catch (error) {
+    console.error('刷新商品数据失败:', error);
+    showToast('刷新商品数据失败', 'danger');
+    }
+}
+
+// 加载Cookie筛选选项添加弹框中使用
+async function loadCookieFilterPlus(id) {
+    try {
+    const response = await fetch(`${apiBase}/cookies/details`, {
+        headers: {
+        'Authorization': `Bearer ${authToken}`
+        }
+    });
+
+    if (response.ok) {
+        const accounts = await response.json();
+        const select = document.getElementById(id);
+
+        // 保存当前选择的值
+        const currentValue = select.value;
+
+        // 清空现有选项（保留"所有账号"）
+        select.innerHTML = '<option value="">选择账号</option>';
+
+        if (accounts.length === 0) {
+        const option = document.createElement('option');
+        option.value = '';
+        option.textContent = '❌ 暂无账号';
+        option.disabled = true;
+        select.appendChild(option);
+        return;
+        }
+
+        // 分组显示：先显示启用的账号，再显示禁用的账号
+        const enabledAccounts = accounts.filter(account => {
+        const enabled = account.enabled === undefined ? true : account.enabled;
+        return enabled;
+        });
+        const disabledAccounts = accounts.filter(account => {
+        const enabled = account.enabled === undefined ? true : account.enabled;
+        return !enabled;
+        });
+
+        // 添加启用的账号
+        enabledAccounts.forEach(account => {
+        const option = document.createElement('option');
+        option.value = account.id;
+        option.textContent = `🟢 ${account.id}`;
+        select.appendChild(option);
+        });
+
+        // 添加禁用的账号
+        if (disabledAccounts.length > 0) {
+        // 添加分隔线
+        if (enabledAccounts.length > 0) {
+            const separator = document.createElement('option');
+            separator.value = '';
+            separator.textContent = '────────────────';
+            separator.disabled = true;
+            select.appendChild(separator);
+        }
+
+        disabledAccounts.forEach(account => {
+            const option = document.createElement('option');
+            option.value = account.id;
+            option.textContent = `🔴 ${account.id} (已禁用)`;
+            select.appendChild(option);
+        });
+        }
+
+        // 恢复之前选择的值
+        if (currentValue) {
+        select.value = currentValue;
+        }
+    }
+    } catch (error) {
+    console.error('加载Cookie列表失败:', error);
+    showToast('加载账号列表失败', 'danger');
+    }
+}
+
+// 刷新商品回复列表
+async function refreshItemReplayS() {
+    await refreshItemsReplayData();
+    showToast('商品列表已刷新', 'success');
+}
+
+// 加载所有商品回复
+async function loadAllItemReplays() {
+    try {
+    const response = await fetch(`${apiBase}/itemReplays`, {
+        headers: {
+        'Authorization': `Bearer ${authToken}`
+        }
+    });
+
+    if (response.ok) {
+        const data = await response.json();
+        displayItemReplays(data.items);
+    } else {
+        throw new Error('获取商品列表失败');
+    }
+    } catch (error) {
+    console.error('加载商品列表失败:', error);
+    showToast('加载商品列表失败', 'danger');
+    }
+}
+
+// 按Cookie加载商品回复
+async function loadItemsReplayByCookie() {
+    const cookieId = document.getElementById('itemReplayCookieFilter').value;
+    if (!cookieId) {
+    await loadAllItemReplays();
+    return;
+    }
+
+    try {
+    const response = await fetch(`${apiBase}/itemReplays/cookie/${encodeURIComponent(cookieId)}`, {
+        headers: {
+        'Authorization': `Bearer ${authToken}`
+        }
+    });
+
+    if (response.ok) {
+        const data = await response.json();
+        displayItemReplays(data.items);
+    } else {
+        throw new Error('获取商品列表失败');
+    }
+    } catch (error) {
+    console.error('加载商品列表失败:', error);
+    showToast('加载商品列表失败', 'danger');
+    }
+}
+
+// 显示商品回复列表
+function displayItemReplays(items) {
+    const tbody = document.getElementById('itemReplaysTableBody');
+
+    if (!items || items.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">暂无商品数据</td></tr>';
+    // 重置选择状态
+    const selectAllCheckbox = document.getElementById('selectAllItems');
+    if (selectAllCheckbox) {
+        selectAllCheckbox.checked = false;
+        selectAllCheckbox.indeterminate = false;
+    }
+    updateBatchDeleteButton();
+    return;
+    }
+
+    const itemsHtml = items.map(item => {
+    // 处理商品标题显示
+    let itemTitleDisplay = item.item_title || '未设置';
+    if (itemTitleDisplay.length > 30) {
+        itemTitleDisplay = itemTitleDisplay.substring(0, 30) + '...';
+    }
+
+    // 处理商品详情显示
+    let itemDetailDisplay = '未设置';
+    if (item.item_detail) {
+        try {
+        // 尝试解析JSON并提取有用信息
+        const detail = JSON.parse(item.item_detail);
+        if (detail.content) {
+            itemDetailDisplay = detail.content.substring(0, 50) + (detail.content.length > 50 ? '...' : '');
+        } else {
+            // 如果是纯文本或其他格式，直接显示前50个字符
+            itemDetailDisplay = item.item_detail.substring(0, 50) + (item.item_detail.length > 50 ? '...' : '');
+        }
+        } catch (e) {
+        // 如果不是JSON格式，直接显示前50个字符
+        itemDetailDisplay = item.item_detail.substring(0, 50) + (item.item_detail.length > 50 ? '...' : '');
+        }
+    }
+
+    return `
+        <tr>
+         <td>
+            <input type="checkbox" name="itemCheckbox"
+                    data-cookie-id="${escapeHtml(item.cookie_id)}"
+                    data-item-id="${escapeHtml(item.item_id)}"
+                    onchange="updateSelectAllState()">
+        </td>
+        <td>${escapeHtml(item.cookie_id)}</td>
+        <td>${escapeHtml(item.item_id)}</td>
+        <td title="${escapeHtml(item.item_title || '未设置')}">${escapeHtml(itemTitleDisplay)}</td>
+        <td title="${escapeHtml(item.item_detail || '未设置')}">${escapeHtml(itemDetailDisplay)}</td>
+        <td title="${escapeHtml(item.reply_content || '未设置')}">${escapeHtml(item.reply_content)}</td>
+        <td>${formatDateTime(item.updated_at)}</td>
+        <td>
+            <div class="btn-group" role="group">
+            <button class="btn btn-sm btn-outline-primary" onclick="editItemReply('${escapeHtml(item.cookie_id)}', '${escapeHtml(item.item_id)}')" title="编辑详情">
+                <i class="bi bi-pencil"></i>
+            </button>
+            <button class="btn btn-sm btn-outline-danger" onclick="deleteItemReply('${escapeHtml(item.cookie_id)}', '${escapeHtml(item.item_id)}', '${escapeHtml(item.item_title || item.item_id)}')" title="删除">
+                <i class="bi bi-trash"></i>
+            </button>
+            </div>
+        </td>
+        </tr>
+    `;
+    }).join('');
+
+    // 更新表格内容
+    tbody.innerHTML = itemsHtml;
+
+    // 重置选择状态
+    const selectAllCheckbox = document.getElementById('selectAllItems');
+    if (selectAllCheckbox) {
+    selectAllCheckbox.checked = false;
+    selectAllCheckbox.indeterminate = false;
+    }
+    updateBatchDeleteButton();
+}
+
+// 显示添加弹框
+async function showItemReplayEdit(){
+    // 显示模态框
+    const modal = new bootstrap.Modal(document.getElementById('editItemReplyModal'));
+    document.getElementById('editReplyCookieIdSelect').value = '';
+    document.getElementById('editReplyItemIdSelect').value = '';
+    document.getElementById('editReplyItemIdSelect').disabled = true
+    document.getElementById('editItemReplyContent').value = '';
+    document.getElementById('itemReplayTitle').textContent = '添加商品回复';
+    modal.show();
+}
+
+// 当账号变化时加载对应商品
+async function onCookieChangeForReply() {
+  const cookieId = document.getElementById('editReplyCookieIdSelect').value;
+  const itemSelect = document.getElementById('editReplyItemIdSelect');
+
+  itemSelect.innerHTML = '<option value="">选择商品</option>';
+  if (!cookieId) {
+    itemSelect.disabled = true;  // 禁用选择框
+    return;
+  } else {
+    itemSelect.disabled = false; // 启用选择框
+  }
+
+  const response = await fetch(`${apiBase}/items/cookie/${encodeURIComponent(cookieId)}`, {
+        headers: {
+        'Authorization': `Bearer ${authToken}`
+        }
+    });
+    try {
+       if (response.ok) {
+            const data = await response.json();
+            data.items.forEach(item => {
+                  const opt = document.createElement('option');
+                  opt.value = item.item_id;
+                  opt.textContent = `${item.item_id} - ${item.item_title || '无标题'}`;
+                  itemSelect.appendChild(opt);
+                });
+        } else {
+            throw new Error('获取商品列表失败');
+        }
+    }catch (error) {
+        console.error('加载商品列表失败:', error);
+        showToast('加载商品列表失败', 'danger');
+    }
+}
+
+// 编辑商品回复
+async function editItemReply(cookieId, itemId) {
+  try {
+    const response = await fetch(`${apiBase}/item-reply/${encodeURIComponent(cookieId)}/${encodeURIComponent(itemId)}`, {
+      headers: {
+        'Authorization': `Bearer ${authToken}`
+      }
+    });
+    if (response.ok) {
+      const data = await response.json();
+      document.getElementById('itemReplayTitle').textContent = '编辑商品回复';
+      // 填充表单
+      document.getElementById('editReplyCookieIdSelect').value = data.cookie_id;
+      let res = await onCookieChangeForReply()
+      document.getElementById('editReplyItemIdSelect').value = data.item_id;
+      document.getElementById('editItemReplyContent').value = data.reply_content || '';
+
+    } else if (response.status === 404) {
+      // 如果没有记录，则填充空白内容（用于添加）
+//      document.getElementById('editReplyCookieIdSelect').value = data.cookie_id;
+//      document.getElementById('editReplyItemIdSelect').value = data.item_id;
+//      document.getElementById('editItemReplyContent').value = data.reply_content || '';
+    } else {
+      throw new Error('获取商品回复失败');
+    }
+
+    // 显示模态框
+    const modal = new bootstrap.Modal(document.getElementById('editItemReplyModal'));
+    modal.show();
+
+  } catch (error) {
+    console.error('获取商品回复失败:', error);
+    showToast('获取商品回复失败', 'danger');
+  }
+}
+
+// 保存商品回复
+async function saveItemReply() {
+  const cookieId = document.getElementById('editReplyCookieIdSelect').value;
+  const itemId = document.getElementById('editReplyItemIdSelect').value;
+  const replyContent = document.getElementById('editItemReplyContent').value.trim();
+
+  console.log(cookieId)
+  console.log(itemId)
+  console.log(replyContent)
+  if (!cookieId) {
+    showToast('请选择账号', 'warning');
+    return;
+  }
+
+  if (!itemId) {
+    showToast('请选择商品', 'warning');
+    return;
+  }
+
+  if (!replyContent) {
+    showToast('请输入商品回复内容', 'warning');
+    return;
+  }
+
+  try {
+    const response = await fetch(`${apiBase}/item-reply/${encodeURIComponent(cookieId)}/${encodeURIComponent(itemId)}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${authToken}`
+      },
+      body: JSON.stringify({
+        reply_content: replyContent
+      })
+    });
+
+    if (response.ok) {
+      showToast('商品回复保存成功', 'success');
+
+      // 关闭模态框
+      const modal = bootstrap.Modal.getInstance(document.getElementById('editItemReplyModal'));
+      modal.hide();
+
+      // 可选：刷新数据
+      await refreshItemsReplayData?.();
+    } else {
+      const error = await response.text();
+      showToast(`保存失败: ${error}`, 'danger');
+    }
+  } catch (error) {
+    console.error('保存商品回复失败:', error);
+    showToast('保存商品回复失败', 'danger');
+  }
+}
+
+// 删除商品回复
+async function deleteItemReply(cookieId, itemId, itemTitle) {
+  try {
+    const confirmed = confirm(`确定要删除该商品的自动回复吗？\n\n商品ID: ${itemId}\n商品标题: ${itemTitle || '未设置'}\n\n此操作不可撤销！`);
+    if (!confirmed) return;
+
+    const response = await fetch(`${apiBase}/item-reply/${encodeURIComponent(cookieId)}/${encodeURIComponent(itemId)}`, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${authToken}`
+      }
+    });
+
+    if (response.ok) {
+      showToast('商品回复删除成功', 'success');
+      await loadItemsReplayByCookie?.(); // 如果你有刷新商品列表的函数
+    } else {
+      const error = await response.text();
+      showToast(`删除失败: ${error}`, 'danger');
+    }
+  } catch (error) {
+    console.error('删除商品回复失败:', error);
+    showToast('删除商品回复失败', 'danger');
+  }
+}
+
+// 批量删除商品回复
+async function batchDeleteItemReplies() {
+  try {
+    const checkboxes = document.querySelectorAll('input[name="itemCheckbox"]:checked');
+    if (checkboxes.length === 0) {
+      showToast('请选择要删除回复的商品', 'warning');
+      return;
+    }
+
+    const confirmed = confirm(`确定要删除选中商品的自动回复吗？\n共 ${checkboxes.length} 个商品\n\n此操作不可撤销！`);
+    if (!confirmed) return;
+
+    const itemsToDelete = Array.from(checkboxes).map(checkbox => ({
+      cookie_id: checkbox.dataset.cookieId,
+      item_id: checkbox.dataset.itemId
+    }));
+
+    const response = await fetch(`${apiBase}/item-reply/batch`, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${authToken}`
+      },
+      body: JSON.stringify({ items: itemsToDelete })
+    });
+
+    if (response.ok) {
+      const result = await response.json();
+      showToast(`批量删除回复完成: 成功 ${result.success_count} 个，失败 ${result.failed_count} 个`, 'success');
+      await loadItemsReplayByCookie?.();
+    } else {
+      const error = await response.text();
+      showToast(`批量删除失败: ${error}`, 'danger');
+    }
+  } catch (error) {
+    console.error('批量删除商品回复失败:', error);
+    showToast('批量删除商品回复失败', 'danger');
+  }
 }
 
 // ================================

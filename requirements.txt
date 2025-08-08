@@ -57,6 +57,9 @@ openpyxl>=3.1.0
 # ==================== 邮件发送 ====================
 email-validator>=2.0.0
 
+# ==================== 数据处理和验证 ====================
+xlsxwriter>=3.1.0
+
 # ==================== 说明 ====================
 # 以下模块是Python内置模块，无需安装：
 # sqlite3, json, base64, hashlib, hmac, time, datetime, os, sys, re, urllib
@@ -64,3 +67,4 @@ email-validator>=2.0.0
 # collections, itertools, functools, copy, pickle, gzip, zipfile, shutil
 # tempfile, io, csv, xml, html, http, socket, ssl, subprocess, signal
 # inspect, ast, enum, math, decimal, array, queue, contextlib, warnings
+# typing, dataclasses, weakref, gc, platform, stat, glob, fnmatch

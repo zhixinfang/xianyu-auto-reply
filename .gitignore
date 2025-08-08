@@ -105,3 +105,203 @@ keywords_sample.xlsx
 *.tar.gz
 *.rar
 *.7z
+
+# ==================== 新增忽略项 ====================
+# Python 字节码和缓存
+*.pyc
+*.pyo
+*.pyd
+__pycache__/
+*.py[cod]
+*$py.class
+
+# 分发/打包
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# 单元测试/覆盖率报告
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# IPython
+profile_default/
+ipython_config.py
+
+# pyenv
+.python-version
+
+# pipenv
+Pipfile.lock
+
+# PEP 582
+__pypackages__/
+
+# Celery
+celerybeat-schedule
+celerybeat.pid
+
+# SageMath parsed files
+*.sage.py
+
+# Spyder project settings
+.spyderproject
+.spyproject
+
+# Rope project settings
+.ropeproject
+
+# mkdocs documentation
+/site
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# ==================== 项目特定新增 ====================
+# 环境变量文件
+.env.example
+.env.*.example
+
+# 数据库文件
+*.db-journal
+*.db-wal
+*.db-shm
+
+# 临时文件和缓存
+*.cache
+.cache/
+cache/
+
+# 编辑器临时文件
+*.swp
+*.swo
+*.tmp
+*~
+.#*
+
+# 系统文件
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# 文档生成
+docs/_build/
+docs/build/
+
+# 密钥和证书
+*.key
+*.pem
+*.crt
+*.cert
+*.p12
+*.pfx
+
+# 配置文件备份
+*.conf.bak
+*.config.bak
+
+# 运行时文件
+*.pid
+*.sock
+
+# 调试文件
+debug.log
+*.debug
+
+# 性能分析文件
+*.prof
+
+# 本地开发文件
+local/
+.local/
+
+# Docker相关
+.dockerignore.bak
+docker-compose.override.yml
+
+# 版本控制
+.svn/
+.hg/
+.bzr/
+
+# 包管理器
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+yarn.lock
+
+# 前端构建
+dist/
+build/
+.next/
+.nuxt/
+.vuepress/dist
+
+# 移动端
+*.apk
+*.ipa
+*.app
+
+# 数据文件
+*.csv.bak
+*.json.bak
+*.xml.bak
+
+# 媒体文件缓存
+*.mp4.cache
+*.mp3.cache
+*.wav.cache
+*.avi.cache
+
+# AI模型文件
+*.model
+*.weights
+*.h5
+*.pb
+
+# 大文件
+*.iso
+*.dmg
+*.img

@@ -1010,12 +1010,36 @@ class XianyuLive:
         except Exception as e:
             logger.error(f"调试消息结构时发生错误: {self._safe_str(e)}")
 
-    async def get_default_reply(self, send_user_name: str, send_user_id: str, send_message: str, chat_id: str = None) -> str:
-        """获取默认回复内容，支持变量替换和只回复一次功能"""
+    async def get_default_reply(self, send_user_name: str, send_user_id: str, send_message: str, chat_id: str, item_id: str = None) -> str:
+        """获取默认回复内容，支持指定商品回复、变量替换和只回复一次功能"""
         try:
             from db_manager import db_manager
 
-            # 获取当前账号的默认回复设置
+            # 1. 优先检查指定商品回复
+            if item_id:
+                item_reply = db_manager.get_item_reply(self.cookie_id, item_id)
+                if item_reply and item_reply.get('reply_content'):
+                    reply_content = item_reply['reply_content']
+                    logger.info(f"【{self.cookie_id}】使用指定商品回复: 商品ID={item_id}")
+
+                    # 进行变量替换
+                    try:
+                        formatted_reply = reply_content.format(
+                            send_user_name=send_user_name,
+                            send_user_id=send_user_id,
+                            send_message=send_message,
+                            item_id=item_id
+                        )
+                        logger.info(f"【{self.cookie_id}】指定商品回复内容: {formatted_reply}")
+                        return formatted_reply
+                    except Exception as format_error:
+                        logger.error(f"指定商品回复变量替换失败: {self._safe_str(format_error)}")
+                        # 如果变量替换失败，返回原始内容
+                        return reply_content
+                else:
+                    logger.debug(f"【{self.cookie_id}】商品ID {item_id} 没有配置指定回复，使用默认回复")
+
+            # 2. 获取当前账号的默认回复设置
             default_reply_settings = db_manager.get_default_reply(self.cookie_id)
 
             if not default_reply_settings or not default_reply_settings.get('enabled', False):
@@ -3205,7 +3229,7 @@ class XianyuLive:
                         reply_source = 'AI'  # 标记为AI回复
                     else:
                         # 3. 最后使用默认回复
-                        reply = await self.get_default_reply(send_user_name, send_user_id, send_message, chat_id)
+                        reply = await self.get_default_reply(send_user_name, send_user_id, send_message, chat_id, item_id)
                         if reply == "EMPTY_REPLY":
                             # 默认回复内容为空，不进行任何回复
                             logger.info(f"[{msg_time}] 【{self.cookie_id}】默认回复内容为空，跳过自动回复")

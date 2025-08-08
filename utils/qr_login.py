@@ -15,12 +15,13 @@ import httpx
 import qrcode
 import qrcode.constants
 from loguru import logger
+import hashlib
 
 
 def generate_headers():
     """生成请求头"""
     return {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Accept': 'application/json, text/plain, */*',
         'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
         'Accept-Encoding': 'gzip, deflate, br',
@@ -28,6 +29,8 @@ def generate_headers():
         'Sec-Fetch-Dest': 'empty',
         'Sec-Fetch-Mode': 'cors',
         'Sec-Fetch-Site': 'same-origin',
+        'Referer': 'https://passport.goofish.com/',
+        'Origin': 'https://passport.goofish.com',
     }
 
 
@@ -84,6 +87,13 @@ class QRLoginManager:
         self.api_generate_qr = f"{self.host}/newlogin/qrcode/generate.do"
         self.api_scan_status = f"{self.host}/newlogin/qrcode/query.do"
         self.api_h5_tk = "https://h5api.m.goofish.com/h5/mtop.gaia.nodejs.gaia.idle.data.gw.v2.index.get/1.0/"
+        
+        # 配置代理（如果需要的话，取消注释并修改代理地址）
+        # self.proxy = "http://127.0.0.1:7890"
+        self.proxy = None
+        
+        # 配置超时时间
+        self.timeout = httpx.Timeout(connect=30.0, read=60.0, write=30.0, pool=60.0)
 
     def _cookie_marshal(self, cookies: dict) -> str:
         """将Cookie字典转换为字符串"""
@@ -91,30 +101,52 @@ class QRLoginManager:
 
     async def _get_mh5tk(self, session: QRLoginSession) -> dict:
         """获取m_h5_tk和m_h5_tk_enc"""
-        params = {
-            "jsv": "2.7.2",
-            "appKey": "34839810",
-            "t": int(time.time()),
-            "sign": "",
-            "v": "1.0",
-            "type": "originaljson",
-            "accountSite": "xianyu",
-            "dataType": "json",
-            "timeout": 20000,
-            "api": "mtop.gaia.nodejs.gaia.idle.data.gw.v2.index.get",
-            "sessionOption": "AutoLoginOnly",
-            "spm_cnt": "a21ybx.home.0.0",
-        }
+        data = {"bizScene": "home"}
+        data_str = json.dumps(data, separators=(',', ':'))
+        t = str(int(time.time() * 1000))
+        app_key = "34839810"
 
-        async with httpx.AsyncClient(follow_redirects=True) as client:
-            resp = await client.post(
-                self.api_h5_tk, params=params, headers=self.headers
-            )
-            cookies = {}
-            for k, v in resp.cookies.items():
-                cookies[k] = v
-                session.cookies[k] = v
-            return cookies
+        # 先发一次 GET 请求，获取 cookie 中的 m_h5_tk
+        async with httpx.AsyncClient(timeout=self.timeout, follow_redirects=True, proxy=self.proxy) as client:
+            try:
+                resp = await client.get(self.api_h5_tk, headers=self.headers)
+                cookies = {k: v for k, v in resp.cookies.items()}
+                session.cookies.update(cookies)
+
+                m_h5_tk = cookies.get("m_h5_tk", "")
+                token = m_h5_tk.split("_")[0] if "_" in m_h5_tk else ""
+
+                # 生成签名
+                sign_input = f"{token}&{t}&{app_key}&{data_str}"
+                sign = hashlib.md5(sign_input.encode()).hexdigest()
+
+                # 构造最终请求参数
+                params = {
+                    "jsv": "2.7.2",
+                    "appKey": app_key,
+                    "t": t,
+                    "sign": sign,
+                    "v": "1.0",
+                    "type": "originaljson",
+                    "dataType": "json",
+                    "timeout": 20000,
+                    "api": "mtop.gaia.nodejs.gaia.idle.data.gw.v2.index.get",
+                    "data": data_str,
+                }
+
+                # 发请求正式获取数据，确保 token 有效
+                await client.post(self.api_h5_tk, params=params, headers=self.headers, cookies=session.cookies)
+
+                return cookies
+            except httpx.ConnectTimeout:
+                logger.error("获取m_h5_tk时连接超时")
+                raise
+            except httpx.ReadTimeout:
+                logger.error("获取m_h5_tk时读取超时")
+                raise
+            except httpx.ConnectError:
+                logger.error("获取m_h5_tk时连接错误")
+                raise
 
     async def _get_login_params(self, session: QRLoginSession) -> dict:
         """获取二维码登录时需要的表单参数"""
@@ -132,29 +164,39 @@ class QRLoginManager:
             "rnd": random(),
         }
 
-        async with httpx.AsyncClient(follow_redirects=True) as client:
-            resp = await client.get(
-                self.api_mini_login,
-                params=params,
-                cookies=session.cookies,
-                headers=self.headers,
-            )
+        async with httpx.AsyncClient(follow_redirects=True, timeout=self.timeout, proxy=self.proxy) as client:
+            try:
+                resp = await client.get(
+                    self.api_mini_login,
+                    params=params,
+                    cookies=session.cookies,
+                    headers=self.headers,
+                )
 
-            # 正则匹配需要的json数据
-            pattern = r"window\.viewData\s*=\s*(\{.*?\});"
-            match = re.search(pattern, resp.text)
-            if match:
-                json_string = match.group(1)
-                view_data = json.loads(json_string)
-                data = view_data.get("loginFormData")
-                if data:
-                    data["umidTag"] = "SERVER"
-                    session.params.update(data)
-                    return data
+                # 正则匹配需要的json数据
+                pattern = r"window\.viewData\s*=\s*(\{.*?\});"
+                match = re.search(pattern, resp.text)
+                if match:
+                    json_string = match.group(1)
+                    view_data = json.loads(json_string)
+                    data = view_data.get("loginFormData")
+                    if data:
+                        data["umidTag"] = "SERVER"
+                        session.params.update(data)
+                        return data
+                    else:
+                        raise GetLoginParamsError("未找到loginFormData")
                 else:
-                    raise GetLoginParamsError("未找到loginFormData")
-            else:
-                raise GetLoginParamsError("获取登录参数失败")
+                    raise GetLoginParamsError("获取登录参数失败")
+            except httpx.ConnectTimeout:
+                logger.error("获取登录参数时连接超时")
+                raise
+            except httpx.ReadTimeout:
+                logger.error("获取登录参数时读取超时")
+                raise
+            except httpx.ConnectError:
+                logger.error("获取登录参数时连接错误")
+                raise
     
     async def generate_qr_code(self) -> Dict[str, Any]:
         """生成二维码"""
@@ -172,13 +214,20 @@ class QRLoginManager:
             logger.info(f"获取登录参数成功: {session_id}")
 
             # 3. 生成二维码
-            async with httpx.AsyncClient(follow_redirects=True) as client:
+            async with httpx.AsyncClient(follow_redirects=True, timeout=self.timeout, proxy=self.proxy) as client:
                 resp = await client.get(
                     self.api_generate_qr,
                     params=login_params,
                     headers=self.headers
                 )
-                results = resp.json()
+                logger.debug(f"[调试] 获取二维码接口原始响应: {resp.text}")
+
+                try:
+                    results = resp.json()
+                    logger.debug(f"[调试] 获取二维码接口解析后: {json.dumps(results, ensure_ascii=False)}")
+                except Exception as e:
+                    logger.exception("二维码接口返回不是JSON")
+                    raise GetLoginQRCodeError(f"二维码接口返回异常: {resp.text}")
 
                 if results.get("content", {}).get("success") == True:
                     # 更新会话参数
@@ -229,13 +278,22 @@ class QRLoginManager:
                 else:
                     raise GetLoginQRCodeError("获取登录二维码失败")
 
+        except httpx.ConnectTimeout as e:
+            logger.error(f"连接超时: {e}")
+            return {'success': False, 'message': f'连接超时，请检查网络或尝试使用代理'}
+        except httpx.ReadTimeout as e:
+            logger.error(f"读取超时: {e}")
+            return {'success': False, 'message': f'读取超时，服务器响应过慢'}
+        except httpx.ConnectError as e:
+            logger.error(f"连接错误: {e}")
+            return {'success': False, 'message': f'连接错误，请检查网络或代理设置'}
         except Exception as e:
-            logger.error(f"生成二维码失败: {e}")
+            logger.exception("二维码生成过程中发生异常")
             return {'success': False, 'message': f'生成二维码失败: {str(e)}'}
     
     async def _poll_qrcode_status(self, session: QRLoginSession) -> httpx.Response:
         """获取二维码扫描状态"""
-        async with httpx.AsyncClient(follow_redirects=True) as client:
+        async with httpx.AsyncClient(follow_redirects=True, timeout=self.timeout, proxy=self.proxy) as client:
             resp = await client.post(
                 self.api_scan_status,
                 data=session.params,
@@ -388,7 +446,6 @@ class QRLoginManager:
                 'unb': session.unb
             }
         return None
-
 
 # 全局二维码登录管理器实例
 qr_login_manager = QRLoginManager()

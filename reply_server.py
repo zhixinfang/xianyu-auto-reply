@@ -3458,6 +3458,156 @@ def get_system_stats(admin_user: Dict[str, Any] = Depends(require_admin)):
         log_with_user('error', f"获取系统统计信息失败: {str(e)}", admin_user)
         raise HTTPException(status_code=500, detail=str(e))
 
+# ------------------------- 指定商品回复接口 -------------------------
+
+@app.get("/itemReplays")
+def get_all_items(current_user: Dict[str, Any] = Depends(get_current_user)):
+    """获取当前用户的所有商品回复信息"""
+    try:
+        # 只返回当前用户的商品信息
+        user_id = current_user['user_id']
+        from db_manager import db_manager
+        user_cookies = db_manager.get_all_cookies(user_id)
+
+        all_items = []
+        for cookie_id in user_cookies.keys():
+            items = db_manager.get_itemReplays_by_cookie(cookie_id)
+            all_items.extend(items)
+
+        return {"items": all_items}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"获取商品回复信息失败: {str(e)}")
+
+@app.get("/itemReplays/cookie/{cookie_id}")
+def get_items_by_cookie(cookie_id: str, current_user: Dict[str, Any] = Depends(get_current_user)):
+    """获取指定Cookie的商品信息"""
+    try:
+        # 检查cookie是否属于当前用户
+        user_id = current_user['user_id']
+        from db_manager import db_manager
+        user_cookies = db_manager.get_all_cookies(user_id)
+
+        if cookie_id not in user_cookies:
+            raise HTTPException(status_code=403, detail="无权限访问该Cookie")
+
+        items = db_manager.get_itemReplays_by_cookie(cookie_id)
+        return {"items": items}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"获取商品信息失败: {str(e)}")
+
+@app.put("/item-reply/{cookie_id}/{item_id}")
+def update_item_reply(
+    cookie_id: str,
+    item_id: str,
+    data: dict,
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """
+    更新指定账号和商品的回复内容
+    """
+    try:
+        user_id = current_user['user_id']
+        from db_manager import db_manager
+
+        # 验证cookie是否属于用户
+        user_cookies = db_manager.get_all_cookies(user_id)
+        if cookie_id not in user_cookies:
+            raise HTTPException(status_code=403, detail="无权限访问该Cookie")
+
+        reply_content = data.get("reply_content", "").strip()
+        if not reply_content:
+            raise HTTPException(status_code=400, detail="回复内容不能为空")
+
+        db_manager.update_item_reply(cookie_id=cookie_id, item_id=item_id, reply_content=reply_content)
+
+        return {"message": "商品回复更新成功"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"更新商品回复失败: {str(e)}")
+
+@app.delete("/item-reply/{cookie_id}/{item_id}")
+def delete_item_reply(cookie_id: str, item_id: str, current_user: Dict[str, Any] = Depends(get_current_user)):
+    """
+    删除指定账号cookie_id和商品item_id的商品回复
+    """
+    try:
+        user_id = current_user['user_id']
+        user_cookies = db_manager.get_all_cookies(user_id)
+        if cookie_id not in user_cookies:
+            raise HTTPException(status_code=403, detail="无权限访问该Cookie")
+
+        success = db_manager.delete_item_reply(cookie_id, item_id)
+        if not success:
+            raise HTTPException(status_code=404, detail="商品回复不存在")
+
+        return {"message": "商品回复删除成功"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"删除商品回复失败: {str(e)}")
+
+class ItemToDelete(BaseModel):
+    cookie_id: str
+    item_id: str
+
+class BatchDeleteRequest(BaseModel):
+    items: List[ItemToDelete]
+
+@app.delete("/item-reply/batch")
+async def batch_delete_item_reply(
+    req: BatchDeleteRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """
+    批量删除商品回复
+    """
+    user_id = current_user['user_id']
+    from db_manager import db_manager
+
+    # 先校验当前用户是否有权限删除每个cookie对应的回复
+    user_cookies = db_manager.get_all_cookies(user_id)
+    for item in req.items:
+        if item.cookie_id not in user_cookies:
+            raise HTTPException(status_code=403, detail=f"无权限访问Cookie {item.cookie_id}")
+
+    result = db_manager.batch_delete_item_replies([item.dict() for item in req.items])
+    return {
+        "success_count": result["success_count"],
+        "failed_count": result["failed_count"]
+    }
+
+@app.get("/item-reply/{cookie_id}/{item_id}")
+def get_item_reply(cookie_id: str, item_id: str, current_user: Dict[str, Any] = Depends(get_current_user)):
+    """
+    获取指定账号cookie_id和商品item_id的商品回复内容
+    """
+    try:
+        user_id = current_user['user_id']
+        # 校验cookie_id是否属于当前用户
+        user_cookies = db_manager.get_all_cookies(user_id)
+        if cookie_id not in user_cookies:
+            raise HTTPException(status_code=403, detail="无权限访问该Cookie")
+
+        # 获取指定商品回复
+        item_replies = db_manager.get_itemReplays_by_cookie(cookie_id)
+        # 找对应item_id的回复
+        item_reply = next((r for r in item_replies if r['item_id'] == item_id), None)
+
+        if item_reply is None:
+            raise HTTPException(status_code=404, detail="商品回复不存在")
+
+        return item_reply
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"获取商品回复失败: {str(e)}")
+
 
 # ------------------------- 数据库备份和恢复接口 -------------------------
 
@@ -3664,7 +3814,7 @@ def get_table_data(table_name: str, admin_user: Dict[str, Any] = Depends(require
             'users', 'cookies', 'cookie_status', 'keywords', 'default_replies', 'default_reply_records',
             'ai_reply_settings', 'ai_conversations', 'ai_item_cache', 'item_info',
             'message_notifications', 'cards', 'delivery_rules', 'notification_channels',
-            'user_settings', 'system_settings', 'email_verifications', 'captcha_codes', 'orders'
+            'user_settings', 'system_settings', 'email_verifications', 'captcha_codes', 'orders', "item_replay"
         ]
 
         if table_name not in allowed_tables:
@@ -3741,7 +3891,7 @@ def clear_table_data(table_name: str, admin_user: Dict[str, Any] = Depends(requi
             'cookies', 'cookie_status', 'keywords', 'default_replies', 'default_reply_records',
             'ai_reply_settings', 'ai_conversations', 'ai_item_cache', 'item_info',
             'message_notifications', 'cards', 'delivery_rules', 'notification_channels',
-            'user_settings', 'system_settings', 'email_verifications', 'captcha_codes', 'orders'
+            'user_settings', 'system_settings', 'email_verifications', 'captcha_codes', 'orders', "item_replay"
         ]
 
         # 不允许清空用户表

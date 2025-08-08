@@ -55,6 +55,12 @@
         </a>
       </div>
       <div class="nav-item">
+        <a href="#" class="nav-link" onclick="showSection('items-reply')">
+          <i class="bi bi-chat-left-text"></i>
+          指定商品回复
+        </a>
+      </div>
+      <div class="nav-item">
         <a href="#" class="nav-link" onclick="showSection('cards')">
           <i class="bi bi-credit-card"></i>
           卡券管理
@@ -397,6 +403,7 @@
                     <th style="width: 12%">商品ID</th>
                     <th style="width: 18%">商品标题</th>
                     <th style="width: 20%">商品详情</th>
+                    <th style="width: 20%">商品价格</th>
                     <th style="width: 8%">多规格</th>
                     <th style="width: 10%">更新时间</th>
                     <th style="width: 15%">操作</th>
@@ -455,6 +462,140 @@
         </div>
       </div>
     </div>
+
+     <!-- 指定商品自动管理内容 -->
+    <div id="items-reply-section" class="content-section">
+      <div class="content-header">
+        <h2 class="mb-0">
+          <i class="bi bi-box-seam me-2"></i>
+          商品回复管理
+        </h2>
+        <p class="text-muted mb-0">管理各账号的商品信息</p>
+      </div>
+
+      <div class="content-body">
+        <!-- Cookie筛选 -->
+        <div class="card mb-4">
+          <div class="card-body">
+            <div class="row align-items-end">
+              <div class="col-md-6">
+                <label for="itemCookieFilter" class="form-label">筛选账号</label>
+                <select class="form-select" id="itemReplayCookieFilter" onchange="loadItemsReplayByCookie()">
+                  <option value="">所有账号</option>
+                </select>
+              </div>
+              <div class="col-md-6">
+                <div class="d-flex justify-content-end align-items-end gap-2">
+                  <!-- 页码输入 -->
+                  <div class="d-flex align-items-center gap-2">
+                    <label for="pageNumber" class="form-label mb-0 text-nowrap">页码:</label>
+                    <input type="number" class="form-control" id="pageNumber" placeholder="页码" min="1" value="1" style="width: 80px;">
+                  </div>
+                  <div class="d-flex gap-2">
+                    <button class="btn btn-success" onclick="showItemReplayEdit()">
+                      添加商品回复
+                    </button>
+                    <button class="btn btn-primary" onclick="refreshItemReplayS()">
+                      <i class="bi bi-arrow-clockwise me-1"></i>刷新
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 商品列表 -->
+        <div class="card">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">商品列表(自动发货根据商品标题和商品详情匹配关键字)</h5>
+            <button class="btn btn-sm btn-outline-danger" onclick="batchDeleteItemReplies()">
+              <i class="bi bi-trash"></i> 批量删除
+            </button>
+          </div>
+          <div class="card-body">
+            <div class="table-responsive">
+              <table class="table table-hover">
+                <thead>
+                  <tr>
+                    <th style="width: 5%">
+                      <input type="checkbox" id="selectAllItemReplay" onchange="toggleSelectAll(this)">
+                    </th>
+                    <th style="width: 12%">账号ID</th>
+                    <th style="width: 12%">商品ID</th>
+                    <th style="width: 18%">商品标题</th>
+                    <th style="width: 20%">商品内容</th>
+                    <th style="width: 18%">回复内容</th>
+                    <th style="width: 10%">更新时间</th>
+                    <th style="width: 15%">操作</th>
+                  </tr>
+                </thead>
+                <tbody id="itemReplaysTableBody">
+                  <tr>
+                    <td colspan="5" class="text-center text-muted">加载中...</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+      <!-- 商品回复弹框 -->
+  <!-- 添加/编辑商品回复模态框 -->
+  <div class="modal fade" id="editItemReplyModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">
+            <i class="bi bi-chat-text me-2"></i><span id="itemReplayTitle">编辑商品回复</span>
+          </h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <form id="editItemReplyForm">
+            <input type="hidden" id="editReplyCookieId">
+            <input type="hidden" id="editReplyItemId">
+
+            <div class="row mb-3">
+              <div class="col-md-6">
+                <label class="form-label">账号ID<span class="text-danger">*</span></label>
+                <select id="editReplyCookieIdSelect" class="form-select" onchange="onCookieChangeForReply()">
+                  <option value="">请选择账号</option>
+                  <!-- JS 动态填充账号选项 -->
+                </select>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">商品ID<span class="text-danger">*</span></label>
+                <select id="editReplyItemIdSelect" class="form-select">
+                  <option value="">选择商品</option>
+                  <!-- JS 动态填充商品选项 -->
+                </select>
+              </div>
+            </div>
+
+            <div class="mb-3">
+              <label for="editReplyContent" class="form-label">商品回复内容 <span class="text-danger">*</span></label>
+              <textarea class="form-control" id="editItemReplyContent" rows="10"
+                        placeholder="请输入商品回复内容..."></textarea>
+              <div class="form-text">
+                <i class="bi bi-info-circle me-1"></i>
+                请输入商品的自动回复内容，用户购买后将收到该回复。
+              </div>
+            </div>
+          </form>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+          <button type="button" class="btn btn-primary" onclick="saveItemReply()">
+            <i class="bi bi-check-circle me-1"></i>保存
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
 
     <!-- 订单管理内容 -->
     <div id="orders-section" class="content-section">

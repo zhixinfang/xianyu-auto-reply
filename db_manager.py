@@ -315,6 +315,18 @@ class DBManager:
                 if "duplicate column name" not in str(e).lower():
                     logger.warning(f"添加 reply_once 字段失败: {e}")
 
+            # 创建指定商品回复表
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS item_replay (
+                    item_id TEXT NOT NULL PRIMARY KEY,
+                    cookie_id TEXT NOT NULL,
+                    reply_content TEXT NOT NULL ,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (item_id) REFERENCES cookies(id) ON DELETE CASCADE
+                )
+            ''')
+
             # 创建默认回复记录表（记录已回复的chat_id）
             cursor.execute('''
             CREATE TABLE IF NOT EXISTS default_reply_records (
@@ -4255,6 +4267,198 @@ class DBManager:
         except Exception as e:
             logger.error(f"升级keywords表失败: {e}")
             raise
+    def get_item_replay(self, item_id: str) -> Optional[Dict[str, Any]]:
+        """
+        根据商品ID获取商品回复信息，并返回统一格式
+
+        Args:
+            item_id (str): 商品ID
+
+        Returns:
+            Optional[Dict[str, Any]]: 商品回复信息字典（统一格式），找不到返回 None
+        """
+        try:
+            with self.lock:
+                cursor = self.conn.cursor()
+                cursor.execute('''
+                    SELECT reply_content FROM item_replay
+                    WHERE item_id = ?
+                ''', (item_id,))
+
+                row = cursor.fetchone()
+                if row:
+                    (reply_content,) = row
+                    return {
+                        'reply_content': reply_content or ''
+                    }
+                return None
+        except Exception as e:
+            logger.error(f"获取商品回复失败: {e}")
+            return None
+
+    def get_item_reply(self, cookie_id: str, item_id: str) -> Optional[Dict[str, Any]]:
+        """
+        获取指定账号和商品的回复内容
+
+        Args:
+            cookie_id (str): 账号ID
+            item_id (str): 商品ID
+
+        Returns:
+            Dict: 包含回复内容的字典，如果不存在返回None
+        """
+        try:
+            with self.lock:
+                cursor = self.conn.cursor()
+                cursor.execute('''
+                    SELECT reply_content, created_at, updated_at
+                    FROM item_replay
+                    WHERE cookie_id = ? AND item_id = ?
+                ''', (cookie_id, item_id))
+
+                row = cursor.fetchone()
+                if row:
+                    return {
+                        'reply_content': row[0] or '',
+                        'created_at': row[1],
+                        'updated_at': row[2]
+                    }
+                return None
+        except Exception as e:
+            logger.error(f"获取指定商品回复失败: {e}")
+            return None
+
+    def update_item_reply(self, cookie_id: str, item_id: str, reply_content: str) -> bool:
+        """
+        更新指定cookie和item的回复内容及更新时间
+
+        Args:
+            cookie_id (str): 账号ID
+            item_id (str): 商品ID
+            reply_content (str): 回复内容
+
+        Returns:
+            bool: 更新成功返回True，失败返回False
+        """
+        try:
+            with self.lock:
+                cursor = self.conn.cursor()
+                cursor.execute('''
+                    UPDATE item_replay
+                    SET reply_content = ?, updated_at = CURRENT_TIMESTAMP
+                    WHERE cookie_id = ? AND item_id = ?
+                ''', (reply_content, cookie_id, item_id))
+
+                if cursor.rowcount == 0:
+                    # 如果没更新到，说明该条记录不存在，可以考虑插入
+                    cursor.execute('''
+                        INSERT INTO item_replay (item_id, cookie_id, reply_content, created_at, updated_at)
+                        VALUES (?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                    ''', (item_id, cookie_id, reply_content))
+
+                self.conn.commit()
+            return True
+        except Exception as e:
+            logger.error(f"更新商品回复失败: {e}")
+            return False
+
+    def get_itemReplays_by_cookie(self, cookie_id: str) -> List[Dict]:
+        """获取指定Cookie的所有商品信息
+
+        Args:
+            cookie_id: Cookie ID
+
+        Returns:
+            List[Dict]: 商品信息列表
+        """
+        try:
+            with self.lock:
+                cursor = self.conn.cursor()
+                cursor.execute('''
+                SELECT r.item_id, r.cookie_id, r.reply_content, r.created_at, r.updated_at, i.item_title, i.item_detail
+                    FROM item_replay r
+                    LEFT JOIN item_info i ON i.item_id = r.item_id
+                    WHERE r.cookie_id = ?
+                    ORDER BY r.updated_at DESC
+                ''', (cookie_id,))
+
+                columns = [description[0] for description in cursor.description]
+                items = []
+
+                for row in cursor.fetchall():
+                    item_info = dict(zip(columns, row))
+
+                    items.append(item_info)
+
+                return items
+
+        except Exception as e:
+            logger.error(f"获取Cookie商品信息失败: {e}")
+            return []
+
+    def delete_item_reply(self, cookie_id: str, item_id: str) -> bool:
+        """
+        删除指定 cookie_id 和 item_id 的商品回复
+
+        Args:
+            cookie_id: Cookie ID
+            item_id: 商品ID
+
+        Returns:
+            bool: 删除成功返回 True，失败返回 False
+        """
+        try:
+            with self.lock:
+                cursor = self.conn.cursor()
+                cursor.execute('''
+                    DELETE FROM item_replay
+                    WHERE cookie_id = ? AND item_id = ?
+                ''', (cookie_id, item_id))
+                self.conn.commit()
+                # 判断是否有删除行
+                return cursor.rowcount > 0
+        except Exception as e:
+            logger.error(f"删除商品回复失败: {e}")
+            return False
+
+    def batch_delete_item_replies(self, items: List[Dict[str, str]]) -> Dict[str, int]:
+        """
+        批量删除商品回复
+
+        Args:
+            items: List[Dict] 每个字典包含 cookie_id 和 item_id
+
+        Returns:
+            Dict[str, int]: 返回成功和失败的数量，例如 {"success_count": 3, "failed_count": 1}
+        """
+        success_count = 0
+        failed_count = 0
+
+        try:
+            with self.lock:
+                cursor = self.conn.cursor()
+                for item in items:
+                    cookie_id = item.get('cookie_id')
+                    item_id = item.get('item_id')
+                    if not cookie_id or not item_id:
+                        failed_count += 1
+                        continue
+                    cursor.execute('''
+                        DELETE FROM item_replay
+                        WHERE cookie_id = ? AND item_id = ?
+                    ''', (cookie_id, item_id))
+                    if cursor.rowcount > 0:
+                        success_count += 1
+                    else:
+                        failed_count += 1
+                self.conn.commit()
+        except Exception as e:
+            logger.error(f"批量删除商品回复失败: {e}")
+            # 整体失败则视为全部失败
+            return {"success_count": 0, "failed_count": len(items)}
+
+        return {"success_count": success_count, "failed_count": failed_count}
+
 
 
 # 全局单例
