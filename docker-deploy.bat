@@ -10,7 +10,6 @@ title 闲鱼自动回复系统 Docker 部署
 REM 项目配置
 set PROJECT_NAME=xianyu-auto-reply
 set COMPOSE_FILE=docker-compose.yml
-set ENV_FILE=.env
 
 REM 颜色定义（Windows CMD不支持ANSI颜色，使用echo代替）
 set "INFO_PREFIX=[INFO]"
@@ -41,13 +40,6 @@ echo %SUCCESS_PREFIX% 系统依赖检查通过
 REM 初始化配置
 echo %INFO_PREFIX% 初始化配置文件...
 
-if not exist "%ENV_FILE%" (
-    echo %WARNING_PREFIX% %ENV_FILE% 文件不存在，将使用默认配置
-    echo %INFO_PREFIX% 如需自定义配置，请创建 %ENV_FILE% 文件
-) else (
-    echo %SUCCESS_PREFIX% %ENV_FILE% 配置文件已存在
-)
-
 REM 检查关键文件
 if not exist "entrypoint.sh" (
     echo %ERROR_PREFIX% entrypoint.sh 文件不存在，Docker容器将无法启动
@@ -56,6 +48,15 @@ if not exist "entrypoint.sh" (
     exit /b 1
 ) else (
     echo %SUCCESS_PREFIX% entrypoint.sh 文件已存在
+)
+
+if not exist "global_config.yml" (
+    echo %ERROR_PREFIX% global_config.yml 配置文件不存在
+    echo %INFO_PREFIX% 请确保配置文件存在
+    pause
+    exit /b 1
+) else (
+    echo %SUCCESS_PREFIX% global_config.yml 配置文件已存在
 )
 
 REM 创建必要的目录

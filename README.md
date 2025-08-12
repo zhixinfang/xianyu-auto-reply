@@ -100,43 +100,58 @@ xianyu-auto-reply/
 │       ├── message_utils.py       # 消息格式化和处理工具
 │       ├── ws_utils.py            # WebSocket客户端封装
 │       ├── qr_login.py            # 二维码登录功能
-│       ├── item_search.py         # 商品搜索功能（基于Playwright）
+│       ├── item_search.py         # 商品搜索功能（基于Playwright，无头模式）
 │       ├── order_detail_fetcher.py # 订单详情获取工具
 │       ├── image_utils.py         # 图片处理工具（压缩、格式转换）
 │       └── image_uploader.py      # 图片上传到CDN工具
 ├── 🌐 前端界面
 │   └── static/
-│       ├── index.html             # 主管理界面（账号管理、系统监控）
+│       ├── index.html             # 主管理界面（集成所有功能模块）
 │       ├── login.html             # 用户登录页面
 │       ├── register.html          # 用户注册页面（邮箱验证）
 │       ├── user_management.html   # 用户管理页面（管理员功能）
 │       ├── data_management.html   # 数据管理页面（导入导出）
 │       ├── log_management.html    # 日志管理页面（实时日志查看）
-│       ├── item_search.html       # 商品搜索页面（真实数据获取）
-│       ├── js/app.js              # 主要JavaScript逻辑
-│       ├── css/style.css          # 自定义样式文件
+│       ├── item_search.html       # 商品搜索页面（独立版本）
+│       ├── js/
+│       │   ├── app.js             # 主要JavaScript逻辑
+│       │   └── modules/           # 模块化JavaScript文件
+│       ├── css/
+│       │   ├── variables.css      # CSS变量定义
+│       │   ├── layout.css         # 布局样式
+│       │   ├── components.css     # 组件样式
+│       │   ├── accounts.css       # 账号管理样式
+│       │   ├── keywords.css       # 关键词管理样式
+│       │   ├── items.css          # 商品管理样式
+│       │   ├── logs.css           # 日志管理样式
+│       │   ├── notifications.css  # 通知样式
+│       │   ├── dashboard.css      # 仪表板样式
+│       │   ├── admin.css          # 管理员样式
+│       │   └── app.css            # 主应用样式
+│       ├── lib/
+│       │   ├── bootstrap/         # Bootstrap框架
+│       │   └── bootstrap-icons/   # Bootstrap图标
+│       ├── uploads/
+│       │   └── images/            # 上传的图片文件
 │       ├── xianyu_js_version_2.js # 闲鱼JavaScript工具库
-│       └── lib/                   # 前端依赖库（Bootstrap等）
+│       ├── wechat-group.png       # 微信群二维码
+│       └── qq-group.png           # QQ群二维码
 ├── 🐳 Docker部署
 │   ├── Dockerfile                 # Docker镜像构建文件
-│   ├── Dockerfile-cn              # Docker镜像构建文件（中国镜像源）
 │   ├── docker-compose.yml        # Docker Compose一键部署配置
-│   ├── docker-compose-cn.yml     # Docker Compose配置（中国镜像源）
 │   ├── docker-deploy.sh          # Docker部署管理脚本（Linux/macOS）
 │   ├── docker-deploy.bat         # Docker部署管理脚本（Windows）
 │   └── entrypoint.sh              # Docker容器启动脚本
 ├── 📋 配置文件
 │   ├── global_config.yml         # 全局配置文件（WebSocket、API等）
-│   ├── requirements.txt          # Python依赖包列表
-│   ├── .env                      # 环境变量配置文件
+│   ├── requirements.txt          # Python依赖包列表（精简版）
+│   ├── .gitignore                # Git忽略文件配置
 │   └── README.md                 # 项目说明文档
-└── 📊 数据目录
+└── 📊 数据目录（运行时创建）
     ├── data/                     # 数据目录（Docker挂载）
     │   └── xianyu_data.db        # SQLite数据库文件
     ├── logs/                     # 按日期分割的日志文件
-    ├── backups/                  # 数据备份文件
-    └── static/uploads/           # 上传文件目录（已忽略）
-        └── images/               # 图片文件存储（已忽略）
+    └── backups/                  # 数据备份文件
 ```
 
 </details>
@@ -237,6 +252,8 @@ python Start.py
 - **Docker**: 20.10+ (Docker部署)
 - **Docker Compose**: 2.0+ (Docker部署)
 
+
+
 ### 🌐 访问系统
 
 部署完成后，您可以通过以下方式访问系统：
@@ -335,10 +352,12 @@ python Start.py
 - **自动备份** - 定期自动备份重要数据，防止数据丢失
 
 ### 🔍 商品搜索
-- **真实数据获取** - 基于Playwright技术，获取真实闲鱼商品数据
+- **真实数据获取** - 基于Playwright技术，无头模式获取真实闲鱼商品数据
 - **多页搜索** - 支持分页搜索和批量获取，无限制数据采集
+- **智能排序** - 按"人想要"数量自动倒序排列，优先显示热门商品
 - **数据可视化** - 美观的商品展示界面，支持排序和筛选
-- **搜索历史** - 保存搜索历史和结果，方便数据分析
+- **前端分页** - 灵活的前端分页显示，提升用户体验
+- **账号状态验证** - 自动检查cookies启用状态，确保搜索功能正常
 
 ### 📱 通知系统
 - **多渠道支持** - QQ、钉钉、邮件、微信、Telegram等6种通知方式
@@ -401,16 +420,15 @@ python Start.py
 - **`lib/`** - 前端依赖库，包含Bootstrap、jQuery、Chart.js等第三方库
 
 ### 🐳 部署配置
-- **`Dockerfile`** - Docker镜像构建文件，包含Python环境、Playwright浏览器、系统依赖
-- **`Dockerfile-cn`** - 中国镜像源版本，优化国内网络环境下的构建速度
-- **`docker-compose.yml`** - Docker Compose配置，支持一键部署、Nginx反向代理、资源限制
-- **`docker-compose-cn.yml`** - 中国镜像源版本，适配国内网络环境
-- **`docker-deploy.sh`** - Docker部署管理脚本，提供构建、启动、监控、日志查看等功能
+- **`Dockerfile`** - Docker镜像构建文件，包含Python环境、Playwright浏览器、系统依赖，支持无头模式运行
+- **`docker-compose.yml`** - Docker Compose配置，支持一键部署、环境变量配置、资源限制、健康检查
+- **`docker-deploy.sh`** - Docker部署管理脚本，提供构建、启动、监控、日志查看等功能（Linux/macOS）
 - **`docker-deploy.bat`** - Windows版本部署脚本，支持Windows环境一键部署
 - **`entrypoint.sh`** - Docker容器启动脚本，处理环境初始化和服务启动
-- **`nginx/nginx.conf`** - Nginx反向代理配置，支持负载均衡和SSL终端
-- **`.env`** - 环境变量配置文件，包含所有可配置的系统参数和敏感信息
-- **`requirements.txt`** - Python依赖包列表，精简版本无冗余依赖，按功能分类组织
+- **`nginx/nginx.conf`** - Nginx反向代理配置，支持负载均衡、SSL终端、WebSocket代理
+- **`requirements.txt`** - Python依赖包列表，精简版本无冗余依赖，按功能分类组织，包含详细说明
+- **`.gitignore`** - Git忽略文件配置，完整覆盖Python、Docker、前端等开发文件
+- **`.dockerignore`** - Docker构建忽略文件，优化构建上下文大小和构建速度
 
 ## ⚙️ 配置说明
 
@@ -517,7 +535,7 @@ python Start.py
 ## ❓ 常见问题
 
 ### 1. 端口被占用
-如果8080端口被占用，可以修改 `.env` 文件中的 `WEB_PORT` 配置。
+如果8080端口被占用，可以修改 `global_config.yml` 文件中的 `AUTO_REPLY.api.port` 配置，或者在 Docker 启动时通过环境变量 `WEB_PORT` 指定端口。
 
 ### 2. 数据库连接失败
 检查数据库文件权限，确保应用有读写权限。

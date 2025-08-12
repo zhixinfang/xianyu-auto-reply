@@ -115,12 +115,8 @@ class SecureFreeshipping:
                     error_msg = res_json.get('ret', ['未知错误'])[0] if res_json.get('ret') else '未知错误'
                     logger.warning(f"【{self.cookie_id}】❌ 自动免拼发货失败: {error_msg}")
                     
-                    # 如果是token相关错误，进行重试
-                    if 'token' in error_msg.lower() or 'sign' in error_msg.lower():
-                        logger.info(f"【{self.cookie_id}】检测到token错误，准备重试...")
-                        return await self.auto_freeshipping(order_id, item_id, buyer_id, retry_count + 1)
+                    return await self.auto_freeshipping(order_id, item_id, buyer_id, retry_count + 1)
                     
-                    return {"error": error_msg, "order_id": order_id}
 
         except Exception as e:
             logger.error(f"【{self.cookie_id}】自动免拼发货API请求异常: {self._safe_str(e)}")

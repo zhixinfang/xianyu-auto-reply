@@ -415,9 +415,40 @@
             });
         }
 
+        // 检查是否有有效的cookies账户
+        async function checkValidCookies() {
+            try {
+                const headers = {};
+                if (authToken) {
+                    headers['Authorization'] = `Bearer ${authToken}`;
+                }
+
+                const response = await fetch(`${apiBase}/cookies/check`, {
+                    headers: headers
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    return data.hasValidCookies;
+                } else {
+                    return false;
+                }
+            } catch (error) {
+                console.error('检查cookies失败:', error);
+                return false;
+            }
+        }
+
         // 搜索多页商品数据
         async function searchAllPages(keyword, totalPages) {
             try {
+                // 检查是否有有效的cookies账户
+                const hasValidCookies = await checkValidCookies();
+                if (!hasValidCookies) {
+                    showErrorMessage('搜索失败：系统中不存在有效的账户信息。请先在Cookie管理中添加有效的闲鱼账户。');
+                    return;
+                }
+
                 // 显示加载状态
                 showLoading(true);
                 hideResults();
@@ -454,20 +485,36 @@
 
                 if (response.ok) {
                     const data = await response.json();
+                    console.log('API返回的完整数据:', data);
+
                     if (data.success) {
                         allItems = data.data || [];
                         totalResults = allItems.length;
+
+                        console.log('设置allItems:', allItems);
+                        console.log('allItems长度:', allItems.length);
+                        console.log('totalResults:', totalResults);
+
+                        // 检查是否有错误信息
+                        if (data.error) {
+                            showErrorMessage(`搜索完成，但遇到问题: ${data.error}`);
+                        }
+
+                        console.log('调用displayPaginatedResults...');
                         displayPaginatedResults(data);
+                        console.log('调用updateFrontendPagination...');
                         updateFrontendPagination();
                     } else {
-                        throw new Error(data.message || '搜索失败');
+                        console.error('API返回success=false:', data);
+                        throw new Error(data.message || data.error || '搜索失败');
                     }
                 } else {
-                    throw new Error(`HTTP ${response.status}`);
+                    const errorText = await response.text();
+                    throw new Error(`服务器错误 (${response.status}): ${errorText}`);
                 }
             } catch (error) {
                 console.error('搜索失败:', error);
-                alert('搜索失败: ' + error.message);
+                showErrorMessage('搜索失败: ' + error.message);
             } finally {
                 showLoading(false);
             }
@@ -527,7 +574,7 @@
                 }
             } catch (error) {
                 console.error('搜索失败:', error);
-                alert('搜索失败: ' + error.message);
+                showErrorMessage('搜索失败: ' + error.message);
             } finally {
                 showLoading(false);
             }
@@ -536,6 +583,36 @@
         // 显示/隐藏加载状态
         function showLoading(show) {
             document.getElementById('loading').style.display = show ? 'block' : 'none';
+        }
+
+        // 显示错误消息
+        function showErrorMessage(message) {
+            // 创建或更新错误提示
+            let errorAlert = document.getElementById('errorAlert');
+            if (!errorAlert) {
+                errorAlert = document.createElement('div');
+                errorAlert.id = 'errorAlert';
+                errorAlert.className = 'alert alert-danger alert-dismissible fade show';
+                errorAlert.innerHTML = `
+                    <i class="bi bi-exclamation-triangle me-2"></i>
+                    <span id="errorMessage"></span>
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                `;
+
+                // 插入到搜索表单后面
+                const searchForm = document.querySelector('.search-form');
+                searchForm.parentNode.insertBefore(errorAlert, searchForm.nextSibling);
+            }
+
+            document.getElementById('errorMessage').textContent = message;
+            errorAlert.style.display = 'block';
+
+            // 5秒后自动隐藏
+            setTimeout(() => {
+                if (errorAlert) {
+                    errorAlert.style.display = 'none';
+                }
+            }, 5000);
         }
 
         // 隐藏结果
@@ -548,9 +625,14 @@
 
         // 显示分页搜索结果
         function displayPaginatedResults(data) {
+            console.log('displayPaginatedResults被调用，data:', data);
+
             // 显示统计信息
             const statsElement = document.getElementById('searchStats');
             const statsText = document.getElementById('statsText');
+
+            console.log('statsElement:', statsElement);
+            console.log('statsText:', statsText);
 
             // 检查数据来源
             let dataSource = '';
@@ -563,11 +645,14 @@
             }
 
             statsElement.style.display = 'block';
+            console.log('统计信息已显示');
 
             // 使用统一的统计信息更新函数
+            console.log('调用updateStatsDisplay...');
             updateStatsDisplay();
 
             // 显示当前页的数据
+            console.log('调用displayCurrentPage...');
             displayCurrentPage();
         }
 
@@ -577,14 +662,27 @@
 
         // 显示当前页数据（全局函数）
         function displayCurrentPage() {
+            console.log('displayCurrentPage被调用');
+            console.log('allItems:', allItems);
+            console.log('allItems.length:', allItems.length);
+            console.log('currentPage:', currentPage);
+            console.log('currentPageSize:', currentPageSize);
+
             const resultsContainer = document.getElementById('searchResults');
+            console.log('resultsContainer:', resultsContainer);
 
             // 计算当前页的数据范围
             const startIndex = (currentPage - 1) * currentPageSize;
             const endIndex = startIndex + currentPageSize;
             const currentItems = allItems.slice(startIndex, endIndex);
 
+            console.log('startIndex:', startIndex);
+            console.log('endIndex:', endIndex);
+            console.log('currentItems:', currentItems);
+            console.log('currentItems.length:', currentItems.length);
+
             if (currentItems.length === 0) {
+                console.log('没有数据，显示无结果提示');
                 document.getElementById('noResults').style.display = 'block';
                 resultsContainer.innerHTML = '';
                 return;
@@ -593,7 +691,11 @@
             document.getElementById('noResults').style.display = 'none';
 
             // 生成商品卡片
-            resultsContainer.innerHTML = currentItems.map(item => createItemCard(item)).join('');
+            console.log('生成商品卡片...');
+            const cardsHtml = currentItems.map(item => createItemCard(item)).join('');
+            console.log('生成的HTML长度:', cardsHtml.length);
+            resultsContainer.innerHTML = cardsHtml;
+            console.log('商品卡片已设置到容器中');
         }
 
         // 显示搜索结果（保留原有功能）
@@ -751,9 +853,20 @@
 
         // 创建商品卡片HTML（全局函数）
         function createItemCard(item) {
+            console.log('createItemCard被调用，item数据:', item);
+            console.log('item的所有字段:', Object.keys(item));
+
             const tags = item.tags ? item.tags.map(tag => `<span class="tag">${escapeHtml(tag)}</span>`).join('') : '';
             const imageUrl = item.main_image || 'https://via.placeholder.com/200x200?text=暂无图片';
             const wantCount = item.want_count || 0;
+
+            console.log('处理后的数据:', {
+                title: item.title,
+                price: item.price,
+                seller_name: item.seller_name,
+                imageUrl: imageUrl,
+                wantCount: wantCount
+            });
 
             return `
                 <div class="col-md-6 col-lg-4 col-xl-3 mb-4">

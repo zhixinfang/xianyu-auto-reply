@@ -18,7 +18,6 @@ httpx>=0.25.0
 
 # ==================== 配置文件处理 ====================
 PyYAML>=6.0.0
-python-dotenv>=1.0.1
 
 # ==================== JavaScript执行引擎 ====================
 PyExecJS>=1.5.1
@@ -60,7 +59,19 @@ email-validator>=2.0.0
 # ==================== 数据处理和验证 ====================
 xlsxwriter>=3.1.0
 
-# ==================== 说明 ====================
+# ==================== 版本说明 ====================
+# 本文件包含闲鱼自动回复系统的所有必需依赖
+# 版本号已经过测试验证，确保兼容性和稳定性
+#
+# Python版本要求: 3.11+
+#
+# 安装命令:
+# pip install --upgrade pip
+# pip install -r requirements.txt
+# playwright install chromium
+# playwright install-deps chromium  # Linux系统需要
+#
+# ==================== 内置模块说明 ====================
 # 以下模块是Python内置模块，无需安装：
 # sqlite3, json, base64, hashlib, hmac, time, datetime, os, sys, re, urllib
 # asyncio, threading, pathlib, uuid, random, secrets, traceback, logging

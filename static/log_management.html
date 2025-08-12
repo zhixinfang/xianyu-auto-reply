@@ -286,27 +286,61 @@
                     'Authorization': `Bearer ${token}`
                 }
             })
-            .then(response => response.json())
+            .then(response => {
+                console.log('API响应状态:', response.status);
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                return response.json();
+            })
             .then(data => {
+                console.log('API响应数据:', data);
                 loadingDiv.style.display = 'none';
-                
+
+                if (data.success === false) {
+                    console.error('API返回错误:', data.message);
+                    noLogsDiv.innerHTML = `
+                        <div class="text-center p-4 text-danger">
+                            <i class="bi bi-exclamation-triangle fs-1"></i>
+                            <p class="mt-2">加载日志失败</p>
+                            <p class="small">${data.message || '未知错误'}</p>
+                        </div>
+                    `;
+                    noLogsDiv.style.display = 'block';
+                    return;
+                }
+
                 if (data.logs && data.logs.length > 0) {
+                    console.log(`显示 ${data.logs.length} 条日志`);
                     displayLogs(data.logs);
                     updateLogInfo(data);
                     logContainer.style.display = 'block';
                 } else {
+                    console.log('没有日志数据');
+                    noLogsDiv.innerHTML = `
+                        <div class="text-center p-4 text-muted">
+                            <i class="bi bi-file-text fs-1"></i>
+                            <p class="mt-2">暂无日志数据</p>
+                        </div>
+                    `;
                     noLogsDiv.style.display = 'block';
                 }
-                
+
                 // 更新最后更新时间
-                document.getElementById('lastUpdate').textContent = 
+                document.getElementById('lastUpdate').textContent =
                     '最后更新: ' + new Date().toLocaleTimeString('zh-CN');
             })
             .catch(error => {
                 console.error('加载日志失败:', error);
                 loadingDiv.style.display = 'none';
+                noLogsDiv.innerHTML = `
+                    <div class="text-center p-4 text-danger">
+                        <i class="bi bi-exclamation-triangle fs-1"></i>
+                        <p class="mt-2">加载日志失败</p>
+                        <p class="small">${error.message}</p>
+                    </div>
+                `;
                 noLogsDiv.style.display = 'block';
-                alert('加载日志失败');
             });
         }
 

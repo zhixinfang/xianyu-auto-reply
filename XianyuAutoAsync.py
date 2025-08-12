@@ -457,6 +457,19 @@ class XianyuLive:
                                    item_id: str, chat_id: str, msg_time: str):
         """统一处理自动发货逻辑"""
         try:
+            # 检查商品是否属于当前cookies
+            if item_id and item_id != "未知商品":
+                try:
+                    from db_manager import db_manager
+                    item_info = db_manager.get_item_info(self.cookie_id, item_id)
+                    if not item_info:
+                        logger.warning(f'[{msg_time}] 【{self.cookie_id}】❌ 商品 {item_id} 不属于当前账号，跳过自动发货')
+                        return
+                    logger.debug(f'[{msg_time}] 【{self.cookie_id}】✅ 商品 {item_id} 归属验证通过')
+                except Exception as e:
+                    logger.error(f'[{msg_time}] 【{self.cookie_id}】检查商品归属失败: {self._safe_str(e)}，跳过自动发货')
+                    return
+
             # 提取订单ID
             order_id = self._extract_order_id(message)
 
@@ -1232,11 +1245,17 @@ class XianyuLive:
 
             # 进行变量替换
             try:
+                # 获取当前商品是否有设置自动回复
+                item_replay = db_manager.get_item_replay(item_id)
+
                 formatted_reply = reply_content.format(
                     send_user_name=send_user_name,
                     send_user_id=send_user_id,
                     send_message=send_message
                 )
+
+                if item_replay:
+                    formatted_reply = item_replay.get('reply_content', '')
 
                 # 如果开启了"只回复一次"功能，记录这次回复
                 if default_reply_settings.get('reply_once', False) and chat_id:
@@ -2183,23 +2202,28 @@ class XianyuLive:
 
                     # 插入或更新订单信息到数据库
                     try:
-                        success = db_manager.insert_or_update_order(
-                            order_id=order_id,
-                            item_id=item_id,
-                            buyer_id=buyer_id,
-                            spec_name=spec_name,
-                            spec_value=spec_value,
-                            quantity=quantity,
-                            amount=amount,
-                            order_status='processed',  # 已处理状态
-                            cookie_id=self.cookie_id
-                        )
-
-                        if success:
-                            logger.info(f"【{self.cookie_id}】订单信息已保存到数据库: {order_id}")
-                            print(f"💾 【{self.cookie_id}】订单 {order_id} 信息已保存到数据库")
+                        # 检查cookie_id是否在cookies表中存在
+                        cookie_info = db_manager.get_cookie_by_id(self.cookie_id)
+                        if not cookie_info:
+                            logger.warning(f"Cookie ID {self.cookie_id} 不存在于cookies表中，丢弃订单 {order_id}")
                         else:
-                            logger.warning(f"【{self.cookie_id}】订单信息保存失败: {order_id}")
+                            success = db_manager.insert_or_update_order(
+                                order_id=order_id,
+                                item_id=item_id,
+                                buyer_id=buyer_id,
+                                spec_name=spec_name,
+                                spec_value=spec_value,
+                                quantity=quantity,
+                                amount=amount,
+                                order_status='processed',  # 已处理状态
+                                cookie_id=self.cookie_id
+                            )
+
+                            if success:
+                                logger.info(f"【{self.cookie_id}】订单信息已保存到数据库: {order_id}")
+                                print(f"💾 【{self.cookie_id}】订单 {order_id} 信息已保存到数据库")
+                            else:
+                                logger.warning(f"【{self.cookie_id}】订单信息保存失败: {order_id}")
 
                     except Exception as db_e:
                         logger.error(f"【{self.cookie_id}】保存订单信息到数据库失败: {self._safe_str(db_e)}")
@@ -2438,17 +2462,23 @@ class XianyuLive:
                 # 保存订单基本信息到数据库（如果还没有详细信息）
                 try:
                     from db_manager import db_manager
-                    existing_order = db_manager.get_order_by_id(order_id)
-                    if not existing_order:
-                        # 插入基本订单信息
-                        db_manager.insert_or_update_order(
-                            order_id=order_id,
-                            item_id=item_id,
-                            buyer_id=send_user_id,
-                            order_status='processing',  # 处理中状态
-                            cookie_id=self.cookie_id
-                        )
-                        logger.info(f"保存基本订单信息到数据库: {order_id}")
+
+                    # 检查cookie_id是否在cookies表中存在
+                    cookie_info = db_manager.get_cookie_by_id(self.cookie_id)
+                    if not cookie_info:
+                        logger.warning(f"Cookie ID {self.cookie_id} 不存在于cookies表中，丢弃订单 {order_id}")
+                    else:
+                        existing_order = db_manager.get_order_by_id(order_id)
+                        if not existing_order:
+                            # 插入基本订单信息
+                            db_manager.insert_or_update_order(
+                                order_id=order_id,
+                                item_id=item_id,
+                                buyer_id=send_user_id,
+                                order_status='processing',  # 处理中状态
+                                cookie_id=self.cookie_id
+                            )
+                            logger.info(f"保存基本订单信息到数据库: {order_id}")
                 except Exception as db_e:
                     logger.error(f"保存基本订单信息失败: {self._safe_str(db_e)}")
 
@@ -3346,6 +3376,20 @@ class XianyuLive:
                     # 检查是否为"我已小刀，待刀成"
                     if card_title == "我已小刀，待刀成":
                         logger.info(f'[{msg_time}] 【{self.cookie_id}】【系统】检测到"我已小刀，待刀成"，即使在暂停期间也继续处理')
+
+                        # 检查商品是否属于当前cookies
+                        if item_id and item_id != "未知商品":
+                            try:
+                                from db_manager import db_manager
+                                item_info = db_manager.get_item_info(self.cookie_id, item_id)
+                                if not item_info:
+                                    logger.warning(f'[{msg_time}] 【{self.cookie_id}】❌ 商品 {item_id} 不属于当前账号，跳过免拼发货')
+                                    return
+                                logger.debug(f'[{msg_time}] 【{self.cookie_id}】✅ 商品 {item_id} 归属验证通过')
+                            except Exception as e:
+                                logger.error(f'[{msg_time}] 【{self.cookie_id}】检查商品归属失败: {self._safe_str(e)}，跳过免拼发货')
+                                return
+
                         # 提取订单ID
                         order_id = self._extract_order_id(message)
                         if order_id:

@@ -85,7 +85,7 @@
         </a>
       </div>
       <div class="nav-item">
-        <a href="/item_search.html" class="nav-link" target="_blank">
+        <a href="#" class="nav-link" onclick="showSection('item-search')">
           <i class="bi bi-search"></i>
           商品搜索
         </a>
@@ -103,19 +103,19 @@
           <small class="text-white-50">管理员功能</small>
         </div>
         <div class="nav-item">
-          <a href="/user_management.html" class="nav-link" target="_blank">
+          <a href="#" class="nav-link" onclick="showSection('user-management')">
             <i class="bi bi-people"></i>
             用户管理
           </a>
         </div>
         <div class="nav-item">
-          <a href="/log_management.html" class="nav-link" target="_blank">
+          <a href="#" class="nav-link" onclick="showSection('logs')">
             <i class="bi bi-file-text-fill"></i>
             系统日志
           </a>
         </div>
         <div class="nav-item">
-          <a href="/data_management.html" class="nav-link" target="_blank">
+          <a href="#" class="nav-link" onclick="showSection('data-management')">
             <i class="bi bi-database"></i>
             数据管理
           </a>
@@ -411,7 +411,7 @@
                 </thead>
                 <tbody id="itemsTableBody">
                   <tr>
-                    <td colspan="8" class="text-center text-muted">加载中...</td>
+                    <td colspan="9" class="text-center text-muted">加载中...</td>
                   </tr>
                 </tbody>
               </table>
@@ -1214,56 +1214,255 @@
       </div>
 
       <div class="content-body">
-        <!-- 日志控制 -->
-        <div class="row mb-3">
-          <div class="col-md-3">
-            <label for="logLines" class="form-label">显示行数</label>
-            <select class="form-select" id="logLines" onchange="refreshLogs()">
-              <option value="100">100行</option>
-              <option value="200" selected>200行</option>
-              <option value="500">500行</option>
-              <option value="1000">1000行</option>
-              <option value="2000">2000行</option>
-            </select>
+        <!-- 日志控制面板 -->
+        <div class="card mb-4">
+          <div class="card-header">
+            <h5 class="mb-0">
+              <i class="bi bi-sliders"></i> 日志控制
+            </h5>
           </div>
-          <div class="col-md-9">
-            <label class="form-label">&nbsp;</label>
-            <div class="d-flex gap-2">
-              <button class="btn btn-outline-primary" onclick="refreshLogs()">
-                <i class="bi bi-arrow-clockwise me-1"></i>刷新日志
-              </button>
-              <button class="btn btn-outline-secondary" onclick="clearLogsDisplay()">
-                <i class="bi bi-trash me-1"></i>清空显示
-              </button>
-              <button class="btn btn-outline-danger" onclick="clearLogsServer()">
-                <i class="bi bi-trash3 me-1"></i>清空服务器日志
-              </button>
-              <button class="btn btn-outline-info" onclick="showLogStats()">
-                <i class="bi bi-bar-chart me-1"></i>统计信息
-              </button>
-              <button class="btn btn-outline-info" onclick="toggleAutoRefresh()">
-                <i class="bi bi-play-circle me-1"></i><span id="autoRefreshText">开启自动刷新</span>
-              </button>
+          <div class="card-body">
+            <div class="row align-items-center">
+              <div class="col-md-3">
+                <label class="form-label">显示行数</label>
+                <select class="form-select" id="logLines" onchange="loadSystemLogs()">
+                  <option value="50">50行</option>
+                  <option value="100" selected>100行</option>
+                  <option value="200">200行</option>
+                  <option value="500">500行</option>
+                  <option value="1000">1000行</option>
+                </select>
+              </div>
+              <div class="col-md-4">
+                <label class="form-label">日志级别过滤</label>
+                <div class="d-flex gap-2 flex-wrap">
+                  <span class="badge bg-secondary filter-badge active" data-level="" onclick="filterLogsByLevel('')">
+                    全部
+                  </span>
+                  <span class="badge bg-info filter-badge" data-level="info" onclick="filterLogsByLevel('info')">
+                    INFO
+                  </span>
+                  <span class="badge bg-warning filter-badge" data-level="warning" onclick="filterLogsByLevel('warning')">
+                    WARNING
+                  </span>
+                  <span class="badge bg-danger filter-badge" data-level="error" onclick="filterLogsByLevel('error')">
+                    ERROR
+                  </span>
+                  <span class="badge bg-secondary filter-badge" data-level="debug" onclick="filterLogsByLevel('debug')">
+                    DEBUG
+                  </span>
+                </div>
+              </div>
+              <div class="col-md-3">
+                <label class="form-label">自动刷新</label>
+                <div class="form-check form-switch">
+                  <input class="form-check-input" type="checkbox" id="autoRefreshLogs" onchange="toggleLogAutoRefresh()">
+                  <label class="form-check-label" for="autoRefreshLogs">
+                    <span id="autoRefreshLogLabel">关闭</span>
+                    <i id="autoRefreshLogIcon" class="bi bi-circle" style="display: none;"></i>
+                  </label>
+                </div>
+              </div>
+              <div class="col-md-2">
+                <label class="form-label">&nbsp;</label>
+                <div class="d-grid">
+                  <button class="btn btn-primary" onclick="loadSystemLogs()">
+                    <i class="bi bi-arrow-clockwise"></i> 刷新
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </div>
 
-        <!-- 日志显示区域 -->
+        <!-- 日志信息 -->
+        <div class="card mb-4">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">
+              <i class="bi bi-info-circle"></i> 日志信息
+            </h5>
+            <small class="text-muted" id="logLastUpdate">最后更新: -</small>
+          </div>
+          <div class="card-body">
+            <div class="row">
+              <div class="col-md-4">
+                <strong>日志文件:</strong>
+                <span id="logFileName" class="text-muted">-</span>
+              </div>
+              <div class="col-md-4">
+                <strong>显示行数:</strong>
+                <span id="logDisplayLines" class="text-muted">-</span>
+              </div>
+              <div class="col-md-4">
+                <strong>当前过滤:</strong>
+                <span id="logCurrentFilter" class="text-muted">全部</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 日志内容 -->
         <div class="card">
           <div class="card-header d-flex justify-content-between align-items-center">
-            <span>系统日志</span>
+            <h5 class="mb-0">
+              <i class="bi bi-terminal"></i> 日志内容
+            </h5>
             <div class="d-flex gap-2">
-              <span class="badge bg-secondary" id="logCount">0 条日志</span>
-              <span class="badge bg-info" id="lastUpdate">未更新</span>
+              <button class="btn btn-sm btn-outline-secondary" onclick="scrollLogToTop()">
+                <i class="bi bi-arrow-up"></i> 顶部
+              </button>
+              <button class="btn btn-sm btn-outline-secondary" onclick="scrollLogToBottom()">
+                <i class="bi bi-arrow-down"></i> 底部
+              </button>
             </div>
           </div>
           <div class="card-body p-0">
-            <div id="logContainer" class="log-container">
-              <div class="text-center p-4 text-muted">
-                <i class="bi bi-file-text fs-1"></i>
-                <p class="mt-2">点击刷新按钮加载日志</p>
+            <div id="loadingSystemLogs" class="text-center py-4">
+              <div class="spinner-border" role="status">
+                <span class="visually-hidden">加载中...</span>
+              </div>
+              <p class="mt-2">正在加载日志...</p>
+            </div>
+            <div id="systemLogContainer" class="log-container" style="display: none;"></div>
+            <div id="noSystemLogs" class="text-center py-4" style="display: none;">
+              <i class="bi bi-file-text" style="font-size: 3rem; color: #ccc;"></i>
+              <p class="mt-2 text-muted">暂无日志数据</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 商品搜索内容 -->
+    <div id="item-search-section" class="content-section">
+      <div class="content-header">
+        <h2 class="mb-0">
+          <i class="bi bi-search me-2"></i>
+          商品搜索
+        </h2>
+        <p class="text-muted mb-0">搜索闲鱼商品，获取真实商品数据</p>
+      </div>
+      <div class="content-body">
+        <!-- 搜索表单 -->
+        <div class="card mb-4">
+          <div class="card-header">
+            <h5 class="mb-0">
+              <i class="bi bi-search me-2"></i>
+              闲鱼商品搜索
+            </h5>
+          </div>
+          <div class="card-body">
+            <div class="alert alert-info mb-4">
+              <i class="bi bi-info-circle me-2"></i>
+              <strong>功能说明：</strong>
+              <ul class="mb-0 mt-2">
+                <li><strong>查询总页数：</strong>输入要获取的页数（1-20页），系统会一次性获取所有页面的数据</li>
+                <li><strong>每页显示：</strong>前端分页显示的每页商品数量</li>
+                <li><strong>数据来源：</strong>使用真实的闲鱼数据，通过浏览器自动化技术获取</li>
+              </ul>
+            </div>
+            <form id="itemSearchForm">
+              <div class="row">
+                <div class="col-md-5">
+                  <label for="searchKeyword" class="form-label">搜索关键词</label>
+                  <input type="text" class="form-control" id="searchKeyword" placeholder="请输入商品关键词" required>
+                </div>
+                <div class="col-md-3">
+                  <label for="searchTotalPages" class="form-label">查询总页数</label>
+                  <input type="number" class="form-control" id="searchTotalPages" value="1" min="1" max="20" placeholder="输入页数">
+                </div>
+                <div class="col-md-2">
+                  <label for="searchPageSize" class="form-label">每页显示</label>
+                  <select class="form-select" id="searchPageSize">
+                    <option value="10">10条</option>
+                    <option value="20" selected>20条</option>
+                    <option value="30">30条</option>
+                  </select>
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label">&nbsp;</label>
+                  <div class="d-grid">
+                    <button type="submit" class="btn btn-primary">
+                      <i class="bi bi-search me-2"></i>
+                      搜索
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        <!-- 搜索状态 -->
+        <div id="searchStatus" class="card mb-4" style="display: none;">
+          <div class="card-body">
+            <div class="d-flex align-items-center">
+              <div class="spinner-border spinner-border-sm me-3" role="status">
+                <span class="visually-hidden">搜索中...</span>
+              </div>
+              <div>
+                <strong>正在搜索商品...</strong>
+                <div class="text-muted small" id="searchProgress">准备开始搜索</div>
               </div>
             </div>
+          </div>
+        </div>
+
+        <!-- 搜索结果统计 -->
+        <div id="searchResultStats" class="card mb-4" style="display: none;">
+          <div class="card-body">
+            <div class="row text-center">
+              <div class="col-md-3">
+                <div class="stat-number text-primary" id="totalItemsFound">0</div>
+                <div class="stat-label">找到商品</div>
+              </div>
+              <div class="col-md-3">
+                <div class="stat-number text-success" id="totalPagesSearched">0</div>
+                <div class="stat-label">搜索页数</div>
+              </div>
+              <div class="col-md-3">
+                <div class="stat-number text-info" id="currentDisplayPage">0</div>
+                <div class="stat-label">当前页</div>
+              </div>
+              <div class="col-md-3">
+                <div class="stat-number text-warning" id="totalDisplayPages">0</div>
+                <div class="stat-label">总页数</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 搜索结果 -->
+        <div id="searchResults" class="card" style="display: none;">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">
+              <i class="bi bi-grid me-2"></i>
+              搜索结果
+            </h5>
+            <div class="d-flex gap-2">
+              <button class="btn btn-sm btn-outline-secondary" onclick="exportSearchResults()">
+                <i class="bi bi-download"></i> 导出结果
+              </button>
+            </div>
+          </div>
+          <div class="card-body">
+            <div id="searchResultsContainer" class="row">
+              <!-- 搜索结果将在这里显示 -->
+            </div>
+
+            <!-- 分页控件 -->
+            <div id="searchPagination" class="d-flex justify-content-center mt-4">
+              <!-- 分页按钮将在这里显示 -->
+            </div>
+          </div>
+        </div>
+
+        <!-- 无结果提示 -->
+        <div id="noSearchResults" class="card" style="display: none;">
+          <div class="card-body text-center py-5">
+            <i class="bi bi-search" style="font-size: 3rem; color: #ccc;"></i>
+            <h5 class="mt-3 text-muted">未找到相关商品</h5>
+            <p class="text-muted">请尝试使用其他关键词或调整搜索条件</p>
           </div>
         </div>
       </div>
@@ -1370,6 +1569,11 @@
           </div>
         </div>
 
+        <!-- 外发配置 (仅管理员可见) -->
+        <div id="outgoing-configs" class="row mt-4" style="display: none;">
+          <!-- 外发配置内容将由JavaScript动态生成 -->
+        </div>
+
         <!-- 备份管理 (仅管理员可见) -->
         <div id="backup-management" class="row mt-4" style="display: none;">
           <div class="col-12">
@@ -1437,6 +1641,187 @@
                   <i class="bi bi-exclamation-triangle me-2"></i>
                   <strong>注意：</strong>导入备份将会覆盖当前系统的所有数据，请谨慎操作！建议在导入前先导出当前数据作为备份。
                 </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 用户管理内容 -->
+    <div id="user-management-section" class="content-section">
+      <div class="content-header">
+        <h2 class="mb-0">
+          <i class="bi bi-people me-2"></i>
+          用户管理
+        </h2>
+        <p class="text-muted mb-0">管理系统中的所有用户账号</p>
+      </div>
+      <div class="content-body">
+        <!-- 统计信息 -->
+        <div class="row mb-4">
+          <div class="col-md-3">
+            <div class="card bg-primary text-white">
+              <div class="card-body text-center">
+                <h3 id="totalUsers">-</h3>
+                <p class="mb-0">总用户数</p>
+              </div>
+            </div>
+          </div>
+          <div class="col-md-3">
+            <div class="card bg-info text-white">
+              <div class="card-body text-center">
+                <h3 id="totalUserCookies">-</h3>
+                <p class="mb-0">总Cookie数</p>
+              </div>
+            </div>
+          </div>
+          <div class="col-md-3">
+            <div class="card bg-success text-white">
+              <div class="card-body text-center">
+                <h3 id="totalUserCards">-</h3>
+                <p class="mb-0">总卡券数</p>
+              </div>
+            </div>
+          </div>
+          <div class="col-md-3">
+            <div class="card bg-warning text-white">
+              <div class="card-body text-center">
+                <h3 id="systemUptime">运行中</h3>
+                <p class="mb-0">系统状态</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 用户列表 -->
+        <div class="card">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">
+              <i class="bi bi-people-fill"></i> 用户列表
+            </h5>
+            <button class="btn btn-primary" onclick="refreshUsers()">
+              <i class="bi bi-arrow-clockwise"></i> 刷新
+            </button>
+          </div>
+          <div class="card-body">
+            <div id="loadingUsers" class="text-center py-4">
+              <div class="spinner-border" role="status">
+                <span class="visually-hidden">加载中...</span>
+              </div>
+              <p class="mt-2">正在加载用户信息...</p>
+            </div>
+            <div id="usersList" class="row" style="display: none;"></div>
+            <div id="noUsers" class="text-center py-4" style="display: none;">
+              <i class="bi bi-people" style="font-size: 3rem; color: #ccc;"></i>
+              <p class="mt-2 text-muted">暂无用户</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 数据管理内容 -->
+    <div id="data-management-section" class="content-section">
+      <div class="content-header">
+        <h2 class="mb-0">
+          <i class="bi bi-database me-2"></i>
+          数据管理
+        </h2>
+        <p class="text-muted mb-0">查看和管理数据库中的所有表数据</p>
+      </div>
+      <div class="content-body">
+        <!-- 表选择器 -->
+        <div class="card mb-4">
+          <div class="card-header">
+            <h5 class="mb-0">
+              <i class="bi bi-table"></i> 数据表选择
+            </h5>
+          </div>
+          <div class="card-body">
+            <div class="row align-items-center">
+              <div class="col-md-6">
+                <label class="form-label">选择数据表</label>
+                <select class="form-select" id="tableSelect" onchange="loadTableData()">
+                  <option value="">请选择数据表...</option>
+                  <option value="users">users - 用户表</option>
+                  <option value="cookies">cookies - Cookie账号表</option>
+                  <option value="cookie_status">cookie_status - Cookie状态表</option>
+                  <option value="keywords">keywords - 关键字表</option>
+                  <option value="default_replies">default_replies - 默认回复表</option>
+                  <option value="item_replay">item_replay - 指定商品回复表</option>
+                  <option value="default_reply_records">default_reply_records - 默认回复记录表</option>
+                  <option value="ai_reply_settings">ai_reply_settings - AI回复设置表</option>
+                  <option value="ai_conversations">ai_conversations - AI对话历史表</option>
+                  <option value="ai_item_cache">ai_item_cache - AI商品信息缓存表</option>
+                  <option value="item_info">item_info - 商品信息表</option>
+                  <option value="message_notifications">message_notifications - 消息通知表</option>
+                  <option value="cards">cards - 卡券表</option>
+                  <option value="delivery_rules">delivery_rules - 发货规则表</option>
+                  <option value="notification_channels">notification_channels - 通知渠道表</option>
+                  <option value="user_settings">user_settings - 用户设置表</option>
+                  <option value="system_settings">system_settings - 系统设置表</option>
+                  <option value="email_verifications">email_verifications - 邮箱验证表</option>
+                  <option value="captcha_codes">captcha_codes - 验证码表</option>
+                  <option value="orders">orders - 订单表</option>
+                </select>
+              </div>
+              <div class="col-md-3">
+                <label class="form-label">数据统计</label>
+                <div class="card">
+                  <div class="card-body text-center py-2">
+                    <h5 id="recordCount" class="mb-0">-</h5>
+                    <small>条记录</small>
+                  </div>
+                </div>
+              </div>
+              <div class="col-md-3">
+                <label class="form-label">&nbsp;</label>
+                <div class="d-grid">
+                  <button class="btn btn-primary" onclick="refreshTableData()">
+                    <i class="bi bi-arrow-clockwise"></i> 刷新数据
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 数据表格 -->
+        <div class="card">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0" id="tableTitle">
+              <i class="bi bi-table"></i> 数据表
+            </h5>
+            <div class="btn-group">
+              <button class="btn btn-outline-danger btn-sm" onclick="clearTableData()" id="clearBtn" disabled>
+                <i class="bi bi-trash"></i> 清空
+              </button>
+            </div>
+          </div>
+          <div class="card-body">
+            <div id="loadingTable" class="text-center py-4" style="display: none;">
+              <div class="spinner-border" role="status">
+                <span class="visually-hidden">加载中...</span>
+              </div>
+              <p class="mt-2">正在加载数据...</p>
+            </div>
+            <div id="noTableSelected" class="text-center py-4">
+              <i class="bi bi-table" style="font-size: 3rem; color: #ccc;"></i>
+              <p class="mt-2 text-muted">请选择要查看的数据表</p>
+            </div>
+            <div id="noTableData" class="text-center py-4" style="display: none;">
+              <i class="bi bi-inbox" style="font-size: 3rem; color: #ccc;"></i>
+              <p class="mt-2 text-muted">该表暂无数据</p>
+            </div>
+            <div id="tableContainer" style="display: none;">
+              <div class="table-responsive" style="max-height: 600px; overflow-y: auto;">
+                <table class="table table-striped table-hover" id="dataTable">
+                  <thead class="table-dark sticky-top">
+                    <tr id="tableHeaders"></tr>
+                  </thead>
+                  <tbody id="tableBody"></tbody>
+                </table>
               </div>
             </div>
           </div>
@@ -2644,6 +3029,69 @@
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
           <button type="button" class="btn btn-primary" onclick="addImageKeyword()">
             <i class="bi bi-plus-lg me-1"></i>添加图片关键词
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 删除用户确认模态框 -->
+  <div class="modal fade" id="deleteUserModal" tabindex="-1">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">
+            <i class="bi bi-exclamation-triangle text-warning me-2"></i>
+            确认删除用户
+          </h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <p>您确定要删除这个用户吗？</p>
+          <div class="alert alert-warning">
+            <i class="bi bi-exclamation-triangle me-2"></i>
+            <strong>警告：</strong>此操作将同时删除该用户的所有数据，包括Cookie、关键词、卡券等，且不可撤销！
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+          <button type="button" class="btn btn-danger" onclick="confirmDeleteUser()">
+            <i class="bi bi-trash"></i> 确认删除
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 删除数据记录确认模态框 -->
+  <div class="modal fade" id="deleteRecordModal" tabindex="-1">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">
+            <i class="bi bi-exclamation-triangle text-warning me-2"></i>
+            确认删除记录
+          </h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <p>您确定要删除这条记录吗？</p>
+          <div class="alert alert-info">
+            <i class="bi bi-info-circle me-2"></i>
+            <strong>记录信息：</strong>
+            <div id="deleteRecordInfo" class="mt-2">
+              <!-- 记录信息将在这里显示 -->
+            </div>
+          </div>
+          <div class="alert alert-warning">
+            <i class="bi bi-exclamation-triangle me-2"></i>
+            <strong>警告：</strong>此操作不可撤销！
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+          <button type="button" class="btn btn-danger" onclick="confirmDeleteRecord()">
+            <i class="bi bi-trash"></i> 确认删除
           </button>
         </div>
       </div>

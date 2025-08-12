@@ -15,7 +15,6 @@ NC='\033[0m' # No Color
 # 项目配置
 PROJECT_NAME="xianyu-auto-reply"
 COMPOSE_FILE="docker-compose.yml"
-ENV_FILE=".env"
 
 # 打印带颜色的消息
 print_info() {
@@ -55,13 +54,6 @@ check_dependencies() {
 init_config() {
     print_info "初始化配置文件..."
 
-    if [ ! -f "$ENV_FILE" ]; then
-        print_warning "$ENV_FILE 文件不存在，将使用默认配置"
-        print_info "如需自定义配置，请创建 $ENV_FILE 文件"
-    else
-        print_success "$ENV_FILE 配置文件已存在"
-    fi
-
     # 检查关键文件
     if [ ! -f "entrypoint.sh" ]; then
         print_error "entrypoint.sh 文件不存在，Docker容器将无法启动"
@@ -69,6 +61,14 @@ init_config() {
         exit 1
     else
         print_success "entrypoint.sh 文件已存在"
+    fi
+
+    if [ ! -f "global_config.yml" ]; then
+        print_error "global_config.yml 配置文件不存在"
+        print_info "请确保配置文件存在"
+        exit 1
+    else
+        print_success "global_config.yml 配置文件已存在"
     fi
 
     # 创建必要的目录

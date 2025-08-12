@@ -57,9 +57,7 @@ services:
       - TOKEN_REFRESH_INTERVAL=${TOKEN_REFRESH_INTERVAL:-3600}
       - TOKEN_RETRY_INTERVAL=${TOKEN_RETRY_INTERVAL:-300}
       - MESSAGE_EXPIRE_TIME=${MESSAGE_EXPIRE_TIME:-300000}
-    env_file:
-      - path: .env
-        required: false
+
     networks:
       - xianyu-network
     healthcheck:

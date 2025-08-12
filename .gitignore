@@ -106,37 +106,20 @@ keywords_sample.xlsx
 *.rar
 *.7z
 
-# ==================== 新增忽略项 ====================
-# Python 字节码和缓存
+# ==================== Python开发相关 ====================
+# Python 字节码和缓存（补充）
 *.pyc
 *.pyo
 *.pyd
-__pycache__/
 *.py[cod]
 *$py.class
 
-# 分发/打包
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
+# 分发/打包（补充）
 *.egg-info/
 .installed.cfg
 *.egg
-MANIFEST
 
-# PyInstaller
-*.manifest
-*.spec
+# PyInstaller（补充）
 
 # 单元测试/覆盖率报告
 htmlcov/
@@ -193,9 +176,6 @@ dmypy.json
 .pyre/
 
 # ==================== 项目特定新增 ====================
-# 环境变量文件
-.env.example
-.env.*.example
 
 # 数据库文件
 *.db-journal
