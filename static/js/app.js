@@ -4966,6 +4966,34 @@ async function toggleItemMultiSpec(cookieId, itemId, isMultiSpec) {
     }
 }
 
+// 切换商品多数量发货状态
+async function toggleItemMultiQuantityDelivery(cookieId, itemId, multiQuantityDelivery) {
+    try {
+    const response = await fetch(`${apiBase}/items/${encodeURIComponent(cookieId)}/${encodeURIComponent(itemId)}/multi-quantity-delivery`, {
+        method: 'PUT',
+        headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify({
+        multi_quantity_delivery: multiQuantityDelivery
+        })
+    });
+
+    if (response.ok) {
+        showToast(`${multiQuantityDelivery ? '开启' : '关闭'}多数量发货成功`, 'success');
+        // 刷新商品列表
+        await refreshItemsData();
+    } else {
+        const errorData = await response.json();
+        throw new Error(errorData.error || '操作失败');
+    }
+    } catch (error) {
+    console.error('切换多数量发货状态失败:', error);
+    showToast(`切换多数量发货状态失败: ${error.message}`, 'danger');
+    }
+}
+
 // 加载商品列表
 async function loadItems() {
     try {
@@ -5181,7 +5209,7 @@ function displayCurrentPageItems() {
     const tbody = document.getElementById('itemsTableBody');
 
     if (!filteredItemsData || filteredItemsData.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted">暂无商品数据</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="10" class="text-center text-muted">暂无商品数据</td></tr>';
         resetItemsSelection();
         return;
     }
@@ -5211,6 +5239,12 @@ function displayCurrentPageItems() {
             '<span class="badge bg-success">多规格</span>' :
             '<span class="badge bg-secondary">普通</span>';
 
+        // 多数量发货状态显示
+        const isMultiQuantityDelivery = item.multi_quantity_delivery;
+        const multiQuantityDeliveryDisplay = isMultiQuantityDelivery ?
+            '<span class="badge bg-success">已开启</span>' :
+            '<span class="badge bg-secondary">已关闭</span>';
+
         return `
             <tr>
             <td>
@@ -5225,6 +5259,7 @@ function displayCurrentPageItems() {
             <td title="${escapeHtml(getItemDetailText(item.item_detail || ''))}">${escapeHtml(itemDetailDisplay)}</td>
             <td>${escapeHtml(item.item_price || '未设置')}</td>
             <td>${multiSpecDisplay}</td>
+            <td>${multiQuantityDeliveryDisplay}</td>
             <td>${formatDateTime(item.updated_at)}</td>
             <td>
                 <div class="btn-group" role="group">
@@ -5236,6 +5271,9 @@ function displayCurrentPageItems() {
                 </button>
                 <button class="btn btn-sm ${isMultiSpec ? 'btn-warning' : 'btn-success'}" onclick="toggleItemMultiSpec('${escapeHtml(item.cookie_id)}', '${escapeHtml(item.item_id)}', ${!isMultiSpec})" title="${isMultiSpec ? '关闭多规格' : '开启多规格'}">
                     <i class="bi ${isMultiSpec ? 'bi-toggle-on' : 'bi-toggle-off'}"></i>
+                </button>
+                <button class="btn btn-sm ${isMultiQuantityDelivery ? 'btn-warning' : 'btn-success'}" onclick="toggleItemMultiQuantityDelivery('${escapeHtml(item.cookie_id)}', '${escapeHtml(item.item_id)}', ${!isMultiQuantityDelivery})" title="${isMultiQuantityDelivery ? '关闭多数量发货' : '开启多数量发货'}">
+                    <i class="bi ${isMultiQuantityDelivery ? 'bi-box-arrow-down' : 'bi-box-arrow-up'}"></i>
                 </button>
                 </div>
             </td>

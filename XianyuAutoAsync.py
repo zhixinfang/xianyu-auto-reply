@@ -173,7 +173,7 @@ class XianyuLive:
         # 通知防重复机制
         self.last_notification_time = {}  # 记录每种通知类型的最后发送时间
         self.notification_cooldown = 300  # 5分钟内不重复发送相同类型的通知
-        self.token_refresh_notification_cooldown = 10800  # Token刷新异常通知冷却时间：3小时
+        self.token_refresh_notification_cooldown = 18000  # Token刷新异常通知冷却时间：3小时
 
         # 自动发货防重复机制
         self.last_delivery_time = {}  # 记录每个商品的最后发货时间
@@ -522,10 +522,56 @@ class XianyuLive:
 
                     logger.info(f"【{self.cookie_id}】准备自动发货: item_id={item_id}, item_title={item_title}")
 
-                    # 调用自动发货方法（包含自动确认发货）
-                    delivery_content = await self._auto_delivery(item_id, item_title, order_id, send_user_id)
+                    # 检查是否需要多数量发货
+                    from db_manager import db_manager
+                    quantity_to_send = 1  # 默认发送1个
 
-                    if delivery_content:
+                    # 检查商品是否开启了多数量发货
+                    multi_quantity_delivery = db_manager.get_item_multi_quantity_delivery_status(self.cookie_id, item_id)
+
+                    if multi_quantity_delivery and order_id:
+                        logger.info(f"商品 {item_id} 开启了多数量发货，获取订单详情...")
+                        try:
+                            # 使用现有方法获取订单详情
+                            order_detail = await self.fetch_order_detail_info(order_id, item_id, send_user_id)
+                            if order_detail and order_detail.get('quantity'):
+                                try:
+                                    order_quantity = int(order_detail['quantity'])
+                                    if order_quantity > 1:
+                                        quantity_to_send = order_quantity
+                                        logger.info(f"从订单详情获取数量: {order_quantity}，将发送 {quantity_to_send} 个卡券")
+                                    else:
+                                        logger.info(f"订单数量为 {order_quantity}，发送单个卡券")
+                                except (ValueError, TypeError):
+                                    logger.warning(f"订单数量格式无效: {order_detail.get('quantity')}，发送单个卡券")
+                            else:
+                                logger.info(f"未获取到订单数量信息，发送单个卡券")
+                        except Exception as e:
+                            logger.error(f"获取订单详情失败: {self._safe_str(e)}，发送单个卡券")
+                    elif not multi_quantity_delivery:
+                        logger.info(f"商品 {item_id} 未开启多数量发货，发送单个卡券")
+                    else:
+                        logger.info(f"无订单ID，发送单个卡券")
+
+                    # 多次调用自动发货方法，每次获取不同的内容
+                    delivery_contents = []
+                    success_count = 0
+
+                    for i in range(quantity_to_send):
+                        try:
+                            # 每次调用都可能获取不同的内容（API卡券、批量数据等）
+                            delivery_content = await self._auto_delivery(item_id, item_title, order_id, send_user_id)
+                            if delivery_content:
+                                delivery_contents.append(delivery_content)
+                                success_count += 1
+                                if quantity_to_send > 1:
+                                    logger.info(f"第 {i+1}/{quantity_to_send} 个卡券内容获取成功")
+                            else:
+                                logger.warning(f"第 {i+1}/{quantity_to_send} 个卡券内容获取失败")
+                        except Exception as e:
+                            logger.error(f"第 {i+1}/{quantity_to_send} 个卡券获取异常: {self._safe_str(e)}")
+
+                    if delivery_contents:
                         # 标记已发货（防重复）- 基于订单ID
                         self.mark_delivery_sent(order_id)
 
@@ -541,35 +587,55 @@ class XianyuLive:
                         delay_task = asyncio.create_task(self._delayed_lock_release(lock_key, delay_minutes=10))
                         self._lock_hold_info[lock_key]['task'] = delay_task
 
-                        # 检查是否是图片发送标记
-                        if delivery_content.startswith("__IMAGE_SEND__"):
-                            # 提取卡券ID和图片URL
-                            image_data = delivery_content.replace("__IMAGE_SEND__", "")
-                            if "|" in image_data:
-                                card_id_str, image_url = image_data.split("|", 1)
-                                try:
-                                    card_id = int(card_id_str)
-                                except ValueError:
-                                    logger.error(f"无效的卡券ID: {card_id_str}")
-                                    card_id = None
-                            else:
-                                # 兼容旧格式（没有卡券ID）
-                                card_id = None
-                                image_url = image_data
-
-                            # 发送图片消息
+                        # 发送所有获取到的发货内容
+                        for i, delivery_content in enumerate(delivery_contents):
                             try:
-                                await self.send_image_msg(websocket, chat_id, send_user_id, image_url, card_id=card_id)
-                                logger.info(f'[{msg_time}] 【自动发货图片】已向 {user_url} 发送图片: {image_url}')
-                                await self.send_delivery_failure_notification(send_user_name, send_user_id, item_id, "发货成功")
+                                # 检查是否是图片发送标记
+                                if delivery_content.startswith("__IMAGE_SEND__"):
+                                    # 提取卡券ID和图片URL
+                                    image_data = delivery_content.replace("__IMAGE_SEND__", "")
+                                    if "|" in image_data:
+                                        card_id_str, image_url = image_data.split("|", 1)
+                                        try:
+                                            card_id = int(card_id_str)
+                                        except ValueError:
+                                            logger.error(f"无效的卡券ID: {card_id_str}")
+                                            card_id = None
+                                    else:
+                                        # 兼容旧格式（没有卡券ID）
+                                        card_id = None
+                                        image_url = image_data
+
+                                    # 发送图片消息
+                                    await self.send_image_msg(websocket, chat_id, send_user_id, image_url, card_id=card_id)
+                                    if len(delivery_contents) > 1:
+                                        logger.info(f'[{msg_time}] 【多数量自动发货图片】第 {i+1}/{len(delivery_contents)} 张已向 {user_url} 发送图片: {image_url}')
+                                    else:
+                                        logger.info(f'[{msg_time}] 【自动发货图片】已向 {user_url} 发送图片: {image_url}')
+
+                                    # 多数量发货时，消息间隔1秒
+                                    if len(delivery_contents) > 1 and i < len(delivery_contents) - 1:
+                                        await asyncio.sleep(1)
+
+                                else:
+                                    # 普通文本发货内容
+                                    await self.send_msg(websocket, chat_id, send_user_id, delivery_content)
+                                    if len(delivery_contents) > 1:
+                                        logger.info(f'[{msg_time}] 【多数量自动发货】第 {i+1}/{len(delivery_contents)} 条已向 {user_url} 发送发货内容')
+                                    else:
+                                        logger.info(f'[{msg_time}] 【自动发货】已向 {user_url} 发送发货内容')
+
+                                    # 多数量发货时，消息间隔1秒
+                                    if len(delivery_contents) > 1 and i < len(delivery_contents) - 1:
+                                        await asyncio.sleep(1)
+
                             except Exception as e:
-                                logger.error(f"自动发货图片失败: {self._safe_str(e)}")
-                                await self.send_msg(websocket, chat_id, send_user_id, "抱歉，图片发送失败，请联系客服。")
-                                await self.send_delivery_failure_notification(send_user_name, send_user_id, item_id, "图片发送失败")
+                                logger.error(f"发送第 {i+1} 条消息失败: {self._safe_str(e)}")
+
+                        # 发送成功通知
+                        if len(delivery_contents) > 1:
+                            await self.send_delivery_failure_notification(send_user_name, send_user_id, item_id, f"多数量发货成功，共发送 {len(delivery_contents)} 个卡券")
                         else:
-                            # 普通文本发货内容
-                            await self.send_msg(websocket, chat_id, send_user_id, delivery_content)
-                            logger.info(f'[{msg_time}] 【自动发货】已向 {user_url} 发送发货内容')
                             await self.send_delivery_failure_notification(send_user_name, send_user_id, item_id, "发货成功")
                     else:
                         logger.warning(f'[{msg_time}] 【自动发货】未找到匹配的发货规则或获取发货内容失败')
@@ -2529,6 +2595,8 @@ class XianyuLive:
         except Exception as e:
             logger.error(f"自动发货失败: {self._safe_str(e)}")
             return None
+
+
 
     def _process_delivery_content_with_description(self, delivery_content: str, card_description: str) -> str:
         """处理发货内容和备注信息，实现变量替换"""

@@ -4041,6 +4041,26 @@ def update_item_multi_spec(cookie_id: str, item_id: str, spec_data: dict, _: Non
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# 商品多数量发货管理API
+@app.put("/items/{cookie_id}/{item_id}/multi-quantity-delivery")
+def update_item_multi_quantity_delivery(cookie_id: str, item_id: str, delivery_data: dict, _: None = Depends(require_auth)):
+    """更新商品的多数量发货状态"""
+    try:
+        from db_manager import db_manager
+
+        multi_quantity_delivery = delivery_data.get('multi_quantity_delivery', False)
+
+        success = db_manager.update_item_multi_quantity_delivery_status(cookie_id, item_id, multi_quantity_delivery)
+
+        if success:
+            return {"message": f"商品多数量发货状态已{'开启' if multi_quantity_delivery else '关闭'}"}
+        else:
+            raise HTTPException(status_code=404, detail="商品不存在")
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # 移除自动启动，由Start.py或手动启动
 # if __name__ == "__main__":
 #     uvicorn.run(app, host="0.0.0.0", port=8080)

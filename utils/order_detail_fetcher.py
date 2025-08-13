@@ -445,10 +445,16 @@ class OrderDetailFetcher:
                     # 从数量内容中提取数量值（使用冒号分割，取后面的值）
                     if ':' in quantity_content:
                         quantity_value = quantity_content.split(':', 1)[1].strip()
+                        # 去掉数量值前面的 'x' 符号（如 "x2" -> "2"）
+                        if quantity_value.startswith('x'):
+                            quantity_value = quantity_value[1:]
                         result['quantity'] = quantity_value
                         logger.info(f"提取到数量: {quantity_value}")
                         print(f"🔢 数量: {quantity_value}")
                     else:
+                        # 去掉数量值前面的 'x' 符号（如 "x2" -> "2"）
+                        if quantity_content.startswith('x'):
+                            quantity_content = quantity_content[1:]
                         result['quantity'] = quantity_content
                         logger.info(f"数量内容无冒号，直接使用: {quantity_content}")
                         print(f"🔢 数量: {quantity_content}")
@@ -471,10 +477,16 @@ class OrderDetailFetcher:
 
                         if ':' in content:
                             quantity_value = content.split(':', 1)[1].strip()
+                            # 去掉数量值前面的 'x' 符号（如 "x2" -> "2"）
+                            if quantity_value.startswith('x'):
+                                quantity_value = quantity_value[1:]
                             result['quantity'] = quantity_value
                             logger.info(f"提取到数量: {quantity_value}")
                             print(f"🔢 数量: {quantity_value}")
                         else:
+                            # 去掉数量值前面的 'x' 符号（如 "x2" -> "2"）
+                            if content.startswith('x'):
+                                content = content[1:]
                             result['quantity'] = content
                             logger.info(f"数量内容无冒号，直接使用: {content}")
                             print(f"🔢 数量: {content}")
