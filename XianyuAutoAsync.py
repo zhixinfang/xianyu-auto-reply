@@ -191,6 +191,8 @@ class XianyuLive:
         # 启动定期清理过期暂停记录的任务
         self.cleanup_task = None
 
+
+
     def is_auto_confirm_enabled(self) -> bool:
         """检查当前账号是否启用自动确认发货"""
         try:
@@ -722,6 +724,7 @@ class XianyuLive:
                                 new_token = res_json['data']['accessToken']
                                 self.current_token = new_token
                                 self.last_token_refresh_time = time.time()
+
                                 logger.info(f"【{self.cookie_id}】Token刷新成功")
                                 return new_token
 
@@ -2555,8 +2558,8 @@ class XianyuLive:
 
                 # 根据卡券类型处理发货内容
                 if rule['card_type'] == 'api':
-                    # API类型：调用API获取内容
-                    delivery_content = await self._get_api_card_content(rule)
+                    # API类型：调用API获取内容，传入订单和商品信息用于动态参数替换
+                    delivery_content = await self._get_api_card_content(rule, order_id, item_id, send_user_id, spec_name, spec_value)
 
                 elif rule['card_type'] == 'text':
                     # 固定文字类型：直接使用文字内容
@@ -2620,8 +2623,8 @@ class XianyuLive:
             # 出错时返回原始发货内容
             return delivery_content
 
-    async def _get_api_card_content(self, rule, retry_count=0):
-        """调用API获取卡券内容，支持重试机制"""
+    async def _get_api_card_content(self, rule, order_id=None, item_id=None, buyer_id=None, spec_name=None, spec_value=None, retry_count=0):
+        """调用API获取卡券内容，支持动态参数替换和重试机制"""
         max_retries = 4
 
         if retry_count >= max_retries:
@@ -2654,8 +2657,14 @@ class XianyuLive:
             if isinstance(params, str):
                 params = json.loads(params)
 
+            # 如果是POST请求且有动态参数，进行参数替换
+            if method == 'POST' and params:
+                params = await self._replace_api_dynamic_params(params, order_id, item_id, buyer_id, spec_name, spec_value)
+
             retry_info = f" (重试 {retry_count + 1}/{max_retries})" if retry_count > 0 else ""
             logger.info(f"调用API获取卡券: {method} {url}{retry_info}")
+            if method == 'POST' and params:
+                logger.debug(f"POST请求参数: {json.dumps(params, ensure_ascii=False)}")
 
             # 确保session存在
             if not self.session:
@@ -2699,7 +2708,7 @@ class XianyuLive:
                         wait_time = (retry_count + 1) * 2  # 递增等待时间: 2s, 4s, 6s
                         logger.info(f"等待 {wait_time} 秒后重试...")
                         await asyncio.sleep(wait_time)
-                        return await self._get_api_card_content(rule, retry_count + 1)
+                        return await self._get_api_card_content(rule, order_id, item_id, buyer_id, spec_name, spec_value, retry_count + 1)
 
                 return None
 
@@ -2711,7 +2720,7 @@ class XianyuLive:
                 wait_time = (retry_count + 1) * 2  # 递增等待时间
                 logger.info(f"等待 {wait_time} 秒后重试...")
                 await asyncio.sleep(wait_time)
-                return await self._get_api_card_content(rule, retry_count + 1)
+                return await self._get_api_card_content(rule, order_id, item_id, buyer_id, spec_name, spec_value, retry_count + 1)
             else:
                 logger.error(f"API调用网络异常，已达到最大重试次数: {self._safe_str(e)}")
                 return None
@@ -2719,6 +2728,122 @@ class XianyuLive:
         except Exception as e:
             logger.error(f"API调用异常: {self._safe_str(e)}")
             return None
+
+    async def _replace_api_dynamic_params(self, params, order_id=None, item_id=None, buyer_id=None, spec_name=None, spec_value=None):
+        """替换API请求参数中的动态参数"""
+        try:
+            if not params or not isinstance(params, dict):
+                return params
+
+            # 获取订单和商品信息
+            order_info = None
+            item_info = None
+
+            # 如果有订单ID，获取订单信息
+            if order_id:
+                try:
+                    from db_manager import db_manager
+                    # 尝试从数据库获取订单信息
+                    order_info = db_manager.get_order_by_id(order_id)
+                    if not order_info:
+                        # 如果数据库中没有，尝试通过API获取
+                        order_detail = await self.fetch_order_detail_info(order_id, item_id, buyer_id)
+                        if order_detail:
+                            order_info = order_detail
+                            logger.debug(f"通过API获取到订单信息: {order_id}")
+                        else:
+                            logger.warning(f"无法获取订单信息: {order_id}")
+                    else:
+                        logger.debug(f"从数据库获取到订单信息: {order_id}")
+                except Exception as e:
+                    logger.warning(f"获取订单信息失败: {self._safe_str(e)}")
+
+            # 如果有商品ID，获取商品信息
+            if item_id:
+                try:
+                    from db_manager import db_manager
+                    item_info = db_manager.get_item_info(self.cookie_id, item_id)
+                    if item_info:
+                        logger.debug(f"从数据库获取到商品信息: {item_id}")
+                    else:
+                        logger.warning(f"无法获取商品信息: {item_id}")
+                except Exception as e:
+                    logger.warning(f"获取商品信息失败: {self._safe_str(e)}")
+
+            # 构建参数映射
+            param_mapping = {
+                'order_id': order_id or '',
+                'item_id': item_id or '',
+                'buyer_id': buyer_id or '',
+                'cookie_id': self.cookie_id or '',
+                'spec_name': spec_name or '',
+                'spec_value': spec_value or '',
+            }
+
+            # 从订单信息中提取参数
+            if order_info:
+                param_mapping.update({
+                    'order_amount': str(order_info.get('amount', '')),
+                    'order_quantity': str(order_info.get('quantity', '')),
+                })
+
+            # 从商品信息中提取参数
+            if item_info:
+                # 处理商品详情，如果是JSON字符串则提取detail字段
+                item_detail = item_info.get('item_detail', '')
+                if item_detail:
+                    try:
+                        # 尝试解析JSON
+                        import json
+                        detail_data = json.loads(item_detail)
+                        if isinstance(detail_data, dict) and 'detail' in detail_data:
+                            item_detail = detail_data['detail']
+                    except (json.JSONDecodeError, TypeError):
+                        # 如果不是JSON或解析失败，使用原始字符串
+                        pass
+
+                param_mapping.update({
+                    'item_detail': item_detail,
+                })
+
+            # 递归替换参数
+            replaced_params = self._recursive_replace_params(params, param_mapping)
+
+            # 记录替换的参数
+            replaced_keys = []
+            for key, value in replaced_params.items():
+                if isinstance(value, str) and '{' in str(params.get(key, '')):
+                    replaced_keys.append(key)
+
+            if replaced_keys:
+                logger.info(f"API动态参数替换完成，替换的参数: {replaced_keys}")
+                logger.debug(f"参数映射: {param_mapping}")
+
+            return replaced_params
+
+        except Exception as e:
+            logger.error(f"替换API动态参数失败: {self._safe_str(e)}")
+            return params
+
+    def _recursive_replace_params(self, obj, param_mapping):
+        """递归替换参数中的占位符"""
+        if isinstance(obj, dict):
+            result = {}
+            for key, value in obj.items():
+                result[key] = self._recursive_replace_params(value, param_mapping)
+            return result
+        elif isinstance(obj, list):
+            return [self._recursive_replace_params(item, param_mapping) for item in obj]
+        elif isinstance(obj, str):
+            # 替换字符串中的占位符
+            result = obj
+            for param_key, param_value in param_mapping.items():
+                placeholder = f"{{{param_key}}}"
+                if placeholder in result:
+                    result = result.replace(placeholder, str(param_value))
+            return result
+        else:
+            return obj
 
     async def token_refresh_loop(self):
         """Token刷新循环"""

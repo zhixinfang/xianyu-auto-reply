@@ -119,6 +119,7 @@ class DBManager:
                 FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
             )
             ''')
+
             
             # 创建keywords表
             cursor.execute('''
@@ -1085,6 +1086,7 @@ class DBManager:
                     "INSERT OR REPLACE INTO cookies (id, value, user_id) VALUES (?, ?, ?)",
                     (cookie_id, cookie_value, user_id)
                 )
+
                 self.conn.commit()
                 logger.info(f"Cookie保存成功: {cookie_id} (用户ID: {user_id})")
 
@@ -1100,6 +1102,7 @@ class DBManager:
                 logger.error(f"Cookie保存失败: {e}")
                 self.conn.rollback()
                 return False
+
     
     def delete_cookie(self, cookie_id: str) -> bool:
         """从数据库删除Cookie及其关键字"""

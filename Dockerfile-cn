@@ -1,5 +1,5 @@
 # 使用Python 3.11作为基础镜像
-FROM python:3.11-slim
+FROM python:3.11-slim-bookworm
 
 # 设置标签信息
 LABEL maintainer="zhinianboke"

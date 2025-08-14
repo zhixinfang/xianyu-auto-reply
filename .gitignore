@@ -285,3 +285,101 @@ build/
 *.iso
 *.dmg
 *.img
+
+# ==================== 项目特定新增文件类型 ====================
+# 测试和示例文件
+test_*.py
+*_test.py
+example_*.py
+*_example.py
+demo_*.py
+*_demo.py
+
+# 文档文件（除了README.md）
+*.md
+!README.md
+!CHANGELOG.md
+!CONTRIBUTING.md
+!LICENSE.md
+
+# 临时配置文件
+*.local.yml
+*.dev.yml
+*.test.yml
+config.*.yml
+!global_config.yml
+
+# 运行时生成的文件
+*.pid
+*.lock
+*.sock
+*.port
+
+# 性能和调试文件
+*.profile
+*.pstats
+*.trace
+
+# 编译和构建产物
+*.whl
+*.egg
+*.tar.gz
+build/
+dist/
+
+# 开发工具配置
+.editorconfig
+.flake8
+.pylintrc
+pyproject.toml
+setup.cfg
+tox.ini
+
+# 容器相关
+.dockerignore
+docker-compose.*.yml
+!docker-compose.yml
+!docker-compose-cn.yml
+
+# 安全相关
+*.secret
+*.token
+*.auth
+secrets/
+credentials/
+
+# 监控和日志
+*.access.log
+*.error.log
+*.audit.log
+monitoring/
+
+# 第三方服务配置
+.env
+.env.*
+!.env.example
+
+# 数据导出文件
+export_*.csv
+export_*.json
+export_*.xlsx
+dump_*.sql
+
+# 临时下载文件
+downloads/
+temp_downloads/
+
+# 浏览器相关
+.playwright/
+playwright-report/
+test-results/
+
+# 系统服务文件
+*.service
+*.timer
+systemd/
+
+# 备份和归档
+archive/
+old/
+deprecated/

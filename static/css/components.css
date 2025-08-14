@@ -301,3 +301,103 @@
     font-size: 0.75rem;
   }
 }
+
+/* ================================
+   API参数提示样式
+   ================================ */
+.param-item {
+  display: flex;
+  align-items: center;
+  padding: 0.25rem 0;
+}
+
+.param-name {
+  background-color: #f8f9fa;
+  color: #495057;
+  padding: 0.2rem 0.4rem;
+  border-radius: 4px;
+  font-family: 'Courier New', monospace;
+  font-size: 0.85rem;
+  font-weight: 500;
+  border: 1px solid #dee2e6;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-width: 120px;
+  display: inline-block;
+}
+
+.param-name:hover {
+  background-color: #e9ecef;
+  border-color: #adb5bd;
+  transform: translateY(-1px);
+}
+
+#postParamsHelp,
+#editPostParamsHelp {
+  background-color: #f8f9fa;
+  border: 1px solid #dee2e6;
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+#postParamsHelp .alert,
+#editPostParamsHelp .alert {
+  margin-bottom: 0;
+  border-radius: 6px;
+}
+
+/* 参数项点击效果 */
+.param-name:active {
+  transform: translateY(0);
+  background-color: #dee2e6;
+}
+
+/* ================================
+   API参数提示样式
+   ================================ */
+.param-item {
+  display: flex;
+  align-items: center;
+  padding: 0.25rem 0;
+}
+
+.param-name {
+  background-color: #f8f9fa;
+  color: #495057;
+  padding: 0.2rem 0.4rem;
+  border-radius: 4px;
+  font-family: 'Courier New', monospace;
+  font-size: 0.85rem;
+  font-weight: 500;
+  border: 1px solid #dee2e6;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-width: 120px;
+  display: inline-block;
+}
+
+.param-name:hover {
+  background-color: #e9ecef;
+  border-color: #adb5bd;
+  transform: translateY(-1px);
+}
+
+#postParamsHelp,
+#editPostParamsHelp {
+  background-color: #f8f9fa;
+  border: 1px solid #dee2e6;
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+#postParamsHelp .alert,
+#editPostParamsHelp .alert {
+  margin-bottom: 0;
+  border-radius: 6px;
+}
+
+/* 参数项点击效果 */
+.param-name:active {
+  transform: translateY(0);
+  background-color: #dee2e6;
+}

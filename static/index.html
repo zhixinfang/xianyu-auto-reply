@@ -509,7 +509,7 @@
         <!-- 商品列表 -->
         <div class="card">
           <div class="card-header d-flex justify-content-between align-items-center">
-            <h5 class="mb-0">商品列表(自动发货根据商品标题和商品详情匹配关键字)</h5>
+            <h5 class="mb-0">商品列表(用于设置商品的默认回复信息)</h5>
             <button class="btn btn-sm btn-outline-danger" onclick="batchDeleteItemReplies()">
               <i class="bi bi-trash"></i> 批量删除
             </button>
@@ -2152,6 +2152,66 @@
                 <div class="mb-3">
                   <label class="form-label">请求参数 (JSON格式)</label>
                   <textarea class="form-control" id="apiParams" rows="3" placeholder='{"type": "card", "count": 1}'></textarea>
+
+                  <!-- POST类型参数提示 -->
+                  <div id="postParamsHelp" class="mt-2" style="display: none;">
+                    <small class="form-text text-muted">
+                      <i class="bi bi-info-circle me-1"></i>
+                      <strong>POST请求可用参数（可选）：</strong>
+                    </small>
+                    <div class="mt-2">
+                      <div class="row">
+                        <div class="col-md-6">
+                          <div class="param-item mb-2">
+                            <code class="param-name">order_id</code>
+                            <span class="text-muted ms-2">订单编号</span>
+                          </div>
+                          <div class="param-item mb-2">
+                            <code class="param-name">item_id</code>
+                            <span class="text-muted ms-2">商品编号</span>
+                          </div>
+                          <div class="param-item mb-2">
+                            <code class="param-name">item_detail</code>
+                            <span class="text-muted ms-2">商品详情</span>
+                          </div>
+                          <div class="param-item mb-2">
+                            <code class="param-name">order_amount</code>
+                            <span class="text-muted ms-2">订单金额</span>
+                          </div>
+                        </div>
+                        <div class="col-md-6">
+                          <div class="param-item mb-2">
+                            <code class="param-name">order_quantity</code>
+                            <span class="text-muted ms-2">订单数量</span>
+                          </div>
+                          <div class="param-item mb-2">
+                            <code class="param-name">spec_name</code>
+                            <span class="text-muted ms-2">规格名称</span>
+                          </div>
+                          <div class="param-item mb-2">
+                            <code class="param-name">spec_value</code>
+                            <span class="text-muted ms-2">规格值</span>
+                          </div>
+                          <div class="param-item mb-2">
+                            <code class="param-name">cookie_id</code>
+                            <span class="text-muted ms-2">cookies账号id</span>
+                          </div>
+                          <div class="param-item mb-2">
+                            <code class="param-name">buyer_id</code>
+                            <span class="text-muted ms-2">买家id</span>
+                          </div>
+                        </div>
+                      </div>
+                      <div class="alert alert-info mt-2 mb-0">
+                        <small>
+                          <i class="bi bi-lightbulb me-1"></i>
+                          <strong>使用说明：</strong>这些参数都是可选的，您可以根据API需要选择使用。例如：
+                          <br>
+                          <code>{"order_id": "{order_id}", "item_id": "{item_id}", "quantity": "{order_quantity}"}</code>
+                        </small>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -2336,6 +2396,66 @@
                 <div class="mb-3">
                   <label class="form-label">请求参数 (JSON格式)</label>
                   <textarea class="form-control" id="editApiParams" rows="3"></textarea>
+
+                  <!-- POST类型参数提示 -->
+                  <div id="editPostParamsHelp" class="mt-2" style="display: none;">
+                    <small class="form-text text-muted">
+                      <i class="bi bi-info-circle me-1"></i>
+                      <strong>POST请求可用参数（可选）：</strong>
+                    </small>
+                    <div class="mt-2">
+                      <div class="row">
+                        <div class="col-md-6">
+                          <div class="param-item mb-2">
+                            <code class="param-name">order_id</code>
+                            <span class="text-muted ms-2">订单编号</span>
+                          </div>
+                          <div class="param-item mb-2">
+                            <code class="param-name">item_id</code>
+                            <span class="text-muted ms-2">商品编号</span>
+                          </div>
+                          <div class="param-item mb-2">
+                            <code class="param-name">item_detail</code>
+                            <span class="text-muted ms-2">商品详情</span>
+                          </div>
+                          <div class="param-item mb-2">
+                            <code class="param-name">order_amount</code>
+                            <span class="text-muted ms-2">订单金额</span>
+                          </div>
+                        </div>
+                        <div class="col-md-6">
+                          <div class="param-item mb-2">
+                            <code class="param-name">order_quantity</code>
+                            <span class="text-muted ms-2">订单数量</span>
+                          </div>
+                          <div class="param-item mb-2">
+                            <code class="param-name">spec_name</code>
+                            <span class="text-muted ms-2">规格名称</span>
+                          </div>
+                          <div class="param-item mb-2">
+                            <code class="param-name">spec_value</code>
+                            <span class="text-muted ms-2">规格值</span>
+                          </div>
+                          <div class="param-item mb-2">
+                            <code class="param-name">cookie_id</code>
+                            <span class="text-muted ms-2">cookies账号id</span>
+                          </div>
+                          <div class="param-item mb-2">
+                            <code class="param-name">buyer_id</code>
+                            <span class="text-muted ms-2">买家id</span>
+                          </div>
+                        </div>
+                      </div>
+                      <div class="alert alert-info mt-2 mb-0">
+                        <small>
+                          <i class="bi bi-lightbulb me-1"></i>
+                          <strong>使用说明：</strong>这些参数都是可选的，您可以根据API需要选择使用。例如：
+                          <br>
+                          <code>{"order_id": "{order_id}", "item_id": "{item_id}", "quantity": "{order_quantity}"}</code>
+                        </small>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>

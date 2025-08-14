@@ -3374,6 +3374,96 @@ function toggleCardTypeFields() {
     document.getElementById('textFields').style.display = cardType === 'text' ? 'block' : 'none';
     document.getElementById('dataFields').style.display = cardType === 'data' ? 'block' : 'none';
     document.getElementById('imageFields').style.display = cardType === 'image' ? 'block' : 'none';
+
+    // 如果是API类型，初始化API方法监听
+    if (cardType === 'api') {
+        toggleApiParamsHelp();
+        // 添加API方法变化监听
+        const apiMethodSelect = document.getElementById('apiMethod');
+        if (apiMethodSelect) {
+            apiMethodSelect.removeEventListener('change', toggleApiParamsHelp);
+            apiMethodSelect.addEventListener('change', toggleApiParamsHelp);
+        }
+    }
+}
+
+// 切换API参数提示显示
+function toggleApiParamsHelp() {
+    const apiMethod = document.getElementById('apiMethod').value;
+    const postParamsHelp = document.getElementById('postParamsHelp');
+
+    if (postParamsHelp) {
+        postParamsHelp.style.display = apiMethod === 'POST' ? 'block' : 'none';
+
+        // 如果显示参数提示，添加点击事件
+        if (apiMethod === 'POST') {
+            initParamClickHandlers('apiParams', 'postParamsHelp');
+        }
+    }
+}
+
+// 初始化参数点击处理器
+function initParamClickHandlers(textareaId, containerId) {
+    const container = document.getElementById(containerId);
+    const textarea = document.getElementById(textareaId);
+
+    if (!container || !textarea) return;
+
+    // 移除现有的点击事件监听器
+    const paramNames = container.querySelectorAll('.param-name');
+    paramNames.forEach(paramName => {
+        paramName.removeEventListener('click', handleParamClick);
+    });
+
+    // 添加新的点击事件监听器
+    paramNames.forEach(paramName => {
+        paramName.addEventListener('click', function() {
+            handleParamClick(this, textarea);
+        });
+    });
+}
+
+// 处理参数点击事件
+function handleParamClick(paramElement, textarea) {
+    const paramName = paramElement.textContent.trim();
+    const paramValue = `{${paramName}}`;
+
+    try {
+        // 获取当前textarea的值
+        let currentValue = textarea.value.trim();
+
+        // 如果当前值为空或不是有效的JSON，创建新的JSON对象
+        if (!currentValue || currentValue === '{}') {
+            const newJson = {};
+            newJson[paramName] = paramValue;
+            textarea.value = JSON.stringify(newJson, null, 2);
+        } else {
+            // 尝试解析现有的JSON
+            let jsonObj;
+            try {
+                jsonObj = JSON.parse(currentValue);
+            } catch (e) {
+                // 如果解析失败，创建新的JSON对象
+                jsonObj = {};
+            }
+
+            // 添加新参数
+            jsonObj[paramName] = paramValue;
+
+            // 更新textarea
+            textarea.value = JSON.stringify(jsonObj, null, 2);
+        }
+
+        // 触发change事件
+        textarea.dispatchEvent(new Event('change'));
+
+        // 显示成功提示
+        showToast(`已添加参数: ${paramName}`, 'success');
+
+    } catch (error) {
+        console.error('添加参数时出错:', error);
+        showToast('添加参数失败', 'danger');
+    }
 }
 
 // 切换多规格字段显示
@@ -4147,6 +4237,32 @@ function toggleEditCardTypeFields() {
     document.getElementById('editTextFields').style.display = cardType === 'text' ? 'block' : 'none';
     document.getElementById('editDataFields').style.display = cardType === 'data' ? 'block' : 'none';
     document.getElementById('editImageFields').style.display = cardType === 'image' ? 'block' : 'none';
+
+    // 如果是API类型，初始化API方法监听
+    if (cardType === 'api') {
+        toggleEditApiParamsHelp();
+        // 添加API方法变化监听
+        const editApiMethodSelect = document.getElementById('editApiMethod');
+        if (editApiMethodSelect) {
+            editApiMethodSelect.removeEventListener('change', toggleEditApiParamsHelp);
+            editApiMethodSelect.addEventListener('change', toggleEditApiParamsHelp);
+        }
+    }
+}
+
+// 切换编辑API参数提示显示
+function toggleEditApiParamsHelp() {
+    const apiMethod = document.getElementById('editApiMethod').value;
+    const editPostParamsHelp = document.getElementById('editPostParamsHelp');
+
+    if (editPostParamsHelp) {
+        editPostParamsHelp.style.display = apiMethod === 'POST' ? 'block' : 'none';
+
+        // 如果显示参数提示，添加点击事件
+        if (apiMethod === 'POST') {
+            initParamClickHandlers('editApiParams', 'editPostParamsHelp');
+        }
+    }
 }
 
 // 更新卡券
