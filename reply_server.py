@@ -444,51 +444,18 @@ async def admin_page():
         return HTMLResponse(f.read())
 
 
-# 用户管理页面路由
-@app.get('/user_management.html', response_class=HTMLResponse)
-async def user_management_page():
-    page_path = os.path.join(static_dir, 'user_management.html')
-    if os.path.exists(page_path):
-        with open(page_path, 'r', encoding='utf-8') as f:
-            return HTMLResponse(f.read())
-    else:
-        return HTMLResponse('<h3>User management page not found</h3>')
-
-
-# 日志管理页面路由
-@app.get('/log_management.html', response_class=HTMLResponse)
-async def log_management_page():
-    page_path = os.path.join(static_dir, 'log_management.html')
-    if os.path.exists(page_path):
-        with open(page_path, 'r', encoding='utf-8') as f:
-            return HTMLResponse(f.read())
-    else:
-        return HTMLResponse('<h3>Log management page not found</h3>')
-
-
-# 数据管理页面路由
-@app.get('/data_management.html', response_class=HTMLResponse)
-async def data_management_page():
-    page_path = os.path.join(static_dir, 'data_management.html')
-    if os.path.exists(page_path):
-        with open(page_path, 'r', encoding='utf-8') as f:
-            return HTMLResponse(f.read())
-    else:
-        return HTMLResponse('<h3>Data management page not found</h3>')
 
 
 
 
 
-# 商品搜索页面路由
-@app.get('/item_search.html', response_class=HTMLResponse)
-async def item_search_page():
-    page_path = os.path.join(static_dir, 'item_search.html')
-    if os.path.exists(page_path):
-        with open(page_path, 'r', encoding='utf-8') as f:
-            return HTMLResponse(f.read())
-    else:
-        return HTMLResponse('<h3>Item search page not found</h3>')
+
+
+
+
+
+
+
 
 
 # 登录接口
@@ -2883,32 +2850,6 @@ async def search_multiple_pages(
         logger.error(f"{user_info} 多页商品搜索失败: {error_msg}")
         raise HTTPException(status_code=500, detail=f"多页商品搜索失败: {error_msg}")
 
-
-@app.get("/items/detail/{item_id}")
-async def get_public_item_detail(
-    item_id: str,
-    current_user: Optional[Dict[str, Any]] = Depends(get_current_user_optional)
-):
-    """获取公开商品详情（通过外部API）"""
-    try:
-        from utils.item_search import get_item_detail_from_api
-
-        # 从外部API获取商品详情
-        detail = await get_item_detail_from_api(item_id)
-
-        if detail:
-            return {
-                "success": True,
-                "data": detail
-            }
-        else:
-            raise HTTPException(status_code=404, detail="商品详情获取失败")
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"获取商品详情失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"获取商品详情失败: {str(e)}")
 
 
 @app.get("/items/cookie/{cookie_id}")

@@ -118,6 +118,10 @@ class XianyuLive:
     _order_detail_locks = defaultdict(lambda: asyncio.Lock())
     # 记录订单详情锁的使用时间
     _order_detail_lock_times = {}
+
+    # 商品详情缓存（24小时有效）
+    _item_detail_cache = {}  # {item_id: {'detail': str, 'timestamp': float}}
+    _item_detail_cache_lock = asyncio.Lock()
     
     def _safe_str(self, e):
         """安全地将异常转换为字符串"""
@@ -475,14 +479,16 @@ class XianyuLive:
             # 提取订单ID
             order_id = self._extract_order_id(message)
 
-            # 订单ID已提取，将在自动发货时进行确认发货处理
-            if order_id:
-                logger.info(f'[{msg_time}] 【{self.cookie_id}】提取到订单ID: {order_id}，将在自动发货时处理确认发货')
-            else:
-                logger.warning(f'[{msg_time}] 【{self.cookie_id}】❌ 未能提取到订单ID')
+            # 如果order_id不存在，直接返回
+            if not order_id:
+                logger.warning(f'[{msg_time}] 【{self.cookie_id}】❌ 未能提取到订单ID，跳过自动发货')
+                return
 
-            # 使用订单ID作为锁的键，如果没有订单ID则使用item_id+chat_id组合
-            lock_key = order_id if order_id else f"{item_id}_{chat_id}"
+            # 订单ID已提取，将在自动发货时进行确认发货处理
+            logger.info(f'[{msg_time}] 【{self.cookie_id}】提取到订单ID: {order_id}，将在自动发货时处理确认发货')
+
+            # 使用订单ID作为锁的键
+            lock_key = order_id
 
             # 第一重检查：延迟锁状态（在获取锁之前检查，避免不必要的等待）
             if self.is_lock_held(lock_key):
@@ -862,7 +868,7 @@ class XianyuLive:
             return False
 
     async def fetch_item_detail_from_api(self, item_id: str) -> str:
-        """从外部API获取商品详情
+        """获取商品详情（优先使用浏览器，备用外部API，支持24小时缓存）
 
         Args:
             item_id: 商品ID
@@ -879,6 +885,181 @@ class XianyuLive:
                 logger.debug(f"自动获取商品详情功能已禁用: {item_id}")
                 return ""
 
+            # 1. 首先检查缓存（24小时有效）
+            async with self._item_detail_cache_lock:
+                if item_id in self._item_detail_cache:
+                    cache_data = self._item_detail_cache[item_id]
+                    cache_time = cache_data['timestamp']
+                    current_time = time.time()
+
+                    # 检查缓存是否在24小时内
+                    if current_time - cache_time < 24 * 60 * 60:  # 24小时
+                        logger.info(f"从缓存获取商品详情: {item_id}")
+                        return cache_data['detail']
+                    else:
+                        # 缓存过期，删除
+                        del self._item_detail_cache[item_id]
+                        logger.debug(f"缓存已过期，删除: {item_id}")
+
+            # 2. 尝试使用浏览器获取商品详情
+            detail_from_browser = await self._fetch_item_detail_from_browser(item_id)
+            if detail_from_browser:
+                # 保存到缓存
+                async with self._item_detail_cache_lock:
+                    self._item_detail_cache[item_id] = {
+                        'detail': detail_from_browser,
+                        'timestamp': time.time()
+                    }
+                logger.info(f"成功通过浏览器获取商品详情: {item_id}, 长度: {len(detail_from_browser)}")
+                return detail_from_browser
+
+            # 3. 浏览器获取失败，使用外部API作为备用
+            logger.warning(f"浏览器获取商品详情失败，尝试外部API: {item_id}")
+            detail_from_api = await self._fetch_item_detail_from_external_api(item_id)
+            if detail_from_api:
+                # 保存到缓存
+                async with self._item_detail_cache_lock:
+                    self._item_detail_cache[item_id] = {
+                        'detail': detail_from_api,
+                        'timestamp': time.time()
+                    }
+                logger.info(f"成功通过外部API获取商品详情: {item_id}, 长度: {len(detail_from_api)}")
+                return detail_from_api
+
+            logger.warning(f"所有方式都无法获取商品详情: {item_id}")
+            return ""
+
+        except Exception as e:
+            logger.error(f"获取商品详情异常: {item_id}, 错误: {self._safe_str(e)}")
+            return ""
+
+    async def _fetch_item_detail_from_browser(self, item_id: str) -> str:
+        """使用浏览器获取商品详情"""
+        try:
+            from playwright.async_api import async_playwright
+
+            logger.info(f"开始使用浏览器获取商品详情: {item_id}")
+
+            playwright = await async_playwright().start()
+
+            # 启动浏览器（参照order_detail_fetcher的配置）
+            browser_args = [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-accelerated-2d-canvas',
+                '--no-first-run',
+                '--no-zygote',
+                '--disable-gpu',
+                '--disable-background-timer-throttling',
+                '--disable-backgrounding-occluded-windows',
+                '--disable-renderer-backgrounding',
+                '--disable-features=TranslateUI',
+                '--disable-ipc-flooding-protection',
+                '--disable-extensions',
+                '--disable-default-apps',
+                '--disable-sync',
+                '--disable-translate',
+                '--hide-scrollbars',
+                '--mute-audio',
+                '--no-default-browser-check',
+                '--no-pings'
+            ]
+
+            # 在Docker环境中添加额外参数
+            if os.getenv('DOCKER_ENV'):
+                browser_args.extend([
+                    '--single-process',
+                    '--disable-background-networking',
+                    '--disable-client-side-phishing-detection',
+                    '--disable-hang-monitor',
+                    '--disable-popup-blocking',
+                    '--disable-prompt-on-repost',
+                    '--disable-web-resources',
+                    '--metrics-recording-only',
+                    '--safebrowsing-disable-auto-update',
+                    '--enable-automation',
+                    '--password-store=basic',
+                    '--use-mock-keychain'
+                ])
+
+            browser = await playwright.chromium.launch(
+                headless=True,
+                args=browser_args
+            )
+
+            # 创建浏览器上下文
+            context = await browser.new_context(
+                viewport={'width': 1920, 'height': 1080},
+                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36'
+            )
+
+            # 设置Cookie
+            cookies = []
+            for cookie_pair in self.cookies_str.split('; '):
+                if '=' in cookie_pair:
+                    name, value = cookie_pair.split('=', 1)
+                    cookies.append({
+                        'name': name.strip(),
+                        'value': value.strip(),
+                        'domain': '.goofish.com',
+                        'path': '/'
+                    })
+
+            await context.add_cookies(cookies)
+            logger.debug(f"已设置 {len(cookies)} 个Cookie")
+
+            # 创建页面
+            page = await context.new_page()
+
+            # 构造商品详情页面URL
+            item_url = f"https://www.goofish.com/item?id={item_id}"
+            logger.info(f"访问商品页面: {item_url}")
+
+            # 访问页面
+            await page.goto(item_url, wait_until='networkidle', timeout=30000)
+
+            # 等待页面完全加载
+            await asyncio.sleep(3)
+
+            # 获取商品详情内容
+            try:
+                # 等待目标元素出现
+                await page.wait_for_selector('.desc--GaIUKUQY', timeout=10000)
+
+                # 获取商品详情文本
+                detail_element = await page.query_selector('.desc--GaIUKUQY')
+                if detail_element:
+                    detail_text = await detail_element.inner_text()
+                    logger.info(f"成功获取商品详情: {item_id}, 长度: {len(detail_text)}")
+
+                    # 清理资源
+                    await browser.close()
+                    await playwright.stop()
+
+                    return detail_text.strip()
+                else:
+                    logger.warning(f"未找到商品详情元素: {item_id}")
+
+            except Exception as e:
+                logger.warning(f"获取商品详情元素失败: {item_id}, 错误: {self._safe_str(e)}")
+
+            # 清理资源
+            await browser.close()
+            await playwright.stop()
+
+            return ""
+
+        except Exception as e:
+            logger.error(f"浏览器获取商品详情异常: {item_id}, 错误: {self._safe_str(e)}")
+            return ""
+
+    async def _fetch_item_detail_from_external_api(self, item_id: str) -> str:
+        """从外部API获取商品详情（备用方案）"""
+        try:
+            from config import config
+            auto_fetch_config = config.get('ITEM_DETAIL', {}).get('auto_fetch', {})
+
             # 从配置获取API地址和超时时间
             api_base_url = auto_fetch_config.get('api_url', 'https://selfapi.zhinianboke.com/api/getItemDetail')
             timeout_seconds = auto_fetch_config.get('timeout', 10)
@@ -889,7 +1070,6 @@ class XianyuLive:
 
             # 使用aiohttp发送异步请求
             import aiohttp
-            import asyncio
 
             timeout = aiohttp.ClientTimeout(total=timeout_seconds)
 
@@ -901,21 +1081,20 @@ class XianyuLive:
                         # 检查返回状态
                         if result.get('status') == '200' and result.get('data'):
                             item_detail = result['data']
-                            logger.info(f"成功获取商品详情: {item_id}, 长度: {len(item_detail)}")
-                            logger.debug(f"商品详情内容: {item_detail[:200]}...")
+                            logger.info(f"外部API成功获取商品详情: {item_id}, 长度: {len(item_detail)}")
                             return item_detail
                         else:
-                            logger.warning(f"API返回状态异常: {result.get('status')}, message: {result.get('message')}")
+                            logger.warning(f"外部API返回状态异常: {result.get('status')}, message: {result.get('message')}")
                             return ""
                     else:
-                        logger.warning(f"API请求失败: HTTP {response.status}")
+                        logger.warning(f"外部API请求失败: HTTP {response.status}")
                         return ""
 
         except asyncio.TimeoutError:
-            logger.warning(f"获取商品详情超时: {item_id}")
+            logger.warning(f"外部API获取商品详情超时: {item_id}")
             return ""
         except Exception as e:
-            logger.error(f"获取商品详情异常: {item_id}, 错误: {self._safe_str(e)}")
+            logger.error(f"外部API获取商品详情异常: {item_id}, 错误: {self._safe_str(e)}")
             return ""
 
     async def save_items_list_to_db(self, items_list):
@@ -3585,21 +3764,21 @@ class XianyuLive:
 
                         # 提取订单ID
                         order_id = self._extract_order_id(message)
-                        if order_id:
-                            # 延迟2秒后执行免拼发货
-                            logger.info(f'[{msg_time}] 【{self.cookie_id}】延迟2秒后执行免拼发货...')
-                            await asyncio.sleep(2)
-                            # 调用自动免拼发货方法
-                            result = await self.auto_freeshipping(order_id, item_id, send_user_id)
-                            if result.get('success'):
-                                logger.info(f'[{msg_time}] 【{self.cookie_id}】✅ 自动免拼发货成功')
-                            else:
-                                logger.warning(f'[{msg_time}] 【{self.cookie_id}】❌ 自动免拼发货失败: {result.get("error", "未知错误")}')
-                            await self._handle_auto_delivery(websocket, message, send_user_name, send_user_id,
-                                                           item_id, chat_id, msg_time)
-                            return
-                        else:
+                        if not order_id:
                             logger.warning(f'[{msg_time}] 【{self.cookie_id}】❌ 未能提取到订单ID，无法执行免拼发货')
+                            return
+
+                        # 延迟2秒后执行免拼发货
+                        logger.info(f'[{msg_time}] 【{self.cookie_id}】延迟2秒后执行免拼发货...')
+                        await asyncio.sleep(2)
+                        # 调用自动免拼发货方法
+                        result = await self.auto_freeshipping(order_id, item_id, send_user_id)
+                        if result.get('success'):
+                            logger.info(f'[{msg_time}] 【{self.cookie_id}】✅ 自动免拼发货成功')
+                        else:
+                            logger.warning(f'[{msg_time}] 【{self.cookie_id}】❌ 自动免拼发货失败: {result.get("error", "未知错误")}')
+                        await self._handle_auto_delivery(websocket, message, send_user_name, send_user_id,
+                                                       item_id, chat_id, msg_time)
                         return
                     else:
                         logger.info(f'[{msg_time}] 【{self.cookie_id}】收到卡片消息，标题: {card_title or "未知"}')
