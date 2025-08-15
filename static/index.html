@@ -1568,6 +1568,39 @@
               </div>
             </div>
           </div>
+
+          <!-- 默认登录信息设置 -->
+          <div class="col-md-6">
+            <div class="card">
+              <div class="card-header">
+                <i class="bi bi-info-circle me-2"></i>登录信息设置
+                <span class="badge bg-warning ms-2">管理员专用</span>
+              </div>
+              <div class="card-body">
+                <div class="mb-3">
+                  <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" id="showDefaultLoginInfo">
+                    <label class="form-check-label" for="showDefaultLoginInfo">
+                      <strong>显示默认登录信息</strong>
+                    </label>
+                  </div>
+                  <div class="form-text">
+                    <i class="bi bi-info-circle me-1"></i>
+                    开启后，登录页面将显示默认的用户名和密码信息，方便用户快速登录
+                  </div>
+                </div>
+                <button type="button" class="btn btn-primary" onclick="updateLoginInfoSettings()">
+                  <i class="bi bi-check-circle me-1"></i>保存设置
+                </button>
+                <div id="loginInfoStatus" class="mt-3" style="display: none;">
+                  <div class="alert alert-info mb-0">
+                    <i class="bi bi-info-circle me-2"></i>
+                    <span id="loginInfoStatusText"></span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
 
         <!-- 外发配置 (仅管理员可见) -->

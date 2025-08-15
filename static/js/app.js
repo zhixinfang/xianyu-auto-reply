@@ -7674,9 +7674,10 @@ async function loadSystemSettings() {
                 outgoingConfigs.style.display = isAdmin ? 'block' : 'none';
             }
 
-            // 如果是管理员，加载注册设置和外发配置
+            // 如果是管理员，加载注册设置、登录信息设置和外发配置
             if (isAdmin) {
                 await loadRegistrationSettings();
+                await loadLoginInfoSettings();
                 await loadOutgoingConfigs();
             }
         }
@@ -7894,6 +7895,76 @@ async function updateRegistrationSettings() {
     } catch (error) {
         console.error('更新注册设置失败:', error);
         showToast('更新注册设置失败', 'danger');
+    }
+}
+
+// 加载默认登录信息设置
+async function loadLoginInfoSettings() {
+    try {
+        const response = await fetch('/system-settings', {
+            headers: {
+                'Authorization': `Bearer ${authToken}`
+            }
+        });
+
+        if (response.ok) {
+            const settings = await response.json();
+            const checkbox = document.getElementById('showDefaultLoginInfo');
+
+            if (checkbox && settings.show_default_login_info !== undefined) {
+                checkbox.checked = settings.show_default_login_info === 'true';
+            }
+        }
+    } catch (error) {
+        console.error('加载登录信息设置失败:', error);
+        showToast('加载登录信息设置失败', 'danger');
+    }
+}
+
+// 更新默认登录信息设置
+async function updateLoginInfoSettings() {
+    const checkbox = document.getElementById('showDefaultLoginInfo');
+    const statusDiv = document.getElementById('loginInfoStatus');
+    const statusText = document.getElementById('loginInfoStatusText');
+
+    if (!checkbox) return;
+
+    const enabled = checkbox.checked;
+
+    try {
+        const response = await fetch('/login-info-settings', {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${authToken}`
+            },
+            body: JSON.stringify({
+                enabled: enabled
+            })
+        });
+
+        if (response.ok) {
+            const data = await response.json();
+            const message = enabled ? '默认登录信息显示已开启' : '默认登录信息显示已关闭';
+            showToast(message, 'success');
+
+            // 显示状态信息
+            if (statusDiv && statusText) {
+                statusText.textContent = message;
+                statusDiv.style.display = 'block';
+
+                // 3秒后隐藏状态信息
+                setTimeout(() => {
+                    statusDiv.style.display = 'none';
+                }, 3000);
+            }
+        } else {
+            const errorData = await response.json();
+            showToast(`更新失败: ${errorData.detail || '未知错误'}`, 'danger');
+        }
+    } catch (error) {
+        console.error('更新登录信息设置失败:', error);
+        showToast('更新登录信息设置失败', 'danger');
     }
 }
 

@@ -407,6 +407,7 @@ class DBManager:
             INSERT OR IGNORE INTO system_settings (key, value, description) VALUES
             ('theme_color', 'blue', '主题颜色'),
             ('registration_enabled', 'true', '是否开启用户注册'),
+            ('show_default_login_info', 'true', '是否显示默认登录信息'),
             ('smtp_server', '', 'SMTP服务器地址'),
             ('smtp_port', '587', 'SMTP端口'),
             ('smtp_user', '', 'SMTP登录用户名（发件邮箱）'),
