@@ -776,3 +776,7 @@ powershell -ExecutionPolicy Bypass -File docker-deploy.bat
 🎉 **开始使用闲鱼自动回复系统，让您的闲鱼店铺管理更加智能高效！**
 
 **请记住：仅限学习使用，禁止商业用途！**
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=zhinianboke/xianyu-auto-reply&type=Date)](https://www.star-history.com/#zhinianboke/xianyu-auto-reply&Date)
