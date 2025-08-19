@@ -691,6 +691,9 @@ powershell -ExecutionPolicy Bypass -File docker-deploy.bat
 
 欢迎加入我们的技术交流群，获取实时帮助和最新更新：
 
+#### 闲鱼官方闲置群
+<img src="static/xianyu-group.png" alt="闲鱼官方闲置群二维码" width="200">
+
 #### 微信交流群
 <img src="static/wechat-group.png" alt="微信群二维码" width="200">
 
