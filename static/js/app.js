@@ -1347,6 +1347,157 @@ function copyCookie(id, value) {
     });
 }
 
+// 刷新真实Cookie
+async function refreshRealCookie(cookieId) {
+    if (!cookieId) {
+        showToast('缺少账号ID', 'warning');
+        return;
+    }
+
+    // 获取当前cookie值
+    try {
+        const cookieDetails = await fetchJSON(`${apiBase}/cookies/details`);
+        const currentCookie = cookieDetails.find(c => c.id === cookieId);
+
+        if (!currentCookie || !currentCookie.value) {
+            showToast('未找到有效的Cookie信息', 'warning');
+            return;
+        }
+
+        // 确认操作
+        if (!confirm(`确定要刷新账号 "${cookieId}" 的真实Cookie吗？\n\n此操作将使用当前Cookie访问闲鱼IM界面获取最新的真实Cookie。`)) {
+            return;
+        }
+
+        // 显示加载状态
+        const button = event.target.closest('button');
+        const originalContent = button.innerHTML;
+        button.disabled = true;
+        button.innerHTML = '<i class="bi bi-arrow-clockwise spin"></i>';
+
+        // 调用刷新API
+        const response = await fetch(`${apiBase}/qr-login/refresh-cookies`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${authToken}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                qr_cookies: currentCookie.value,
+                cookie_id: cookieId
+            })
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            showToast(`账号 "${cookieId}" 真实Cookie刷新成功`, 'success');
+            // 刷新账号列表以显示更新后的cookie
+            loadCookies();
+        } else {
+            showToast(`真实Cookie刷新失败: ${result.message}`, 'danger');
+        }
+
+    } catch (error) {
+        console.error('刷新真实Cookie失败:', error);
+        showToast(`刷新真实Cookie失败: ${error.message || '未知错误'}`, 'danger');
+    } finally {
+        // 恢复按钮状态
+        const button = event.target.closest('button');
+        if (button) {
+            button.disabled = false;
+            button.innerHTML = '<i class="bi bi-arrow-clockwise"></i>';
+        }
+    }
+}
+
+// 显示冷却状态
+async function showCooldownStatus(cookieId) {
+    if (!cookieId) {
+        showToast('缺少账号ID', 'warning');
+        return;
+    }
+
+    try {
+        const response = await fetch(`${apiBase}/qr-login/cooldown-status/${cookieId}`, {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${authToken}`,
+                'Content-Type': 'application/json'
+            }
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            const { remaining_time, cooldown_duration, is_in_cooldown, remaining_minutes, remaining_seconds } = result;
+
+            let statusMessage = `账号: ${cookieId}\n`;
+            statusMessage += `冷却时长: ${cooldown_duration / 60}分钟\n`;
+
+            if (is_in_cooldown) {
+                statusMessage += `冷却状态: 进行中\n`;
+                statusMessage += `剩余时间: ${remaining_minutes}分${remaining_seconds}秒\n\n`;
+                statusMessage += `在冷却期间，_refresh_cookies_via_browser 方法将被跳过。\n\n`;
+                statusMessage += `是否要重置冷却时间？`;
+
+                if (confirm(statusMessage)) {
+                    await resetCooldownTime(cookieId);
+                }
+            } else {
+                statusMessage += `冷却状态: 无冷却\n`;
+                statusMessage += `可以正常执行 _refresh_cookies_via_browser 方法`;
+                alert(statusMessage);
+            }
+        } else {
+            showToast(`获取冷却状态失败: ${result.message}`, 'danger');
+        }
+
+    } catch (error) {
+        console.error('获取冷却状态失败:', error);
+        showToast(`获取冷却状态失败: ${error.message || '未知错误'}`, 'danger');
+    }
+}
+
+// 重置冷却时间
+async function resetCooldownTime(cookieId) {
+    if (!cookieId) {
+        showToast('缺少账号ID', 'warning');
+        return;
+    }
+
+    try {
+        const response = await fetch(`${apiBase}/qr-login/reset-cooldown/${cookieId}`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${authToken}`,
+                'Content-Type': 'application/json'
+            }
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            const previousTime = result.previous_remaining_time || 0;
+            const previousMinutes = Math.floor(previousTime / 60);
+            const previousSeconds = previousTime % 60;
+
+            let message = `账号 "${cookieId}" 的扫码登录冷却时间已重置`;
+            if (previousTime > 0) {
+                message += `\n原剩余时间: ${previousMinutes}分${previousSeconds}秒`;
+            }
+
+            showToast(message, 'success');
+        } else {
+            showToast(`重置冷却时间失败: ${result.message}`, 'danger');
+        }
+
+    } catch (error) {
+        console.error('重置冷却时间失败:', error);
+        showToast(`重置冷却时间失败: ${error.message || '未知错误'}`, 'danger');
+    }
+}
+
 // 删除Cookie
 async function delCookie(id) {
     if (!confirm(`确定要删除账号 "${id}" 吗？此操作不可恢复。`)) return;
@@ -1752,6 +1903,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     // 首先检查认证状态
     const isAuthenticated = await checkAuth();
     if (!isAuthenticated) return;
+
+    // 加载系统版本号
+    loadSystemVersion();
     // 添加Cookie表单提交
     document.getElementById('addForm').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -2450,6 +2604,78 @@ const channelTypeConfigs = {
         }
     ]
     },
+    feishu: {
+    title: '飞书通知',
+    description: '请设置飞书机器人Webhook URL，支持自定义机器人和群机器人',
+    icon: 'bi-chat-square-text-fill',
+    color: 'warning',
+    fields: [
+        {
+        id: 'webhook_url',
+        label: '飞书机器人Webhook URL',
+        type: 'url',
+        placeholder: 'https://open.feishu.cn/open-apis/bot/v2/hook/...',
+        required: true,
+        help: '飞书机器人的Webhook地址'
+        },
+        {
+        id: 'secret',
+        label: '签名密钥（可选）',
+        type: 'text',
+        placeholder: '输入签名密钥',
+        required: false,
+        help: '如果机器人开启了签名验证，请填写密钥'
+        }
+    ]
+    },
+    bark: {
+    title: 'Bark通知',
+    description: 'iOS推送通知服务，支持自建服务器和官方服务器',
+    icon: 'bi-phone-fill',
+    color: 'dark',
+    fields: [
+        {
+        id: 'device_key',
+        label: '设备密钥',
+        type: 'text',
+        placeholder: '输入Bark设备密钥',
+        required: true,
+        help: 'Bark应用中显示的设备密钥'
+        },
+        {
+        id: 'server_url',
+        label: '服务器地址（可选）',
+        type: 'url',
+        placeholder: 'https://api.day.app',
+        required: false,
+        help: '自建Bark服务器地址，留空使用官方服务器'
+        },
+        {
+        id: 'title',
+        label: '通知标题（可选）',
+        type: 'text',
+        placeholder: '闲鱼自动回复通知',
+        required: false,
+        help: '推送通知的标题'
+        },
+        {
+        id: 'sound',
+        label: '提示音（可选）',
+        type: 'text',
+        placeholder: 'default',
+        required: false,
+        help: '通知提示音，如：alarm, anticipate, bell等'
+        },
+        {
+        id: 'group',
+        label: '分组（可选）',
+        type: 'text',
+        placeholder: 'xianyu',
+        required: false,
+        help: '通知分组名称，用于归类消息'
+        }
+    ]
+    },
     email: {
     title: '邮件通知',
     description: '通过SMTP服务器发送邮件通知，支持各种邮箱服务商',
@@ -2753,6 +2979,8 @@ function renderNotificationChannels(channels) {
     let channelType = channel.type;
     if (channelType === 'ding_talk') {
         channelType = 'dingtalk';  // 兼容旧的类型名
+    } else if (channelType === 'lark') {
+        channelType = 'feishu';  // 兼容lark类型名
     }
     const typeConfig = channelTypeConfigs[channelType];
     const typeDisplay = typeConfig ? typeConfig.title : channel.type;
@@ -2867,6 +3095,8 @@ async function editNotificationChannel(channelId) {
     let channelType = channel.type;
     if (channelType === 'ding_talk') {
         channelType = 'dingtalk';  // 兼容旧的类型名
+    } else if (channelType === 'lark') {
+        channelType = 'feishu';  // 兼容lark类型名
     }
 
     const config = channelTypeConfigs[channelType];
@@ -2891,6 +3121,10 @@ async function editNotificationChannel(channelId) {
         configData = { qq_number: channel.config };
         } else if (channel.type === 'dingtalk' || channel.type === 'ding_talk') {
         configData = { webhook_url: channel.config };
+        } else if (channel.type === 'feishu' || channel.type === 'lark') {
+        configData = { webhook_url: channel.config };
+        } else if (channel.type === 'bark') {
+        configData = { device_key: channel.config };
         } else {
         configData = { config: channel.config };
         }
@@ -5883,7 +6117,12 @@ function updateBatchDeleteButton() {
 // 格式化日期时间
 function formatDateTime(dateString) {
     if (!dateString) return '未知';
-    const date = new Date(dateString);
+    // 如果是ISO格式，直接new Date
+    if (dateString.includes('T') && dateString.endsWith('Z')) {
+        return new Date(dateString).toLocaleString('zh-CN');
+    }
+    // 否则按原有逻辑（可选：补偿8小时）
+    const date = new Date(dateString.replace(' ', 'T') + 'Z');
     return date.toLocaleString('zh-CN');
 }
 
@@ -6927,6 +7166,16 @@ async function checkQRCodeStatus() {
             clearQRCodeCheck();
             showVerificationRequired(data);
             break;
+        case 'processing':
+            document.getElementById('statusText').textContent = '正在处理中...';
+            // 继续轮询，不清理检查
+            break;
+        case 'already_processed':
+            document.getElementById('statusText').textContent = '登录已完成';
+            document.getElementById('statusSpinner').style.display = 'none';
+            clearQRCodeCheck();
+            showToast('该扫码会话已处理完成', 'info');
+            break;
         }
     }
     } catch (error) {
@@ -6990,12 +7239,37 @@ function showVerificationRequired(data) {
 // 处理扫码成功
 function handleQRCodeSuccess(data) {
     if (data.account_info) {
-    const { account_id, is_new_account } = data.account_info;
+    const { account_id, is_new_account, real_cookie_refreshed, fallback_reason, cookie_length } = data.account_info;
 
+    // 构建成功消息
+    let successMessage = '';
     if (is_new_account) {
-        showToast(`新账号添加成功！账号ID: ${account_id}`, 'success');
+        successMessage = `新账号添加成功！账号ID: ${account_id}`;
     } else {
-        showToast(`账号Cookie已更新！账号ID: ${account_id}`, 'success');
+        successMessage = `账号Cookie已更新！账号ID: ${account_id}`;
+    }
+
+    // 添加cookie长度信息
+    if (cookie_length) {
+        successMessage += `\nCookie长度: ${cookie_length}`;
+    }
+
+    // 添加真实cookie获取状态信息
+    if (real_cookie_refreshed === true) {
+        successMessage += '\n✅ 真实Cookie获取并保存成功';
+        document.getElementById('statusText').textContent = '登录成功！真实Cookie已获取并保存';
+        showToast(successMessage, 'success');
+    } else if (real_cookie_refreshed === false) {
+        successMessage += '\n⚠️ 真实Cookie获取失败，已保存原始扫码Cookie';
+        if (fallback_reason) {
+            successMessage += `\n原因: ${fallback_reason}`;
+        }
+        document.getElementById('statusText').textContent = '登录成功，但使用原始Cookie';
+        showToast(successMessage, 'warning');
+    } else {
+        // 兼容旧版本，没有真实cookie刷新信息
+        document.getElementById('statusText').textContent = '登录成功！';
+        showToast(successMessage, 'success');
     }
 
     // 关闭模态框
@@ -7005,7 +7279,7 @@ function handleQRCodeSuccess(data) {
 
         // 刷新账号列表
         loadCookies();
-    }, 2000);
+    }, 3000); // 延长显示时间以便用户看到详细信息
     }
 }
 
@@ -8625,23 +8899,6 @@ function updateBatchDeleteOrdersButton() {
     }
 }
 
-// 格式化日期时间
-function formatDateTime(dateString) {
-    if (!dateString) return '未知时间';
-
-    try {
-        const date = new Date(dateString);
-        return date.toLocaleString('zh-CN', {
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit',
-            hour: '2-digit',
-            minute: '2-digit'
-        });
-    } catch (error) {
-        return dateString;
-    }
-}
 
 // 页面加载完成后初始化订单搜索功能
 document.addEventListener('DOMContentLoaded', function() {
@@ -9747,3 +10004,165 @@ function exportSearchResults() {
         showToast('导出搜索结果失败', 'danger');
     }
 }
+
+// ================================
+// 版本管理功能
+// ================================
+
+/**
+ * 加载系统版本号并检查更新
+ */
+async function loadSystemVersion() {
+    try {
+        // 从 version.txt 文件读取当前系统版本
+        let currentSystemVersion = 'v1.0.0'; // 默认版本
+
+        try {
+            const versionResponse = await fetch('/static/version.txt');
+            if (versionResponse.ok) {
+                currentSystemVersion = (await versionResponse.text()).trim();
+            }
+        } catch (e) {
+            console.warn('无法读取本地版本文件，使用默认版本');
+        }
+
+        // 显示当前版本
+        document.getElementById('versionNumber').textContent = currentSystemVersion;
+
+        // 获取远程版本并检查更新
+        const response = await fetch('http://xianyu.zhinianblog.cn/index.php?action=getVersion');
+        const result = await response.json();
+
+        if (result.error) {
+            console.error('获取版本号失败:', result.message);
+            return;
+        }
+
+        const remoteVersion = result.data;
+
+        // 检查是否有更新
+        if (remoteVersion !== currentSystemVersion) {
+            showUpdateAvailable(remoteVersion);
+        }
+
+    } catch (error) {
+        console.error('获取版本号失败:', error);
+        document.getElementById('versionNumber').textContent = '未知';
+    }
+}
+
+/**
+ * 显示有更新标签
+ */
+function showUpdateAvailable(newVersion) {
+    const versionContainer = document.querySelector('.version-info');
+
+    if (!versionContainer) {
+        return;
+    }
+
+    // 检查是否已经有更新标签
+    if (versionContainer.querySelector('.update-badge')) {
+        return;
+    }
+
+    // 创建更新标签
+    const updateBadge = document.createElement('span');
+    updateBadge.className = 'badge bg-warning ms-2 update-badge';
+    updateBadge.style.cursor = 'pointer';
+    updateBadge.innerHTML = '<i class="bi bi-arrow-up-circle me-1"></i>有更新';
+    updateBadge.title = `新版本 ${newVersion} 可用，点击查看更新内容`;
+
+    // 点击事件
+    updateBadge.onclick = () => showUpdateInfo(newVersion);
+
+    // 添加到版本信息容器
+    versionContainer.appendChild(updateBadge);
+}
+
+/**
+ * 获取更新信息
+ */
+async function getUpdateInfo() {
+    try {
+        const response = await fetch('http://xianyu.zhinianblog.cn/index.php?action=getUpdateInfo');
+        const result = await response.json();
+
+        if (result.error) {
+            showToast('获取更新信息失败: ' + result.message, 'danger');
+            return null;
+        }
+
+        return result.data;
+
+    } catch (error) {
+        console.error('获取更新信息失败:', error);
+        showToast('获取更新信息失败', 'danger');
+        return null;
+    }
+}
+
+/**
+ * 显示更新信息（点击"有更新"标签时调用）
+ */
+async function showUpdateInfo(newVersion) {
+    const updateInfo = await getUpdateInfo();
+    if (!updateInfo) return;
+
+    let updateList = '';
+    if (updateInfo.updates && updateInfo.updates.length > 0) {
+        updateList = updateInfo.updates.map(item => `<li class="mb-2">${item}</li>`).join('');
+    }
+
+    const modalHtml = `
+        <div class="modal fade" id="updateModal" tabindex="-1">
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header bg-warning text-dark">
+                        <h5 class="modal-title">
+                            <i class="bi bi-arrow-up-circle me-2"></i>版本更新内容
+                        </h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="alert alert-info">
+                            <i class="bi bi-info-circle me-2"></i>
+                            <strong>发现新版本！</strong>以下是最新版本的更新内容。
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <h6><i class="bi bi-tag me-1"></i>最新版本</h6>
+                                <p class="fs-4 text-success fw-bold">${updateInfo.version}</p>
+                            </div>
+                            <div class="col-md-6">
+                                <h6><i class="bi bi-calendar me-1"></i>发布日期</h6>
+                                <p class="text-muted">${updateInfo.releaseDate || '未知'}</p>
+                            </div>
+                        </div>
+                        <hr>
+                        <h6><i class="bi bi-list-ul me-1"></i>更新内容</h6>
+                        ${updateList ? `<ul class="list-unstyled ps-3">${updateList}</ul>` : '<p class="text-muted">暂无更新内容</p>'}
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+
+    // 移除已存在的模态框
+    const existingModal = document.getElementById('updateModal');
+    if (existingModal) {
+        existingModal.remove();
+    }
+
+    // 添加新的模态框
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+    // 显示模态框
+    const modal = new bootstrap.Modal(document.getElementById('updateModal'));
+    modal.show();
+}
+
+

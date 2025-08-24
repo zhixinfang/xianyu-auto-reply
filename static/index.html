@@ -147,11 +147,21 @@
     <!-- 仪表盘内容 -->
     <div id="dashboard-section" class="content-section active">
       <div class="content-header">
-        <h2 class="mb-0">
-          <i class="bi bi-speedometer2 me-2"></i>
-          仪表盘
-        </h2>
-        <p class="text-muted mb-0">系统概览和统计信息</p>
+        <div class="d-flex justify-content-between align-items-center">
+          <div>
+            <h2 class="mb-0">
+              <i class="bi bi-speedometer2 me-2"></i>
+              仪表盘
+            </h2>
+            <p class="text-muted mb-0">系统概览和统计信息</p>
+          </div>
+          <div class="version-info">
+            <span class="badge bg-secondary" id="systemVersion">
+              <i class="bi bi-info-circle me-1"></i>
+              版本: <span id="versionNumber">加载中...</span>
+            </span>
+          </div>
+        </div>
       </div>
       <div class="content-body">
         <div class="dashboard-stats">
@@ -234,17 +244,17 @@
             <div class="row mb-4">
               <div class="col-12">
                 <div class="d-grid gap-2 d-md-flex justify-content-md-center">
-                  <button type="button" class="btn btn-success btn-lg me-md-2 flex-fill qr-login-btn" onclick="showQRCodeLogin()" style="max-width: 300px;">
+                  <button type="button" class="btn btn-lg me-md-2 flex-fill qr-login-btn" onclick="showQRCodeLogin()" style="max-width: 300px;">
                     <i class="bi bi-qr-code me-2"></i>
                     <span class="fw-bold">扫码登录</span>
                     <br>
-                    <small class="opacity-75">推荐方式，安全便捷</small>
+                    <small class="opacity-75">不推荐，一般都不成功</small>
                   </button>
                   <button type="button" class="btn btn-outline-secondary btn-lg flex-fill manual-input-btn" onclick="toggleManualInput()" style="max-width: 300px;">
                     <i class="bi bi-keyboard me-2"></i>
                     <span class="fw-bold">手动输入</span>
                     <br>
-                    <small class="opacity-75">输入Cookie信息</small>
+                    <small class="opacity-75">推荐方式，使用消息界面的cookie</small>
                   </button>
                 </div>
               </div>
@@ -1057,6 +1067,40 @@
                     <p class="card-text text-muted">钉钉机器人消息</p>
                     <div class="mt-auto">
                       <button class="btn btn-outline-info btn-sm">
+                        <i class="bi bi-plus-circle me-1"></i>配置
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="col-sm-6 col-md-4 col-lg-3 col-xl-2">
+                <div class="card h-100 channel-type-card" onclick="showAddChannelModal('feishu')">
+                  <div class="card-body text-center">
+                    <div class="channel-icon">
+                      <i class="bi bi-chat-square-text-fill text-warning"></i>
+                    </div>
+                    <h6 class="card-title">飞书通知</h6>
+                    <p class="card-text text-muted">飞书机器人消息</p>
+                    <div class="mt-auto">
+                      <button class="btn btn-outline-warning btn-sm">
+                        <i class="bi bi-plus-circle me-1"></i>配置
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="col-sm-6 col-md-4 col-lg-3 col-xl-2">
+                <div class="card h-100 channel-type-card" onclick="showAddChannelModal('bark')">
+                  <div class="card-body text-center">
+                    <div class="channel-icon">
+                      <i class="bi bi-phone-fill text-dark"></i>
+                    </div>
+                    <h6 class="card-title">Bark通知</h6>
+                    <p class="card-text text-muted">iOS推送通知</p>
+                    <div class="mt-auto">
+                      <button class="btn btn-outline-dark btn-sm">
                         <i class="bi bi-plus-circle me-1"></i>配置
                       </button>
                     </div>
@@ -2753,7 +2797,7 @@
 
   <!-- JS依赖 -->
   <script src="/static/lib/bootstrap/bootstrap.bundle.min.js"></script>
-  <script src="/static/js/app.js"></script>
+  <script src="/static/js/app.js?v=2.2.0"></script>
 
   <!-- 默认回复管理模态框 -->
   <div class="modal fade" id="defaultReplyModal" tabindex="-1" aria-labelledby="defaultReplyModalLabel" aria-hidden="true">

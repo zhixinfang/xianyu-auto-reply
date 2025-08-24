@@ -1,6 +1,16 @@
 /* ================================
    通用卡片样式 - 适用于所有菜单的卡片
    ================================ */
+
+/* 旋转动画 */
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.spin {
+    animation: spin 1s linear infinite;
+}
 .card {
   background: rgba(255, 255, 255, 0.95);
   backdrop-filter: blur(10px);
