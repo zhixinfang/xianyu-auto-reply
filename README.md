@@ -5,9 +5,9 @@
 [![Python](https://img.shields.io/badge/Python-3.11+-green?logo=python)](https://www.python.org/)
 [![License](https://img.shields.io/badge/License-仅供学习-red.svg)](#️-版权声明与使用条款)
 
-## 最新代码获取地址
+## 最新代码获取地址（尽量转存）
 
-我用夸克网盘给你分享了「自动发货系统源码」，点击链接或复制整段内容，打开「夸克APP」即可获取。 /~5e4237vG5B~:/ 链接：https://pan.quark.cn/s/88d118bd700e
+https://pan.baidu.com/s/1I6muOGJQYd6y3oxQSmtvrQ?pwd=gcpd
 
 > **⚠️ 重要提示：本项目仅供学习研究使用，严禁商业用途！使用前请仔细阅读[版权声明](#️-版权声明与使用条款)。**
 
