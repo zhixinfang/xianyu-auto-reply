@@ -700,6 +700,7 @@ powershell -ExecutionPolicy Bypass -File docker-deploy.bat
 
 #### 微信交流群
 <img src="static/wechat-group.png" alt="微信群二维码" width="200">
+<img src="static/wechat-group1.png" alt="微信群二维码" width="200">
 
 #### QQ交流群
 <img src="static/qq-group.png" alt="QQ群二维码" width="200">
