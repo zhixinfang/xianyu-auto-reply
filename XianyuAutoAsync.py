@@ -37,6 +37,11 @@ class AutoReplyPauseManager:
             logger.error(f"获取账号 {cookie_id} 暂停时间失败: {e}，使用默认10分钟")
             pause_minutes = 10
 
+        # 如果暂停时间为0，表示不暂停
+        if pause_minutes == 0:
+            logger.info(f"【{cookie_id}】检测到手动发出消息，但暂停时间设置为0，不暂停自动回复")
+            return
+
         pause_duration_seconds = pause_minutes * 60
         pause_until = time.time() + pause_duration_seconds
         self.paused_chats[chat_id] = pause_until
@@ -122,6 +127,10 @@ class XianyuLive:
     # 商品详情缓存（24小时有效）
     _item_detail_cache = {}  # {item_id: {'detail': str, 'timestamp': float}}
     _item_detail_cache_lock = asyncio.Lock()
+
+    # 类级别的实例管理字典，用于API调用
+    _instances = {}  # {cookie_id: XianyuLive实例}
+    _instances_lock = asyncio.Lock()
     
     def _safe_str(self, e):
         """安全地将异常转换为字符串"""
@@ -213,7 +222,41 @@ class XianyuLive:
         self.max_connection_failures = 5  # 最大连续失败次数
         self.last_successful_connection = 0  # 上次成功连接时间
 
+        # 注册实例到类级别字典（用于API调用）
+        self._register_instance()
 
+    def _register_instance(self):
+        """注册当前实例到类级别字典"""
+        try:
+            # 使用同步方式注册，避免在__init__中使用async
+            XianyuLive._instances[self.cookie_id] = self
+            logger.debug(f"【{self.cookie_id}】实例已注册到全局字典")
+        except Exception as e:
+            logger.error(f"【{self.cookie_id}】注册实例失败: {self._safe_str(e)}")
+
+    def _unregister_instance(self):
+        """从类级别字典中注销当前实例"""
+        try:
+            if self.cookie_id in XianyuLive._instances:
+                del XianyuLive._instances[self.cookie_id]
+                logger.debug(f"【{self.cookie_id}】实例已从全局字典中注销")
+        except Exception as e:
+            logger.error(f"【{self.cookie_id}】注销实例失败: {self._safe_str(e)}")
+
+    @classmethod
+    def get_instance(cls, cookie_id: str):
+        """获取指定cookie_id的XianyuLive实例"""
+        return cls._instances.get(cookie_id)
+
+    @classmethod
+    def get_all_instances(cls):
+        """获取所有活跃的XianyuLive实例"""
+        return dict(cls._instances)
+
+    @classmethod
+    def get_instance_count(cls):
+        """获取当前活跃实例数量"""
+        return len(cls._instances)
 
     def is_auto_confirm_enabled(self) -> bool:
         """检查当前账号是否启用自动确认发货"""
@@ -4990,6 +5033,10 @@ class XianyuLive:
             if self.cookie_refresh_task:
                 self.cookie_refresh_task.cancel()
             await self.close_session()  # 确保关闭session
+
+            # 从全局实例字典中注销当前实例
+            self._unregister_instance()
+            logger.info(f"【{self.cookie_id}】XianyuLive主程序已完全退出")
 
     async def get_item_list_info(self, page_number=1, page_size=20, retry_count=0):
         """获取商品信息，自动处理token失效的情况

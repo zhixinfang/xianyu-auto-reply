@@ -233,7 +233,7 @@ async function loadDashboard() {
 async function loadOrdersCount() {
     try {
         const token = localStorage.getItem('auth_token');
-        const response = await fetch('/admin/data/orders', {
+        const response = await fetch('/api/orders', {
             headers: {
                 'Authorization': `Bearer ${token}`
             }
@@ -702,7 +702,13 @@ async function addKeyword() {
     }
 
     // 检查关键词是否已存在（考虑商品ID，检查所有类型的关键词）
-    const allKeywords = keywordsData[currentCookieId] || [];
+    // 在编辑模式下，需要排除正在编辑的关键词本身
+    let allKeywords = keywordsData[currentCookieId] || [];
+    if (isEditMode && typeof window.editingIndex !== 'undefined') {
+        // 创建一个副本，排除正在编辑的关键词
+        allKeywords = allKeywords.filter((item, index) => index !== window.editingIndex);
+    }
+
     const existingKeyword = allKeywords.find(item =>
         item.keyword === keyword &&
         (item.item_id || '') === (itemId || '')
@@ -1269,8 +1275,8 @@ async function loadCookies() {
         </td>
         <td class="align-middle">
             <div class="pause-duration-cell" data-cookie-id="${cookie.id}">
-                <span class="pause-duration-display" onclick="editPauseDuration('${cookie.id}', ${cookie.pause_duration || 10})" title="点击编辑暂停时间" style="cursor: pointer; color: #6c757d; font-size: 0.875rem;">
-                    <i class="bi bi-clock me-1"></i>${cookie.pause_duration || 10}分钟
+                <span class="pause-duration-display" onclick="editPauseDuration('${cookie.id}', ${cookie.pause_duration !== undefined ? cookie.pause_duration : 10})" title="点击编辑暂停时间" style="cursor: pointer; color: #6c757d; font-size: 0.875rem;">
+                    <i class="bi bi-clock me-1"></i>${cookie.pause_duration === 0 ? '不暂停' : (cookie.pause_duration || 10) + '分钟'}
                 </span>
             </div>
         </td>
@@ -1906,6 +1912,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // 加载系统版本号
     loadSystemVersion();
+    // 启动项目使用人数定时刷新
+    startProjectUsersRefresh();
     // 添加Cookie表单提交
     document.getElementById('addForm').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -4219,9 +4227,8 @@ function renderDeliveryRulesList(rules) {
         </div>
         </td>
         <td>${cardTypeBadge}</td>
-        <td>
-        <span class="badge bg-info">${rule.delivery_count || 1}</span>
-        </td>
+        <!-- 隐藏发货数量列 -->
+        <!-- <td><span class="badge bg-info">${rule.delivery_count || 1}</span></td> -->
         <td>${statusBadge}</td>
         <td>
         <span class="badge bg-warning">${rule.delivery_times || 0}</span>
@@ -4330,7 +4337,7 @@ async function saveDeliveryRule() {
     try {
     const keyword = document.getElementById('productKeyword').value;
     const cardId = document.getElementById('selectedCard').value;
-    const deliveryCount = document.getElementById('deliveryCount').value;
+    const deliveryCount = document.getElementById('deliveryCount').value || 1;
     const enabled = document.getElementById('ruleEnabled').checked;
     const description = document.getElementById('ruleDescription').value;
 
@@ -4787,7 +4794,7 @@ async function updateDeliveryRule() {
     const ruleId = document.getElementById('editRuleId').value;
     const keyword = document.getElementById('editProductKeyword').value;
     const cardId = document.getElementById('editSelectedCard').value;
-    const deliveryCount = document.getElementById('editDeliveryCount').value;
+    const deliveryCount = document.getElementById('editDeliveryCount').value || 1;
     const enabled = document.getElementById('editRuleEnabled').checked;
     const description = document.getElementById('editRuleDescription').value;
 
@@ -7797,16 +7804,16 @@ function editPauseDuration(cookieId, currentDuration) {
     const input = document.createElement('input');
     input.type = 'number';
     input.className = 'form-control form-control-sm';
-    input.value = currentDuration || 10;
+    input.value = currentDuration !== undefined ? currentDuration : 10;
     input.placeholder = '请输入暂停时间...';
     input.style.fontSize = '0.875rem';
-    input.min = 1;
+    input.min = 0;
     input.max = 60;
     input.step = 1;
 
     // 保存原始内容和原始值
     const originalContent = pauseCell.innerHTML;
-    const originalValue = currentDuration || 10;
+    const originalValue = currentDuration !== undefined ? currentDuration : 10;
 
     // 标记是否已经进行了编辑
     let hasChanged = false;
@@ -7818,7 +7825,7 @@ function editPauseDuration(cookieId, currentDuration) {
 
     // 监听输入变化
     input.addEventListener('input', () => {
-        const newValue = parseInt(input.value) || 10;
+        const newValue = input.value === '' ? 10 : parseInt(input.value);
         hasChanged = newValue !== originalValue;
     });
 
@@ -7827,12 +7834,12 @@ function editPauseDuration(cookieId, currentDuration) {
         console.log('savePauseDuration called, isProcessing:', isProcessing, 'hasChanged:', hasChanged); // 调试信息
         if (isProcessing) return; // 防止重复调用
 
-        const newDuration = parseInt(input.value) || 10;
+        const newDuration = input.value === '' ? 10 : parseInt(input.value);
         console.log('newDuration:', newDuration, 'originalValue:', originalValue); // 调试信息
 
         // 验证范围
-        if (newDuration < 1 || newDuration > 60) {
-            showToast('暂停时间必须在1-60分钟之间', 'warning');
+        if (isNaN(newDuration) || newDuration < 0 || newDuration > 60) {
+            showToast('暂停时间必须在0-60分钟之间（0表示不暂停）', 'warning');
             input.focus();
             return;
         }
@@ -7860,7 +7867,7 @@ function editPauseDuration(cookieId, currentDuration) {
                 // 更新显示
                 pauseCell.innerHTML = `
                     <span class="pause-duration-display" onclick="editPauseDuration('${cookieId}', ${newDuration})" title="点击编辑暂停时间" style="cursor: pointer; color: #6c757d; font-size: 0.875rem;">
-                        <i class="bi bi-clock me-1"></i>${newDuration}分钟
+                        <i class="bi bi-clock me-1"></i>${newDuration === 0 ? '不暂停' : newDuration + '分钟'}
                     </span>
                 `;
                 showToast('暂停时间更新成功', 'success');
@@ -7938,18 +7945,28 @@ async function loadSystemSettings() {
 
             console.log('用户信息:', result, '是否管理员:', isAdmin);
 
-            // 显示/隐藏注册设置和外发配置（仅管理员可见）
+            // 显示/隐藏管理员专用设置（仅管理员可见）
+            const apiSecuritySettings = document.getElementById('api-security-settings');
             const registrationSettings = document.getElementById('registration-settings');
             const outgoingConfigs = document.getElementById('outgoing-configs');
+            const backupManagement = document.getElementById('backup-management');
+
+            if (apiSecuritySettings) {
+                apiSecuritySettings.style.display = isAdmin ? 'block' : 'none';
+            }
             if (registrationSettings) {
                 registrationSettings.style.display = isAdmin ? 'block' : 'none';
             }
             if (outgoingConfigs) {
                 outgoingConfigs.style.display = isAdmin ? 'block' : 'none';
             }
+            if (backupManagement) {
+                backupManagement.style.display = isAdmin ? 'block' : 'none';
+            }
 
-            // 如果是管理员，加载注册设置、登录信息设置和外发配置
+            // 如果是管理员，加载所有管理员设置
             if (isAdmin) {
+                await loadAPISecuritySettings();
                 await loadRegistrationSettings();
                 await loadLoginInfoSettings();
                 await loadOutgoingConfigs();
@@ -7962,6 +7979,115 @@ async function loadSystemSettings() {
         if (registrationSettings) {
             registrationSettings.style.display = 'none';
         }
+    }
+}
+
+// 加载API安全设置
+async function loadAPISecuritySettings() {
+    try {
+        const response = await fetch('/system-settings', {
+            headers: {
+                'Authorization': `Bearer ${authToken}`
+            }
+        });
+
+        if (response.ok) {
+            const settings = await response.json();
+
+            // 加载QQ回复消息秘钥
+            const qqReplySecretKey = settings.qq_reply_secret_key || '';
+            const qqReplySecretKeyInput = document.getElementById('qqReplySecretKey');
+            if (qqReplySecretKeyInput) {
+                qqReplySecretKeyInput.value = qqReplySecretKey;
+            }
+        }
+    } catch (error) {
+        console.error('加载API安全设置失败:', error);
+        showToast('加载API安全设置失败', 'danger');
+    }
+}
+
+// 切换密码可见性
+function togglePasswordVisibility(inputId) {
+    const input = document.getElementById(inputId);
+    const icon = document.getElementById(inputId + '-icon');
+
+    if (input && icon) {
+        if (input.type === 'password') {
+            input.type = 'text';
+            icon.className = 'bi bi-eye-slash';
+        } else {
+            input.type = 'password';
+            icon.className = 'bi bi-eye';
+        }
+    }
+}
+
+// 生成随机秘钥
+function generateRandomSecretKey() {
+    // 生成32位随机字符串
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    let result = 'xianyu_qq_';
+    for (let i = 0; i < 24; i++) {
+        result += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+
+    const qqReplySecretKeyInput = document.getElementById('qqReplySecretKey');
+    if (qqReplySecretKeyInput) {
+        qqReplySecretKeyInput.value = result;
+        showToast('随机秘钥已生成', 'success');
+    }
+}
+
+// 更新QQ回复消息秘钥
+async function updateQQReplySecretKey() {
+    const qqReplySecretKey = document.getElementById('qqReplySecretKey').value.trim();
+
+    if (!qqReplySecretKey) {
+        showToast('请输入QQ回复消息API秘钥', 'warning');
+        return;
+    }
+
+    if (qqReplySecretKey.length < 8) {
+        showToast('秘钥长度至少需要8位字符', 'warning');
+        return;
+    }
+
+    try {
+        const response = await fetch('/system-settings/qq_reply_secret_key', {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${authToken}`
+            },
+            body: JSON.stringify({
+                value: qqReplySecretKey,
+                description: 'QQ回复消息API秘钥'
+            })
+        });
+
+        if (response.ok) {
+            showToast('QQ回复消息API秘钥更新成功', 'success');
+
+            // 显示状态信息
+            const statusDiv = document.getElementById('qqReplySecretStatus');
+            const statusText = document.getElementById('qqReplySecretStatusText');
+            if (statusDiv && statusText) {
+                statusText.textContent = `秘钥已更新，长度: ${qqReplySecretKey.length} 位`;
+                statusDiv.style.display = 'block';
+
+                // 3秒后隐藏状态
+                setTimeout(() => {
+                    statusDiv.style.display = 'none';
+                }, 3000);
+            }
+        } else {
+            const errorData = await response.json();
+            showToast(`更新失败: ${errorData.detail || '未知错误'}`, 'danger');
+        }
+    } catch (error) {
+        console.error('更新QQ回复消息秘钥失败:', error);
+        showToast('更新QQ回复消息秘钥失败', 'danger');
     }
 }
 
@@ -8309,7 +8435,7 @@ async function loadOrderCookieFilter() {
 // 加载所有订单
 async function loadAllOrders() {
     try {
-        const response = await fetch(`${apiBase}/admin/data/orders`, {
+        const response = await fetch(`${apiBase}/api/orders`, {
             headers: {
                 'Authorization': `Bearer ${authToken}`
             }
@@ -8342,7 +8468,7 @@ async function loadOrdersByCookie() {
     }
 
     try {
-        const response = await fetch(`${apiBase}/admin/data/orders`, {
+        const response = await fetch(`${apiBase}/api/orders`, {
             headers: {
                 'Authorization': `Bearer ${authToken}`
             }
@@ -10008,6 +10134,171 @@ function exportSearchResults() {
 // ================================
 // 版本管理功能
 // ================================
+
+/**
+ * 加载项目使用人数
+ */
+async function loadProjectUsers() {
+    try {
+        const response = await fetch('http://xianyu.zhinianblog.cn/?action=stats');
+        const result = await response.json();
+
+        if (result.error) {
+            console.error('获取项目使用人数失败:', result.error);
+            document.getElementById('totalUsers').textContent = '获取失败';
+            return;
+        }
+
+        const totalUsers = result.total_users || 0;
+        document.getElementById('totalUsers').textContent = totalUsers;
+
+        // 如果用户数量大于0，可以添加一些视觉效果
+        if (totalUsers > 0) {
+            const usersElement = document.getElementById('projectUsers');
+            usersElement.classList.remove('bg-primary');
+            usersElement.classList.add('bg-success');
+        }
+
+    } catch (error) {
+        console.error('获取项目使用人数失败:', error);
+        document.getElementById('totalUsers').textContent = '网络错误';
+    }
+}
+
+/**
+ * 启动项目使用人数定时刷新
+ */
+function startProjectUsersRefresh() {
+    // 立即加载一次
+    loadProjectUsers();
+
+    // 每5分钟刷新一次
+    setInterval(() => {
+        loadProjectUsers();
+    }, 5 * 60 * 1000); // 5分钟 = 5 * 60 * 1000毫秒
+}
+
+/**
+ * 显示项目详细统计信息
+ */
+async function showProjectStats() {
+    try {
+        const response = await fetch('http://xianyu.zhinianblog.cn/?action=stats');
+        const data = await response.json();
+
+        if (data.error) {
+            showToast('获取统计信息失败: ' + data.error, 'danger');
+            return;
+        }
+
+        // 创建模态框HTML
+        const modalHtml = `
+            <div class="modal fade" id="projectStatsModal" tabindex="-1">
+                <div class="modal-dialog modal-lg">
+                    <div class="modal-content">
+                        <div class="modal-header bg-primary text-white">
+                            <h5 class="modal-title">
+                                <i class="bi bi-bar-chart me-2"></i>项目使用统计
+                            </h5>
+                            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="row mb-4">
+                                <div class="col-md-3">
+                                    <div class="text-center p-3 bg-light rounded">
+                                        <div class="h2 text-primary mb-1">${data.total_users || 0}</div>
+                                        <div class="text-muted">总用户数</div>
+                                    </div>
+                                </div>
+                                <div class="col-md-3">
+                                    <div class="text-center p-3 bg-light rounded">
+                                        <div class="h2 text-success mb-1">${data.daily_active_users || 0}</div>
+                                        <div class="text-muted">今日活跃</div>
+                                    </div>
+                                </div>
+                                <div class="col-md-3">
+                                    <div class="text-center p-3 bg-light rounded">
+                                        <div class="h2 text-info mb-1">${Object.keys(data.os_distribution || {}).length}</div>
+                                        <div class="text-muted">操作系统类型</div>
+                                    </div>
+                                </div>
+                                <div class="col-md-3">
+                                    <div class="text-center p-3 bg-light rounded">
+                                        <div class="h2 text-warning mb-1">${Object.keys(data.version_distribution || {}).length}</div>
+                                        <div class="text-muted">版本类型</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="card">
+                                        <div class="card-header">
+                                            <h6 class="mb-0"><i class="bi bi-laptop me-2"></i>操作系统分布</h6>
+                                        </div>
+                                        <div class="card-body">
+                                            ${Object.entries(data.os_distribution || {}).map(([os, count]) => `
+                                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                                    <span>${os}</span>
+                                                    <span class="badge bg-primary">${count}</span>
+                                                </div>
+                                            `).join('')}
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="card">
+                                        <div class="card-header">
+                                            <h6 class="mb-0"><i class="bi bi-tag me-2"></i>版本分布</h6>
+                                        </div>
+                                        <div class="card-body">
+                                            ${Object.entries(data.version_distribution || {}).map(([version, count]) => `
+                                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                                    <span>${version}</span>
+                                                    <span class="badge bg-success">${count}</span>
+                                                </div>
+                                            `).join('')}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="mt-3 text-muted text-center">
+                                <small>最后更新: ${data.last_updated || '未知'}</small>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+                            <button type="button" class="btn btn-primary" onclick="loadProjectUsers()">刷新数据</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        // 移除已存在的模态框
+        const existingModal = document.getElementById('projectStatsModal');
+        if (existingModal) {
+            existingModal.remove();
+        }
+
+        // 添加新模态框到页面
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+        // 显示模态框
+        const modal = new bootstrap.Modal(document.getElementById('projectStatsModal'));
+        modal.show();
+
+        // 模态框关闭后移除DOM元素
+        document.getElementById('projectStatsModal').addEventListener('hidden.bs.modal', function () {
+            this.remove();
+        });
+
+    } catch (error) {
+        console.error('获取项目统计失败:', error);
+        showToast('获取项目统计失败: ' + error.message, 'danger');
+    }
+}
 
 /**
  * 加载系统版本号并检查更新
