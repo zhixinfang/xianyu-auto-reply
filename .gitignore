@@ -445,12 +445,13 @@ deprecated/
 # 数据库文件
 xianyu_data.db
 xianyu_data_backup_*.db
+user_stats.db
 
 # 实时日志文件
 realtime.log
+*.log
 
 # 用户统计文件
-user_stats.db
 user_stats.txt
 stats.log
 
@@ -463,6 +464,30 @@ check_disk_usage.py
 # Docker相关
 docker-compose.override.yml
 .env.docker
+
+# 项目特定临时文件
+*.tmp.py
+*.temp.py
+temp_*.py
+debug_*.py
+test_*.py
+*_test.py
+
+# 项目特定配置文件
+config.local.py
+settings.local.py
+local_config.yml
+
+# 项目特定数据文件
+*.xlsx.bak
+*.csv.bak
+export_*.xlsx
+import_*.xlsx
+
+# 项目特定缓存文件
+*.cache.py
+cache_*.py
+__cache__/
 
 # IDE和编辑器
 .vscode/settings.json
