@@ -22,7 +22,7 @@ print_info() {
 }
 
 print_success() {
-    echo -e "${GREEN}✅ $1${NC}"
+    echo -e "${GREEN}�?$1${NC}"
 }
 
 print_warning() {
@@ -30,12 +30,12 @@ print_warning() {
 }
 
 print_error() {
-    echo -e "${RED}❌ $1${NC}"
+    echo -e "${RED}�?$1${NC}"
 }
 
-# 检查依赖
+# 检查依�?
 check_dependencies() {
-    print_info "检查系统依赖..."
+    print_info "检查系统依�?.."
     
     if ! command -v docker &> /dev/null; then
         print_error "Docker 未安装，请先安装 Docker"
@@ -50,28 +50,28 @@ check_dependencies() {
     print_success "系统依赖检查通过"
 }
 
-# 初始化配置
+# 初始化配�?
 init_config() {
-    print_info "初始化配置文件..."
+    print_info "初始化配置文�?.."
 
-    # 检查关键文件
+    # 检查关键文�?
     if [ ! -f "entrypoint.sh" ]; then
-        print_error "entrypoint.sh 文件不存在，Docker容器将无法启动"
-        print_info "请确保项目文件完整"
+        print_error "entrypoint.sh 文件不存在，Docker容器将无法启�?
+        print_info "请确保项目文件完�?
         exit 1
     else
-        print_success "entrypoint.sh 文件已存在"
+        print_success "entrypoint.sh 文件已存�?
     fi
 
     if [ ! -f "global_config.yml" ]; then
-        print_error "global_config.yml 配置文件不存在"
-        print_info "请确保配置文件存在"
+        print_error "global_config.yml 配置文件不存�?
+        print_info "请确保配置文件存�?
         exit 1
     else
-        print_success "global_config.yml 配置文件已存在"
+        print_success "global_config.yml 配置文件已存�?
     fi
 
-    # 创建必要的目录
+    # 创建必要的目�?
     mkdir -p data logs backups static/uploads/images
     print_success "已创建必要的目录"
 }
@@ -79,7 +79,7 @@ init_config() {
 # 构建镜像
 build_image() {
     print_info "构建 Docker 镜像..."
-    echo "是否需要使用国内镜像(y/n): " && read iscn
+    echo "是否需要使用国内镜�?y/n): " && read iscn
     if [[ $iscn == "y" ]]; then
         docker-compose -f docker-compose-cn.yml build --no-cache
     else
@@ -93,7 +93,7 @@ start_services() {
     local profile=""
     if [ "$1" = "with-nginx" ]; then
         profile="--profile with-nginx"
-        print_info "启动服务（包含 Nginx）..."
+        print_info "启动服务（包�?Nginx�?.."
     else
         print_info "启动基础服务..."
     fi
@@ -105,7 +105,7 @@ start_services() {
     print_info "等待服务就绪..."
     sleep 10
 
-    # 检查服务状态
+    # 检查服务状�?
     if docker-compose ps | grep -q "Up"; then
         print_success "服务运行正常"
         show_access_info "$1"
@@ -120,14 +120,14 @@ start_services() {
 stop_services() {
     print_info "停止服务..."
     docker-compose down
-    print_success "服务已停止"
+    print_success "服务已停�?
 }
 
 # 重启服务
 restart_services() {
     print_info "重启服务..."
     docker-compose restart
-    print_success "服务已重启"
+    print_success "服务已重�?
 }
 
 # 查看日志
@@ -140,9 +140,9 @@ show_logs() {
     fi
 }
 
-# 查看状态
+# 查看状�?
 show_status() {
-    print_info "服务状态:"
+    print_info "服务状�?"
     docker-compose ps
     
     print_info "资源使用:"
@@ -154,7 +154,7 @@ show_access_info() {
     local with_nginx="$1"
     
     echo ""
-    print_success "🎉 部署完成！"
+    print_success "🎉 部署完成�?
     echo ""
     
     if [ "$with_nginx" = "with-nginx" ]; then
@@ -168,20 +168,20 @@ show_access_info() {
     
     echo ""
     echo "🔐 默认登录信息:"
-    echo "   用户名: admin"
+    echo "   用户�? admin"
     echo "   密码:   admin123"
     echo ""
     echo "📊 管理命令:"
-    echo "   查看状态: $0 status"
+    echo "   查看状�? $0 status"
     echo "   查看日志: $0 logs"
     echo "   重启服务: $0 restart"
     echo "   停止服务: $0 stop"
     echo ""
 }
 
-# 健康检查
+# 健康检�?
 health_check() {
-    print_info "执行健康检查..."
+    print_info "执行健康检�?.."
     
     local url="http://localhost:8080/health"
     local max_attempts=30
@@ -198,7 +198,7 @@ health_check() {
         ((attempt++))
     done
     
-    print_error "健康检查失败"
+    print_error "健康检查失�?
     return 1
 }
 
@@ -209,10 +209,10 @@ backup_data() {
     local backup_dir="backups/$(date +%Y%m%d_%H%M%S)"
     mkdir -p "$backup_dir"
     
-    # 备份数据库
+    # 备份数据�?
     if [ -f "data/xianyu_data.db" ]; then
         cp data/xianyu_data.db "$backup_dir/"
-        print_success "数据库备份完成"
+        print_success "数据库备份完�?
     fi
     
     # 备份配置
@@ -232,9 +232,9 @@ update_deployment() {
     # 停止服务
     stop_services
     
-    # 拉取最新代码（如果是git仓库）
+    # 拉取最新代码（如果是git仓库�?
     if [ -d ".git" ]; then
-        print_info "拉取最新代码..."
+        print_info "拉取最新代�?.."
         git pull
     fi
     
@@ -255,7 +255,7 @@ cleanup() {
     if [[ "$response" =~ ^[Yy]$ ]]; then
         print_info "清理环境..."
         
-        # 停止并删除容器
+        # 停止并删除容�?
         docker-compose down -v --rmi all
         
         # 删除数据目录
@@ -274,28 +274,28 @@ show_help() {
     echo "用法: $0 [命令] [选项]"
     echo ""
     echo "命令:"
-    echo "  init                初始化配置文件"
+    echo "  init                初始化配置文�?
     echo "  build               构建 Docker 镜像"
-    echo "  start [with-nginx]  启动服务（可选包含 Nginx）"
+    echo "  start [with-nginx]  启动服务（可选包�?Nginx�?
     echo "  stop                停止服务"
     echo "  restart             重启服务"
-    echo "  status              查看服务状态"
+    echo "  status              查看服务状�?
     echo "  logs [service]      查看日志"
-    echo "  health              健康检查"
+    echo "  health              健康检�?
     echo "  backup              备份数据"
     echo "  update              更新部署"
     echo "  cleanup             清理环境"
     echo "  help                显示帮助信息"
     echo ""
     echo "示例:"
-    echo "  $0 init             # 初始化配置"
+    echo "  $0 init             # 初始化配�?
     echo "  $0 start            # 启动基础服务"
-    echo "  $0 start with-nginx # 启动包含 Nginx 的服务"
+    echo "  $0 start with-nginx # 启动包含 Nginx 的服�?
     echo "  $0 logs xianyu-app  # 查看应用日志"
     echo ""
 }
 
-# 主函数
+# 主函�?
 main() {
     case "$1" in
         "init")
@@ -342,7 +342,7 @@ main() {
             show_help
             ;;
         "")
-            print_info "快速部署模式"
+            print_info "快速部署模�?
             check_dependencies
             init_config
             build_image
@@ -356,5 +356,5 @@ main() {
     esac
 }
 
-# 执行主函数
+# 执行主函�?
 main "$@"
