@@ -215,7 +215,9 @@ class XianyuLive:
         self.last_qr_cookie_refresh_time = 0  # 记录上次扫码登录Cookie刷新时间
         self.qr_cookie_refresh_cooldown = 600  # 扫码登录Cookie刷新后的冷却时间：10分钟
 
-
+        # 消息接收标识 - 用于控制Cookie刷新
+        self.last_message_received_time = 0  # 记录上次收到消息的时间
+        self.message_cookie_refresh_cooldown = 300  # 收到消息后5分钟内不执行Cookie刷新
 
         # WebSocket连接监控
         self.connection_failures = 0  # 连续连接失败次数
@@ -3553,8 +3555,15 @@ class XianyuLive:
 
                 current_time = time.time()
                 if current_time - self.last_cookie_refresh_time >= self.cookie_refresh_interval:
+                    # 检查是否在消息接收后的冷却时间内
+                    time_since_last_message = current_time - self.last_message_received_time
+                    if time_since_last_message < self.message_cookie_refresh_cooldown:
+                        remaining_time = self.message_cookie_refresh_cooldown - time_since_last_message
+                        remaining_minutes = int(remaining_time // 60)
+                        remaining_seconds = int(remaining_time % 60)
+                        logger.debug(f"【{self.cookie_id}】收到消息后冷却中，还需等待 {remaining_minutes}分{remaining_seconds}秒 才能执行Cookie刷新")
                     # 检查是否已有Cookie刷新任务在执行
-                    if self.cookie_refresh_running:
+                    elif self.cookie_refresh_running:
                         logger.debug(f"【{self.cookie_id}】Cookie刷新任务已在执行中，跳过本次触发")
                     else:
                         logger.info(f"【{self.cookie_id}】开始执行Cookie刷新任务...")
@@ -3619,6 +3628,10 @@ class XianyuLive:
 
             # 清除运行状态
             self.cookie_refresh_running = False
+
+            # 清空消息接收标志，允许下次正常执行Cookie刷新
+            self.last_message_received_time = 0
+            logger.debug(f"【{self.cookie_id}】Cookie刷新完成，已清空消息接收标志")
 
 
 
@@ -4530,6 +4543,10 @@ class XianyuLive:
                 logger.error(f"消息格式错误，期望字典但得到: {type(message)}")
                 logger.debug(f"消息内容: {message}")
                 return
+
+            # 【消息接收标识】记录收到消息的时间，用于控制Cookie刷新
+            self.last_message_received_time = time.time()
+            logger.debug(f"【{self.cookie_id}】收到消息，更新消息接收时间标识")
 
             # 【优先处理】尝试获取订单ID并获取订单详情
             order_id = None
