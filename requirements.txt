@@ -32,7 +32,7 @@ psutil>=5.9.0
 python-multipart>=0.0.6
 
 # ==================== AI回复引擎 ====================
-openai>=1.65.5
+openai>=1.50.0
 
 # ==================== 图像处理 ====================
 Pillow>=10.0.0
@@ -40,6 +40,7 @@ qrcode[pil]>=7.4.2
 
 # ==================== 浏览器自动化 ====================
 playwright>=1.40.0
+DrissionPage>=4.0.0
 
 # ==================== 加密和安全 ====================
 PyJWT>=2.8.0
@@ -70,6 +71,9 @@ xlsxwriter>=3.1.0
 # pip install -r requirements.txt
 # playwright install chromium
 # playwright install-deps chromium  # Linux系统需要
+#
+# 注意：DrissionPage需要Chrome/Chromium浏览器支持滑块验证功能
+# 如果系统没有Chrome，请先安装Chrome浏览器
 #
 # ==================== 内置模块说明 ====================
 # 以下模块是Python内置模块，无需安装：

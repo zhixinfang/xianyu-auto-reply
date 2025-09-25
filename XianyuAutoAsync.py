@@ -19,6 +19,7 @@ from config import (
 import sys
 import aiohttp
 from collections import defaultdict
+from db_manager import db_manager
 
 
 class AutoReplyPauseManager:
@@ -88,6 +89,35 @@ class AutoReplyPauseManager:
 
 # 全局暂停管理器实例
 pause_manager = AutoReplyPauseManager()
+
+def log_captcha_event(cookie_id: str, event_type: str, success: bool = None, details: str = ""):
+    """
+    简单记录滑块验证事件到txt文件
+
+    Args:
+        cookie_id: 账号ID
+        event_type: 事件类型 (检测到/开始处理/成功/失败)
+        success: 是否成功 (None表示进行中)
+        details: 详细信息
+    """
+    try:
+        log_dir = 'logs'
+        os.makedirs(log_dir, exist_ok=True)
+        log_file = os.path.join(log_dir, 'captcha_verification.txt')
+
+        timestamp = time.strftime('%Y-%m-%d %H:%M:%S')
+        status = "成功" if success is True else "失败" if success is False else "进行中"
+
+        log_entry = f"[{timestamp}] 【{cookie_id}】{event_type} - {status}"
+        if details:
+            log_entry += f" - {details}"
+        log_entry += "\n"
+
+        with open(log_file, 'a', encoding='utf-8') as f:
+            f.write(log_entry)
+
+    except Exception as e:
+        logger.error(f"记录滑块验证日志失败: {e}")
 
 # 日志配置
 log_dir = 'logs'
@@ -218,6 +248,13 @@ class XianyuLive:
         # 消息接收标识 - 用于控制Cookie刷新
         self.last_message_received_time = 0  # 记录上次收到消息的时间
         self.message_cookie_refresh_cooldown = 300  # 收到消息后5分钟内不执行Cookie刷新
+
+        # 浏览器Cookie刷新成功标志
+        self.browser_cookie_refreshed = False  # 标记_refresh_cookies_via_browser是否成功更新过数据库
+
+        # 滑块验证相关
+        self.captcha_verification_count = 0  # 滑块验证次数计数器
+        self.max_captcha_verification_count = 3  # 最大滑块验证次数，防止无限递归
 
         # WebSocket连接监控
         self.connection_failures = 0  # 连续连接失败次数
@@ -725,10 +762,24 @@ class XianyuLive:
 
 
 
-    async def refresh_token(self):
-        """刷新token"""
+    async def refresh_token(self, captcha_retry_count: int = 0):
+        """刷新token
+
+        Args:
+            captcha_retry_count: 滑块验证重试次数，用于防止无限递归
+        """
         try:
-            logger.info(f"【{self.cookie_id}】开始刷新token...")
+            logger.info(f"【{self.cookie_id}】开始刷新token... (滑块验证重试次数: {captcha_retry_count})")
+
+            # 检查滑块验证重试次数，防止无限递归
+            if captcha_retry_count >= self.max_captcha_verification_count:
+                logger.error(f"【{self.cookie_id}】滑块验证重试次数已达上限 ({self.max_captcha_verification_count})，停止重试")
+                await self.send_token_refresh_notification(
+                    f"滑块验证重试次数已达上限，请手动处理",
+                    "captcha_max_retries_exceeded"
+                )
+                return None
+
             # 生成更精确的时间戳
             timestamp = str(int(time.time() * 1000))
 
@@ -822,6 +873,146 @@ class XianyuLive:
                                 logger.info(f"【{self.cookie_id}】Token刷新成功")
                                 return new_token
 
+                    # 检查是否需要滑块验证
+                    if self._need_captcha_verification(res_json):
+                        logger.warning(f"【{self.cookie_id}】检测到需要滑块验证，开始处理...")
+
+                        # 记录滑块验证检测到日志文件
+                        verification_url = res_json.get('data', {}).get('url', 'Token刷新时检测')
+                        log_captcha_event(self.cookie_id, "检测到滑块验证", None, f"触发场景: Token刷新, URL: {verification_url}")
+
+                        # 添加风控日志记录
+                        log_id = None
+                        try:
+                            success = db_manager.add_risk_control_log(
+                                cookie_id=self.cookie_id,
+                                event_type='slider_captcha',
+                                event_description=f"检测到需要滑块验证，触发场景: Token刷新, URL: {verification_url}",
+                                processing_status='processing'
+                            )
+                            if success:
+                                # 获取刚插入的记录ID（简单方式，实际应该返回ID）
+                                logs = db_manager.get_risk_control_logs(cookie_id=self.cookie_id, limit=1)
+                                if logs:
+                                    log_id = logs[0].get('id')
+                                logger.info(f"【{self.cookie_id}】风控日志记录成功，ID: {log_id}")
+                        except Exception as log_e:
+                            logger.error(f"【{self.cookie_id}】记录风控日志失败: {log_e}")
+
+                        try:
+                            # 尝试通过滑块验证获取新的cookies
+                            captcha_start_time = time.time()
+                            new_cookies_str = await self._handle_captcha_verification(res_json)
+                            captcha_duration = time.time() - captcha_start_time
+
+                            if new_cookies_str:
+                                logger.info(f"【{self.cookie_id}】滑块验证成功，获取到新的cookies")
+
+                                # 记录滑块验证成功到日志文件
+                                log_captcha_event(self.cookie_id, "滑块验证成功", True,
+                                    f"耗时: {captcha_duration:.2f}秒, 重试次数: {captcha_retry_count + 1}, cookies长度: {len(new_cookies_str)}")
+
+                                # 更新风控日志为成功状态
+                                if 'log_id' in locals() and log_id:
+                                    try:
+                                        db_manager.update_risk_control_log(
+                                            log_id=log_id,
+                                            processing_result=f"滑块验证成功，耗时: {captcha_duration:.2f}秒, cookies长度: {len(new_cookies_str)}",
+                                            processing_status='success'
+                                        )
+                                    except Exception as update_e:
+                                        logger.error(f"【{self.cookie_id}】更新风控日志失败: {update_e}")
+
+                                # 更新cookies并重启任务
+                                update_success = await self._update_cookies_and_restart(new_cookies_str)
+                                if update_success:
+                                    logger.info(f"【{self.cookie_id}】cookies更新成功，使用新cookies重新尝试刷新token...")
+
+                                    # 发送滑块验证成功通知
+                                    await self.send_token_refresh_notification(
+                                        f"滑块验证成功，cookies已更新，任务已重启",
+                                        "captcha_verification_success"
+                                    )
+
+                                    # 重新尝试刷新token（递归调用，但有深度限制）
+                                    return await self.refresh_token(captcha_retry_count + 1)
+                                else:
+                                    logger.error(f"【{self.cookie_id}】cookies更新失败")
+                                    await self.send_token_refresh_notification(
+                                        f"滑块验证成功但cookies更新失败",
+                                        "captcha_cookies_update_failed"
+                                    )
+                            else:
+                                logger.error(f"【{self.cookie_id}】滑块验证失败")
+
+                                # 记录滑块验证失败到日志文件
+                                log_captcha_event(self.cookie_id, "滑块验证失败", False,
+                                    f"耗时: {captcha_duration:.2f}秒, 重试次数: {captcha_retry_count + 1}, 原因: 未获取到新cookies")
+
+                                # 更新风控日志为失败状态
+                                if 'log_id' in locals() and log_id:
+                                    try:
+                                        db_manager.update_risk_control_log(
+                                            log_id=log_id,
+                                            processing_result=f"滑块验证失败，耗时: {captcha_duration:.2f}秒, 原因: 未获取到新cookies",
+                                            processing_status='failed'
+                                        )
+                                    except Exception as update_e:
+                                        logger.error(f"【{self.cookie_id}】更新风控日志失败: {update_e}")
+
+                                await self.send_token_refresh_notification(
+                                    f"滑块验证失败，请检查网络连接或手动处理",
+                                    "captcha_verification_failed"
+                                )
+                        except Exception as captcha_e:
+                            logger.error(f"【{self.cookie_id}】滑块验证处理异常: {self._safe_str(captcha_e)}")
+
+                            # 记录滑块验证异常到日志文件
+                            captcha_duration = time.time() - captcha_start_time if 'captcha_start_time' in locals() else 0
+                            log_captcha_event(self.cookie_id, "滑块验证异常", False,
+                                f"耗时: {captcha_duration:.2f}秒, 重试次数: {captcha_retry_count + 1}, 异常: {str(captcha_e)}")
+
+                            # 更新风控日志为异常状态
+                            if 'log_id' in locals() and log_id:
+                                try:
+                                    db_manager.update_risk_control_log(
+                                        log_id=log_id,
+                                        processing_result=f"滑块验证处理异常，耗时: {captcha_duration:.2f}秒",
+                                        processing_status='failed',
+                                        error_message=str(captcha_e)
+                                    )
+                                except Exception as update_e:
+                                    logger.error(f"【{self.cookie_id}】更新风控日志失败: {update_e}")
+
+                            await self.send_token_refresh_notification(
+                                f"滑块验证处理异常: {str(captcha_e)}",
+                                "captcha_verification_exception"
+                            )
+
+                    # 检查是否包含"令牌过期"或"Session过期"且浏览器Cookie刷新标志为True
+                    if isinstance(res_json, dict):
+                        res_json_str = json.dumps(res_json, ensure_ascii=False, separators=(',', ':'))
+                        if ('令牌过期' in res_json_str or 'Session过期' in res_json_str) and self.browser_cookie_refreshed:
+                            logger.warning(f"【{self.cookie_id}】检测到令牌/Session过期且浏览器Cookie已刷新过，准备重启实例...")
+
+                            # 将浏览器Cookie刷新标志设置为False
+                            self.browser_cookie_refreshed = False
+                            logger.info(f"【{self.cookie_id}】浏览器Cookie刷新标志已重置为False")
+
+                            # 记录到日志文件
+                            log_captcha_event(self.cookie_id, "令牌/Session过期触发实例重启", None,
+                                f"检测到令牌/Session过期且浏览器Cookie已刷新，准备重启实例")
+
+                            # 调用重启实例方法
+                            try:
+                                logger.info(f"【{self.cookie_id}】开始重启实例...")
+                                await self._restart_instance()
+                                logger.info(f"【{self.cookie_id}】实例重启完成")
+                                return None
+                            except Exception as restart_e:
+                                logger.error(f"【{self.cookie_id}】实例重启失败: {self._safe_str(restart_e)}")
+                                # 重启失败时继续执行原有的失败处理逻辑
+
                     logger.error(f"【{self.cookie_id}】Token刷新失败: {res_json}")
 
                     # 清空当前token，确保下次重试时重新获取
@@ -840,6 +1031,329 @@ class XianyuLive:
             # 发送Token刷新异常通知
             await self.send_token_refresh_notification(f"Token刷新异常: {str(e)}", "token_refresh_exception")
             return None
+
+    def _need_captcha_verification(self, res_json: dict) -> bool:
+        """检查响应是否需要滑块验证"""
+        try:
+            if not isinstance(res_json, dict):
+                return False
+
+            # 记录res_json内容到日志文件
+            import json
+            res_json_str = json.dumps(res_json, ensure_ascii=False, separators=(',', ':'))
+            log_captcha_event(self.cookie_id, "检查滑块验证响应", None, f"res_json内容: {res_json_str}")
+
+            # 检查返回的错误信息
+            ret_value = res_json.get('ret', [])
+            if not ret_value:
+                return False
+
+            # 检查是否包含需要验证的关键词
+            captcha_keywords = [
+                'FAIL_SYS_USER_VALIDATE',  # 用户验证失败
+                'RGV587_ERROR',            # 风控错误
+                '哎哟喂,被挤爆啦',          # 被挤爆了
+                '哎哟喂，被挤爆啦',         # 被挤爆了（中文逗号）
+                '挤爆了',                  # 挤爆了
+                '请稍后重试',              # 请稍后重试
+                'punish?x5secdata',        # 惩罚页面
+                'captcha',                 # 验证码
+            ]
+
+            error_msg = str(ret_value[0]) if ret_value else ''
+
+            # 检查错误信息是否包含需要验证的关键词
+            for keyword in captcha_keywords:
+                if keyword in error_msg:
+                    logger.info(f"【{self.cookie_id}】检测到需要滑块验证的关键词: {keyword}")
+                    return True
+
+            # 检查data字段中是否包含验证URL
+            data = res_json.get('data', {})
+            if isinstance(data, dict) and 'url' in data:
+                url = data.get('url', '')
+                if 'punish' in url or 'captcha' in url or 'validate' in url:
+                    logger.info(f"【{self.cookie_id}】检测到验证URL: {url}")
+                    return True
+
+            return False
+
+        except Exception as e:
+            logger.error(f"【{self.cookie_id}】检查是否需要滑块验证时出错: {self._safe_str(e)}")
+            return False
+
+    async def _handle_captcha_verification(self, res_json: dict) -> str:
+        """处理滑块验证，返回新的cookies字符串"""
+        try:
+            logger.info(f"【{self.cookie_id}】开始处理滑块验证...")
+
+            # 获取验证URL
+            verification_url = None
+
+            # 从data字段获取URL
+            data = res_json.get('data', {})
+            if isinstance(data, dict) and 'url' in data:
+                verification_url = data.get('url')
+
+            # 如果没有找到URL，使用默认的验证页面
+            if not verification_url:
+                logger.info(f"【{self.cookie_id}】未找到验证URL，认为不需要滑块验证，返回正常")
+                return None
+
+            logger.info(f"【{self.cookie_id}】验证URL: {verification_url}")
+
+            # 优先使用增强反检测滑块验证器
+            try:
+                from utils.xianyu_slider_stealth import XianyuSliderStealth
+                logger.info(f"【{self.cookie_id}】XianyuSliderStealth导入成功，使用增强反检测滑块验证")
+
+                # 创建增强反检测滑块验证器实例
+                slider_stealth = XianyuSliderStealth(
+                    user_id=self.cookie_id,
+                    enable_learning=True  # 启用学习功能
+                )
+
+                # 在线程池中执行滑块验证
+                import asyncio
+                import concurrent.futures
+
+                loop = asyncio.get_event_loop()
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    # 执行滑块验证
+                    success, cookies = await loop.run_in_executor(
+                        executor,
+                        slider_stealth.run,
+                        verification_url
+                    )
+
+                # 关闭浏览器
+                slider_stealth.close_browser()
+
+                if success and cookies:
+                    logger.info(f"【{self.cookie_id}】增强反检测滑块验证成功，获取到新的cookies")
+
+                    # 只提取x5sec相关的cookie值进行更新
+                    updated_cookies = self.cookies.copy()  # 复制现有cookies
+                    new_cookie_count = 0
+                    updated_cookie_count = 0
+                    x5sec_cookies = {}
+
+                    # 筛选出x5相关的cookies（包括x5sec, x5step等）
+                    for cookie_name, cookie_value in cookies.items():
+                        cookie_name_lower = cookie_name.lower()
+                        if cookie_name_lower.startswith('x5') or 'x5sec' in cookie_name_lower:
+                            x5sec_cookies[cookie_name] = cookie_value
+
+                    logger.info(f"【{self.cookie_id}】找到{len(x5sec_cookies)}个x5相关cookies: {list(x5sec_cookies.keys())}")
+
+                    # 只更新x5相关的cookies
+                    for cookie_name, cookie_value in x5sec_cookies.items():
+                        if cookie_name in updated_cookies:
+                            if updated_cookies[cookie_name] != cookie_value:
+                                logger.debug(f"【{self.cookie_id}】更新x5 cookie: {cookie_name}")
+                                updated_cookies[cookie_name] = cookie_value
+                                updated_cookie_count += 1
+                            else:
+                                logger.debug(f"【{self.cookie_id}】x5 cookie值未变: {cookie_name}")
+                        else:
+                            logger.debug(f"【{self.cookie_id}】新增x5 cookie: {cookie_name}")
+                            updated_cookies[cookie_name] = cookie_value
+                            new_cookie_count += 1
+
+                    # 将合并后的cookies字典转换为字符串格式
+                    cookies_str = "; ".join([f"{k}={v}" for k, v in updated_cookies.items()])
+
+                    logger.info(f"【{self.cookie_id}】x5 Cookie更新完成: 新增{new_cookie_count}个, 更新{updated_cookie_count}个, 总计{len(updated_cookies)}个")
+
+                    # 自动更新数据库中的cookie
+                    try:
+                        # 备份原有cookies
+                        old_cookies_str = self.cookies_str
+                        old_cookies_dict = self.cookies.copy()
+
+                        # 更新当前实例的cookies（使用合并后的cookies）
+                        self.cookies_str = cookies_str
+                        self.cookies = updated_cookies
+
+                        # 更新数据库中的cookies
+                        await self.update_config_cookies()
+                        logger.info(f"【{self.cookie_id}】滑块验证成功后，数据库cookies已自动更新")
+
+                            
+                        # 记录成功更新到日志文件，包含x5相关的cookie信息
+                        x5sec_cookies_str = "; ".join([f"{k}={v}" for k, v in x5sec_cookies.items()]) if x5sec_cookies else "无"
+                        log_captcha_event(self.cookie_id, "滑块验证成功并自动更新数据库", True,
+                            f"cookies长度: {len(cookies_str)}, 新增{new_cookie_count}个x5, 更新{updated_cookie_count}个x5, 总计{len(updated_cookies)}个cookie项, x5 cookies: {x5sec_cookies_str}")
+
+                        # 发送成功通知
+                        await self.send_token_refresh_notification(
+                            f"滑块验证成功，cookies已自动更新到数据库",
+                            "captcha_success_auto_update"
+                        )
+
+                    except Exception as update_e:
+                        logger.error(f"【{self.cookie_id}】自动更新数据库cookies失败: {self._safe_str(update_e)}")
+
+                        # 回滚cookies
+                        self.cookies_str = old_cookies_str
+                        self.cookies = old_cookies_dict
+
+                        # 记录更新失败到日志文件，包含获取到的x5 cookies
+                        x5sec_cookies_str = "; ".join([f"{k}={v}" for k, v in x5sec_cookies.items()]) if x5sec_cookies else "无"
+                        log_captcha_event(self.cookie_id, "滑块验证成功但数据库更新失败", False,
+                            f"更新异常: {self._safe_str(update_e)[:100]}, 获取到的x5 cookies: {x5sec_cookies_str}")
+
+                        # 发送更新失败通知
+                        await self.send_token_refresh_notification(
+                            f"滑块验证成功但数据库更新失败: {self._safe_str(update_e)}",
+                            "captcha_success_db_update_failed"
+                        )
+
+                    return cookies_str
+                else:
+                    logger.error(f"【{self.cookie_id}】增强反检测滑块验证失败")
+
+                    # 记录滑块验证失败到日志文件
+                    log_captcha_event(self.cookie_id, "增强反检测滑块验证失败", False,
+                        f"XianyuSliderStealth执行失败, 环境: {'Docker' if os.getenv('DOCKER_ENV') else '本地'}")
+
+                    # 发送通知
+                    await self.send_token_refresh_notification(
+                        f"增强反检测滑块验证失败，需要手动处理。验证URL: {verification_url}",
+                        "captcha_verification_failed"
+                    )
+                    return None
+
+            except ImportError as import_e:
+                logger.error(f"【{self.cookie_id}】XianyuSliderStealth导入失败: {import_e}")
+                logger.error(f"【{self.cookie_id}】请安装Playwright库: pip install playwright")
+
+                # 记录导入失败到日志文件
+                log_captcha_event(self.cookie_id, "XianyuSliderStealth导入失败", False,
+                    f"Playwright未安装, 错误: {import_e}")
+
+                # 发送通知
+                await self.send_token_refresh_notification(
+                    f"滑块验证功能不可用，请安装Playwright。验证URL: {verification_url}",
+                    "captcha_dependency_missing"
+                )
+                return None
+
+            except Exception as stealth_e:
+                logger.error(f"【{self.cookie_id}】增强反检测滑块验证异常: {self._safe_str(stealth_e)}")
+
+                # 记录异常到日志文件
+                log_captcha_event(self.cookie_id, "增强反检测滑块验证异常", False,
+                    f"执行异常, 错误: {self._safe_str(stealth_e)[:100]}")
+
+                # 发送通知
+                await self.send_token_refresh_notification(
+                    f"滑块验证执行异常，需要手动处理。验证URL: {verification_url}",
+                    "captcha_execution_error"
+                )
+                return None
+
+
+
+        except Exception as e:
+            logger.error(f"【{self.cookie_id}】处理滑块验证时出错: {self._safe_str(e)}")
+            return None
+
+    async def _update_cookies_and_restart(self, new_cookies_str: str):
+        """更新cookies并重启任务"""
+        try:
+            logger.info(f"【{self.cookie_id}】开始更新cookies并重启任务...")
+
+            # 验证新cookies的有效性
+            if not new_cookies_str or not new_cookies_str.strip():
+                logger.error(f"【{self.cookie_id}】新cookies为空，无法更新")
+                return False
+
+            # 解析新cookies，确保格式正确
+            try:
+                new_cookies_dict = trans_cookies(new_cookies_str)
+                if not new_cookies_dict:
+                    logger.error(f"【{self.cookie_id}】新cookies解析失败，无法更新")
+                    return False
+                logger.info(f"【{self.cookie_id}】新cookies解析成功，包含 {len(new_cookies_dict)} 个字段")
+            except Exception as parse_e:
+                logger.error(f"【{self.cookie_id}】新cookies解析异常: {self._safe_str(parse_e)}")
+                return False
+
+            # 合并cookies：保留原有cookies，只更新新获取到的字段
+            try:
+                # 获取当前的cookies字典
+                current_cookies_dict = trans_cookies(self.cookies_str)
+                logger.info(f"【{self.cookie_id}】当前cookies包含 {len(current_cookies_dict)} 个字段")
+
+                # 合并cookies：新cookies覆盖旧cookies中的相同字段
+                merged_cookies_dict = current_cookies_dict.copy()
+                updated_fields = []
+
+                for key, value in new_cookies_dict.items():
+                    if key in merged_cookies_dict:
+                        if merged_cookies_dict[key] != value:
+                            merged_cookies_dict[key] = value
+                            updated_fields.append(key)
+                    else:
+                        merged_cookies_dict[key] = value
+                        updated_fields.append(f"{key}(新增)")
+
+                if updated_fields:
+                    logger.info(f"【{self.cookie_id}】更新的cookie字段: {', '.join(updated_fields)}")
+                else:
+                    logger.info(f"【{self.cookie_id}】没有cookie字段需要更新")
+
+                # 重新组装cookies字符串
+                merged_cookies_str = '; '.join([f"{k}={v}" for k, v in merged_cookies_dict.items()])
+                logger.info(f"【{self.cookie_id}】合并后cookies包含 {len(merged_cookies_dict)} 个字段")
+
+                # 使用合并后的cookies字符串
+                new_cookies_str = merged_cookies_str
+                new_cookies_dict = merged_cookies_dict
+
+            except Exception as merge_e:
+                logger.error(f"【{self.cookie_id}】cookies合并异常: {self._safe_str(merge_e)}")
+                logger.warning(f"【{self.cookie_id}】将使用原始新cookies（不合并）")
+                # 如果合并失败，继续使用原始的new_cookies_str
+
+            # 备份原有cookies，以防更新失败需要回滚
+            old_cookies_str = self.cookies_str
+            old_cookies_dict = self.cookies.copy()
+
+            try:
+                # 更新当前实例的cookies
+                self.cookies_str = new_cookies_str
+                self.cookies = new_cookies_dict
+
+                # 更新数据库中的cookies
+                await self.update_config_cookies()
+                logger.info(f"【{self.cookie_id}】数据库cookies更新成功")
+
+                # 通过CookieManager重启任务
+                logger.info(f"【{self.cookie_id}】通过CookieManager重启任务...")
+                await self._restart_instance()
+
+                logger.info(f"【{self.cookie_id}】cookies更新和任务重启完成")
+                return True
+
+            except Exception as update_e:
+                logger.error(f"【{self.cookie_id}】更新cookies过程中出错，尝试回滚: {self._safe_str(update_e)}")
+
+                # 回滚cookies
+                try:
+                    self.cookies_str = old_cookies_str
+                    self.cookies = old_cookies_dict
+                    await self.update_config_cookies()
+                    logger.info(f"【{self.cookie_id}】cookies已回滚到原始状态")
+                except Exception as rollback_e:
+                    logger.error(f"【{self.cookie_id}】cookies回滚失败: {self._safe_str(rollback_e)}")
+
+                return False
+
+        except Exception as e:
+            logger.error(f"【{self.cookie_id}】更新cookies并重启任务时出错: {self._safe_str(e)}")
+            return False
 
     async def update_config_cookies(self):
         """更新数据库中的cookies"""
@@ -3361,7 +3875,7 @@ class XianyuLive:
         text = {
             "contentType": 1,
             "text": {
-                "text": text
+                "text": text + "\n\n\n购买后如果没有发货，可尝试点击提醒发货按钮"
             }
         }
         text_base64 = str(base64.b64encode(json.dumps(text).encode('utf-8')), 'utf-8')
@@ -4255,6 +4769,10 @@ class XianyuLive:
 
             # 更新数据库中的Cookie
             await self.update_config_cookies()
+
+            # 设置浏览器Cookie刷新成功标志
+            self.browser_cookie_refreshed = True
+            logger.info(f"【{self.cookie_id}】浏览器Cookie刷新成功标志已设置为True")
 
             logger.info(f"【{self.cookie_id}】Cookie刷新完成")
             return True

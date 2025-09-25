@@ -20,6 +20,9 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV TZ=Asia/Shanghai
 ENV DOCKER_ENV=true
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+# DrissionPage环境变量
+ENV DISPLAY=:99
+ENV CHROME_BIN=/usr/bin/chromium
 
 # 安装系统依赖（包括Playwright浏览器依赖）
 RUN apt-get update && \
@@ -63,6 +66,8 @@ RUN apt-get update && \
         libx11-xcb1 \
         libxfixes3 \
         xdg-utils \
+        # DrissionPage需要的Chrome/Chromium浏览器
+        chromium \
         && apt-get clean \
         && rm -rf /var/lib/apt/lists/* \
         && rm -rf /tmp/* \

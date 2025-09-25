@@ -112,6 +112,17 @@ function showSection(sectionName) {
             }
         }, 100);
         break;
+    case 'risk-control-logs': // 【风控日志菜单】
+        // 自动加载风控日志
+        setTimeout(() => {
+            const riskLogContainer = document.getElementById('riskLogContainer');
+            if (riskLogContainer) {
+                console.log('首次进入风控日志页面，自动加载日志...');
+                loadRiskControlLogs();
+                loadCookieFilterOptions();
+            }
+        }, 100);
+        break;
     case 'user-management':  // 【用户管理菜单】
         loadUserManagement();
         break;
@@ -9821,6 +9832,276 @@ function scrollLogToTop() {
 function scrollLogToBottom() {
     const logContainer = document.getElementById('systemLogContainer');
     logContainer.scrollTop = logContainer.scrollHeight;
+}
+
+// ================================
+// 风控日志管理功能
+// ================================
+let currentRiskLogStatus = '';
+let currentRiskLogOffset = 0;
+const riskLogLimit = 100;
+
+// 加载风控日志
+async function loadRiskControlLogs(offset = 0) {
+    const token = localStorage.getItem('auth_token');
+    const cookieId = document.getElementById('riskLogCookieFilter').value;
+    const limit = document.getElementById('riskLogLimit').value;
+
+    const loadingDiv = document.getElementById('loadingRiskLogs');
+    const logContainer = document.getElementById('riskLogContainer');
+    const noLogsDiv = document.getElementById('noRiskLogs');
+
+    loadingDiv.style.display = 'block';
+    logContainer.style.display = 'none';
+    noLogsDiv.style.display = 'none';
+
+    let url = `/admin/risk-control-logs?limit=${limit}&offset=${offset}`;
+    if (cookieId) {
+        url += `&cookie_id=${cookieId}`;
+    }
+
+    try {
+        const response = await fetch(url, {
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+
+        const data = await response.json();
+        loadingDiv.style.display = 'none';
+
+        if (data.success && data.data && data.data.length > 0) {
+            displayRiskControlLogs(data.data);
+            updateRiskLogInfo(data);
+            updateRiskLogPagination(data);
+            logContainer.style.display = 'block';
+        } else {
+            noLogsDiv.style.display = 'block';
+            updateRiskLogInfo({total: 0, data: []});
+        }
+
+        currentRiskLogOffset = offset;
+    } catch (error) {
+        console.error('加载风控日志失败:', error);
+        loadingDiv.style.display = 'none';
+        noLogsDiv.style.display = 'block';
+        showToast('加载风控日志失败', 'danger');
+    }
+}
+
+// 显示风控日志
+function displayRiskControlLogs(logs) {
+    const tableBody = document.getElementById('riskLogTableBody');
+    tableBody.innerHTML = '';
+
+    logs.forEach(log => {
+        const row = document.createElement('tr');
+
+        // 格式化时间
+        const createdAt = new Date(log.created_at).toLocaleString('zh-CN');
+
+        // 状态标签
+        let statusBadge = '';
+        switch(log.processing_status) {
+            case 'processing':
+                statusBadge = '<span class="badge bg-warning">处理中</span>';
+                break;
+            case 'success':
+                statusBadge = '<span class="badge bg-success">成功</span>';
+                break;
+            case 'failed':
+                statusBadge = '<span class="badge bg-danger">失败</span>';
+                break;
+            default:
+                statusBadge = '<span class="badge bg-secondary">未知</span>';
+        }
+
+        row.innerHTML = `
+            <td class="text-nowrap">${createdAt}</td>
+            <td class="text-nowrap">${escapeHtml(log.cookie_id || '-')}</td>
+            <td class="text-nowrap">${escapeHtml(log.event_type || '-')}</td>
+            <td>${statusBadge}</td>
+            <td class="text-truncate" style="max-width: 200px;" title="${escapeHtml(log.event_description || '-')}">${escapeHtml(log.event_description || '-')}</td>
+            <td class="text-truncate" style="max-width: 200px;" title="${escapeHtml(log.processing_result || '-')}">${escapeHtml(log.processing_result || '-')}</td>
+            <td>
+                <button class="btn btn-sm btn-outline-danger" onclick="deleteRiskControlLog(${log.id})" title="删除">
+                    <i class="bi bi-trash"></i>
+                </button>
+            </td>
+        `;
+
+        tableBody.appendChild(row);
+    });
+}
+
+// 更新风控日志信息
+function updateRiskLogInfo(data) {
+    const countElement = document.getElementById('riskLogCount');
+    const paginationInfo = document.getElementById('riskLogPaginationInfo');
+
+    if (countElement) {
+        countElement.textContent = `总计: ${data.total || 0} 条`;
+    }
+
+    if (paginationInfo) {
+        const start = currentRiskLogOffset + 1;
+        const end = Math.min(currentRiskLogOffset + (data.data ? data.data.length : 0), data.total || 0);
+        paginationInfo.textContent = `显示第 ${start}-${end} 条，共 ${data.total || 0} 条记录`;
+    }
+}
+
+// 更新风控日志分页
+function updateRiskLogPagination(data) {
+    const pagination = document.getElementById('riskLogPagination');
+    const limit = parseInt(document.getElementById('riskLogLimit').value);
+    const total = data.total || 0;
+    const totalPages = Math.ceil(total / limit);
+    const currentPage = Math.floor(currentRiskLogOffset / limit) + 1;
+
+    pagination.innerHTML = '';
+
+    if (totalPages <= 1) return;
+
+    // 上一页
+    const prevLi = document.createElement('li');
+    prevLi.className = `page-item ${currentPage === 1 ? 'disabled' : ''}`;
+    prevLi.innerHTML = `<a class="page-link" href="#" onclick="loadRiskControlLogs(${(currentPage - 2) * limit})">上一页</a>`;
+    pagination.appendChild(prevLi);
+
+    // 页码
+    const startPage = Math.max(1, currentPage - 2);
+    const endPage = Math.min(totalPages, currentPage + 2);
+
+    for (let i = startPage; i <= endPage; i++) {
+        const li = document.createElement('li');
+        li.className = `page-item ${i === currentPage ? 'active' : ''}`;
+        li.innerHTML = `<a class="page-link" href="#" onclick="loadRiskControlLogs(${(i - 1) * limit})">${i}</a>`;
+        pagination.appendChild(li);
+    }
+
+    // 下一页
+    const nextLi = document.createElement('li');
+    nextLi.className = `page-item ${currentPage === totalPages ? 'disabled' : ''}`;
+    nextLi.innerHTML = `<a class="page-link" href="#" onclick="loadRiskControlLogs(${currentPage * limit})">下一页</a>`;
+    pagination.appendChild(nextLi);
+}
+
+// 按状态过滤风控日志
+function filterRiskLogsByStatus(status) {
+    currentRiskLogStatus = status;
+
+    // 更新过滤按钮状态
+    document.querySelectorAll('.filter-badge[data-status]').forEach(badge => {
+        badge.classList.remove('active');
+    });
+    document.querySelector(`.filter-badge[data-status="${status}"]`).classList.add('active');
+
+    // 重新加载日志
+    loadRiskControlLogs(0);
+}
+
+// 加载账号筛选选项
+async function loadCookieFilterOptions() {
+    try {
+        const token = localStorage.getItem('auth_token');
+        const response = await fetch('/admin/cookies', {
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+
+        if (response.ok) {
+            const data = await response.json();
+            const select = document.getElementById('riskLogCookieFilter');
+
+            // 清空现有选项，保留"全部账号"
+            select.innerHTML = '<option value="">全部账号</option>';
+
+            if (data.success && data.cookies) {
+                data.cookies.forEach(cookie => {
+                    const option = document.createElement('option');
+                    option.value = cookie.cookie_id;
+                    option.textContent = `${cookie.cookie_id} (${cookie.nickname || '未知'})`;
+                    select.appendChild(option);
+                });
+            }
+        }
+    } catch (error) {
+        console.error('加载账号选项失败:', error);
+    }
+}
+
+// 删除风控日志记录
+async function deleteRiskControlLog(logId) {
+    if (!confirm('确定要删除这条风控日志记录吗？')) {
+        return;
+    }
+
+    try {
+        const token = localStorage.getItem('auth_token');
+        const response = await fetch(`/admin/risk-control-logs/${logId}`, {
+            method: 'DELETE',
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            showToast('删除成功', 'success');
+            loadRiskControlLogs(currentRiskLogOffset);
+        } else {
+            showToast(data.message || '删除失败', 'danger');
+        }
+    } catch (error) {
+        console.error('删除风控日志失败:', error);
+        showToast('删除失败', 'danger');
+    }
+}
+
+// 清空风控日志
+async function clearRiskControlLogs() {
+    if (!confirm('确定要清空所有风控日志吗？此操作不可恢复！')) {
+        return;
+    }
+
+    try {
+        const token = localStorage.getItem('auth_token');
+
+        // 获取所有日志ID并逐个删除
+        const response = await fetch('/admin/risk-control-logs?limit=10000', {
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+
+        const data = await response.json();
+
+        if (data.success && data.data) {
+            let deleteCount = 0;
+            for (const log of data.data) {
+                const deleteResponse = await fetch(`/admin/risk-control-logs/${log.id}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                if (deleteResponse.ok) {
+                    deleteCount++;
+                }
+            }
+
+            showToast(`成功清空 ${deleteCount} 条风控日志`, 'success');
+            loadRiskControlLogs(0);
+        } else {
+            showToast('获取日志列表失败', 'danger');
+        }
+    } catch (error) {
+        console.error('清空风控日志失败:', error);
+        showToast('清空失败', 'danger');
+    }
 }
 
 // ================================

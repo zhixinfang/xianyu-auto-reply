@@ -115,6 +115,12 @@
           </a>
         </div>
         <div class="nav-item">
+          <a href="#" class="nav-link" onclick="showSection('risk-control-logs')">
+            <i class="bi bi-shield-exclamation"></i>
+            风控日志
+          </a>
+        </div>
+        <div class="nav-item">
           <a href="#" class="nav-link" onclick="showSection('data-management')">
             <i class="bi bi-database"></i>
             数据管理
@@ -1378,6 +1384,131 @@
               <p class="mt-2 text-muted">暂无日志数据</p>
             </div>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 风控日志内容 -->
+    <div id="risk-control-logs-section" class="content-section">
+      <div class="content-header">
+        <h2 class="mb-0">
+          <i class="bi bi-shield-exclamation me-2"></i>
+          风控日志
+        </h2>
+        <p class="text-muted mb-0">查看滑块验证等风控事件的处理记录</p>
+      </div>
+
+      <div class="content-body">
+        <!-- 风控日志控制面板 -->
+        <div class="card mb-4">
+          <div class="card-header">
+            <h5 class="mb-0">
+              <i class="bi bi-funnel me-2"></i>
+              筛选条件
+            </h5>
+          </div>
+          <div class="card-body">
+            <div class="row align-items-center">
+              <div class="col-md-4">
+                <label class="form-label">账号筛选</label>
+                <select class="form-select" id="riskLogCookieFilter" onchange="loadRiskControlLogs()">
+                  <option value="">全部账号</option>
+                </select>
+              </div>
+              <div class="col-md-3">
+                <label class="form-label">显示数量</label>
+                <select class="form-select" id="riskLogLimit" onchange="loadRiskControlLogs()">
+                  <option value="50">50条</option>
+                  <option value="100" selected>100条</option>
+                  <option value="200">200条</option>
+                  <option value="500">500条</option>
+                </select>
+              </div>
+              <div class="col-md-3">
+                <label class="form-label">处理状态</label>
+                <div class="d-flex gap-2 flex-wrap">
+                  <span class="badge bg-secondary filter-badge active" data-status="" onclick="filterRiskLogsByStatus('')">
+                    全部
+                  </span>
+                  <span class="badge bg-warning filter-badge" data-status="processing" onclick="filterRiskLogsByStatus('processing')">
+                    处理中
+                  </span>
+                  <span class="badge bg-success filter-badge" data-status="success" onclick="filterRiskLogsByStatus('success')">
+                    成功
+                  </span>
+                  <span class="badge bg-danger filter-badge" data-status="failed" onclick="filterRiskLogsByStatus('failed')">
+                    失败
+                  </span>
+                </div>
+              </div>
+              <div class="col-md-2">
+                <label class="form-label">&nbsp;</label>
+                <div class="d-grid">
+                  <button class="btn btn-primary" onclick="loadRiskControlLogs()">
+                    <i class="bi bi-arrow-clockwise"></i> 刷新
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 风控日志列表 -->
+        <div class="card">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">
+              <i class="bi bi-list-ul me-2"></i>
+              风控日志记录
+            </h5>
+            <div class="d-flex gap-2">
+              <span id="riskLogCount" class="badge bg-info">总计: 0 条</span>
+              <button class="btn btn-sm btn-outline-danger" onclick="clearRiskControlLogs()" title="清空日志">
+                <i class="bi bi-trash"></i> 清空
+              </button>
+            </div>
+          </div>
+          <div class="card-body p-0">
+            <div id="loadingRiskLogs" class="text-center py-4">
+              <div class="spinner-border" role="status">
+                <span class="visually-hidden">加载中...</span>
+              </div>
+              <p class="mt-2">正在加载风控日志...</p>
+            </div>
+            <div id="riskLogContainer" style="display: none;">
+              <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                  <thead class="table-light">
+                    <tr>
+                      <th width="120">时间</th>
+                      <th width="100">账号</th>
+                      <th width="100">事件类型</th>
+                      <th width="80">状态</th>
+                      <th>事件描述</th>
+                      <th>处理结果</th>
+                      <th width="80">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody id="riskLogTableBody">
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div id="noRiskLogs" class="text-center py-4" style="display: none;">
+              <i class="bi bi-shield-exclamation" style="font-size: 3rem; color: #ccc;"></i>
+              <p class="mt-2 text-muted">暂无风控日志数据</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- 分页控件 -->
+        <div class="d-flex justify-content-between align-items-center mt-3">
+          <div class="text-muted">
+            <span id="riskLogPaginationInfo">显示第 0-0 条，共 0 条记录</span>
+          </div>
+          <nav>
+            <ul class="pagination pagination-sm mb-0" id="riskLogPagination">
+            </ul>
+          </nav>
         </div>
       </div>
     </div>

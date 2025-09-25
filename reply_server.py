@@ -3636,6 +3636,64 @@ async def get_logs(lines: int = 200, level: str = None, source: str = None, _: N
         return {"success": False, "message": f"获取日志失败: {str(e)}", "logs": []}
 
 
+@app.get("/risk-control-logs")
+async def get_risk_control_logs(
+    cookie_id: str = None,
+    limit: int = 100,
+    offset: int = 0,
+    admin_user: Dict[str, Any] = Depends(require_admin)
+):
+    """获取风控日志（管理员专用）"""
+    try:
+        log_with_user('info', f"查询风控日志: cookie_id={cookie_id}, limit={limit}, offset={offset}", admin_user)
+
+        # 获取风控日志
+        logs = db_manager.get_risk_control_logs(cookie_id=cookie_id, limit=limit, offset=offset)
+        total_count = db_manager.get_risk_control_logs_count(cookie_id=cookie_id)
+
+        log_with_user('info', f"风控日志查询成功，共 {len(logs)} 条记录，总计 {total_count} 条", admin_user)
+
+        return {
+            "success": True,
+            "data": logs,
+            "total": total_count,
+            "limit": limit,
+            "offset": offset
+        }
+
+    except Exception as e:
+        log_with_user('error', f"获取风控日志失败: {str(e)}", admin_user)
+        return {
+            "success": False,
+            "message": f"获取风控日志失败: {str(e)}",
+            "data": [],
+            "total": 0
+        }
+
+
+@app.delete("/risk-control-logs/{log_id}")
+async def delete_risk_control_log(
+    log_id: int,
+    admin_user: Dict[str, Any] = Depends(require_admin)
+):
+    """删除风控日志记录（管理员专用）"""
+    try:
+        log_with_user('info', f"删除风控日志记录: {log_id}", admin_user)
+
+        success = db_manager.delete_risk_control_log(log_id)
+
+        if success:
+            log_with_user('info', f"风控日志删除成功: {log_id}", admin_user)
+            return {"success": True, "message": "删除成功"}
+        else:
+            log_with_user('warning', f"风控日志删除失败: {log_id}", admin_user)
+            return {"success": False, "message": "删除失败，记录可能不存在"}
+
+    except Exception as e:
+        log_with_user('error', f"删除风控日志失败: {log_id} - {str(e)}", admin_user)
+        return {"success": False, "message": f"删除失败: {str(e)}"}
+
+
 @app.get("/logs/stats")
 async def get_log_stats(_: None = Depends(require_auth)):
     """获取日志统计信息"""
