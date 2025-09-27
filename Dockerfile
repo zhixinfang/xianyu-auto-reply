@@ -30,6 +30,14 @@ RUN apt-get update && \
         # 基础工具
         nodejs \
         npm \
+        build-essential \
+        gcc \
+        g++ \
+        make \
+        pkg-config \
+        patchelf \
+        git \
+
         tzdata \
         curl \
         ca-certificates \
@@ -72,6 +80,10 @@ RUN apt-get update && \
         && rm -rf /var/lib/apt/lists/* \
         && rm -rf /tmp/* \
         && rm -rf /var/tmp/*
+
+# 降低编译内存占用（针对 Nuitka 构建阶段）
+ENV CFLAGS="-O1" \
+    CXXFLAGS="-O1"
 
 # 设置时区
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone

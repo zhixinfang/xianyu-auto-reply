@@ -38,6 +38,9 @@ def build():
         "--python-flag=no_docstrings",
         "--python-flag=no_warnings",
         "--enable-plugin=anti-bloat",
+        # 降低内存占用，避免容器内 OOM
+        "--lto=no",
+        "--jobs=1",
         str(SRC)
     ]
 
