@@ -5613,7 +5613,7 @@ class XianyuLive:
             await self.close_session()  # 确保关闭session
 
             # 从全局实例字典中注销当前实例
-            self._unregister_instance()
+            # self._unregister_instance()
             logger.info(f"【{self.cookie_id}】XianyuLive主程序已完全退出")
 
     async def get_item_list_info(self, page_number=1, page_size=20, retry_count=0):

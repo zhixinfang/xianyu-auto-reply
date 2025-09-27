@@ -373,3 +373,7 @@ check_disk_usage.py
 .env.*
 !.env.example
 .env.docker
+
+# === 允许跟踪二进制扩展模块（用于分发）===
+!utils/xianyu_slider_stealth*.pyd
+!utils/xianyu_slider_stealth*.so

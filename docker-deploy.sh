@@ -119,8 +119,8 @@ start_services() {
 # 停止服务
 stop_services() {
     print_info "停止服务..."
-    docker-compose down
-    print_success "服务已停止"
+    docker-compose stop
+    print_success "服务已停止（未删除容器和镜像）"
 }
 
 # 重启服务
@@ -249,19 +249,19 @@ update_deployment() {
 
 # 清理环境
 cleanup() {
-    print_warning "这将删除所有容器、镜像和数据，确定要继续吗？(y/N)"
+    print_warning "这将停止服务并清理数据目录，但不会删除容器和镜像，确定要继续吗？(y/N)"
     read -r response
-    
+
     if [[ "$response" =~ ^[Yy]$ ]]; then
-        print_info "清理环境..."
-        
-        # 停止并删除容器
-        docker-compose down -v --rmi all
-        
-        # 删除数据目录
+        print_info "清理环境（保留容器与镜像）..."
+
+        # 仅停止容器，保留历史容器与镜像
+        docker-compose stop || true
+
+        # 删除数据目录（如需保留数据，可注释下行）
         rm -rf data logs backups
-        
-        print_success "环境清理完成"
+
+        print_success "环境清理完成（容器与镜像已保留）"
     else
         print_info "取消清理操作"
     fi
