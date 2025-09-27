@@ -770,6 +770,8 @@ class XianyuLive:
         """
         try:
             logger.info(f"【{self.cookie_id}】开始刷新token... (滑块验证重试次数: {captcha_retry_count})")
+            # 标记本次刷新状态
+            self.last_token_refresh_status = "started"
 
             # 检查滑块验证重试次数，防止无限递归
             if captcha_retry_count >= self.max_captcha_verification_count:
@@ -788,6 +790,8 @@ class XianyuLive:
                 remaining_minutes = int(remaining_time // 60)
                 remaining_seconds = int(remaining_time % 60)
                 logger.info(f"【{self.cookie_id}】收到消息后冷却中，放弃本次token刷新，还需等待 {remaining_minutes}分{remaining_seconds}秒")
+                # 标记为因冷却而跳过（正常情况）
+                self.last_token_refresh_status = "skipped_cooldown"
                 return None
 
             # 生成更精确的时间戳
@@ -885,6 +889,8 @@ class XianyuLive:
                                 logger.debug(f"【{self.cookie_id}】Token刷新成功，已重置消息接收时间标识")
 
                                 logger.info(f"【{self.cookie_id}】Token刷新成功")
+                                # 标记为成功
+                                self.last_token_refresh_status = "success"
                                 return new_token
 
                     # 检查是否需要滑块验证
@@ -1024,6 +1030,8 @@ class XianyuLive:
                                     # Cookie刷新成功后重启实例
                                     await self._restart_instance()
                                     logger.info(f"【{self.cookie_id}】实例重启完成")
+                                    # 标记为已重启（正常情况）
+                                    self.last_token_refresh_status = "restarted_after_cookie_refresh"
                                     return None
                                 else:
                                     logger.error(f"【{self.cookie_id}】Cookie刷新失败，跳过实例重启")
@@ -1040,6 +1048,8 @@ class XianyuLive:
 
                     # 发送Token刷新失败通知
                     await self.send_token_refresh_notification(f"Token刷新失败: {res_json}", "token_refresh_failed")
+                    # 标记为失败
+                    self.last_token_refresh_status = "failed"
                     return None
 
         except Exception as e:
@@ -1050,6 +1060,8 @@ class XianyuLive:
 
             # 发送Token刷新异常通知
             await self.send_token_refresh_notification(f"Token刷新异常: {str(e)}", "token_refresh_exception")
+            # 标记为异常失败
+            self.last_token_refresh_status = "failed_exception"
             return None
 
     def _need_captcha_verification(self, res_json: dict) -> bool:
@@ -3854,7 +3866,11 @@ class XianyuLive:
                             await self.ws.close()
                         break
                     else:
-                        logger.error(f"【{self.cookie_id}】Token刷新失败，将在{self.token_retry_interval // 60}分钟后重试")
+                        # 根据上一次刷新状态决定日志级别（冷却/已重启为正常情况）
+                        if getattr(self, 'last_token_refresh_status', None) in ("skipped_cooldown", "restarted_after_cookie_refresh"):
+                            logger.info(f"【{self.cookie_id}】Token刷新未执行或已重启（正常），将在{self.token_retry_interval // 60}分钟后重试")
+                        else:
+                            logger.error(f"【{self.cookie_id}】Token刷新失败，将在{self.token_retry_interval // 60}分钟后重试")
 
                         # 清空当前token，确保下次重试时重新获取
                         self.current_token = None
