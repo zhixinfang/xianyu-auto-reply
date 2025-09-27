@@ -780,6 +780,16 @@ class XianyuLive:
                 )
                 return None
 
+            # 【消息接收检查】检查是否在消息接收后的冷却时间内，与 cookie_refresh_loop 保持一致
+            current_time = time.time()
+            time_since_last_message = current_time - self.last_message_received_time
+            if self.last_message_received_time > 0 and time_since_last_message < self.message_cookie_refresh_cooldown:
+                remaining_time = self.message_cookie_refresh_cooldown - time_since_last_message
+                remaining_minutes = int(remaining_time // 60)
+                remaining_seconds = int(remaining_time % 60)
+                logger.info(f"【{self.cookie_id}】收到消息后冷却中，放弃本次token刷新，还需等待 {remaining_minutes}分{remaining_seconds}秒")
+                return None
+
             # 生成更精确的时间戳
             timestamp = str(int(time.time() * 1000))
 
@@ -869,6 +879,10 @@ class XianyuLive:
                                 new_token = res_json['data']['accessToken']
                                 self.current_token = new_token
                                 self.last_token_refresh_time = time.time()
+
+                                # 【消息接收时间重置】Token刷新成功后重置消息接收标志，与 cookie_refresh_loop 保持一致
+                                self.last_message_received_time = 0
+                                logger.debug(f"【{self.cookie_id}】Token刷新成功，已重置消息接收时间标识")
 
                                 logger.info(f"【{self.cookie_id}】Token刷新成功")
                                 return new_token
@@ -989,29 +1003,35 @@ class XianyuLive:
                                 "captcha_verification_exception"
                             )
 
-                    # 检查是否包含"令牌过期"或"Session过期"且浏览器Cookie刷新标志为True
+                    # 检查是否包含"令牌过期"或"Session过期"
                     if isinstance(res_json, dict):
                         res_json_str = json.dumps(res_json, ensure_ascii=False, separators=(',', ':'))
-                        if ('令牌过期' in res_json_str or 'Session过期' in res_json_str) and self.browser_cookie_refreshed:
-                            logger.warning(f"【{self.cookie_id}】检测到令牌/Session过期且浏览器Cookie已刷新过，准备重启实例...")
-
-                            # 将浏览器Cookie刷新标志设置为False
-                            self.browser_cookie_refreshed = False
-                            logger.info(f"【{self.cookie_id}】浏览器Cookie刷新标志已重置为False")
+                        if '令牌过期' in res_json_str or 'Session过期' in res_json_str:
+                            logger.warning(f"【{self.cookie_id}】检测到令牌/Session过期，准备刷新Cookie并重启实例...")
 
                             # 记录到日志文件
-                            log_captcha_event(self.cookie_id, "令牌/Session过期触发实例重启", None,
-                                f"检测到令牌/Session过期且浏览器Cookie已刷新，准备重启实例")
+                            log_captcha_event(self.cookie_id, "令牌/Session过期触发Cookie刷新和实例重启", None,
+                                f"检测到令牌/Session过期，准备刷新Cookie并重启实例")
 
-                            # 调用重启实例方法
                             try:
-                                logger.info(f"【{self.cookie_id}】开始重启实例...")
-                                await self._restart_instance()
-                                logger.info(f"【{self.cookie_id}】实例重启完成")
-                                return None
-                            except Exception as restart_e:
-                                logger.error(f"【{self.cookie_id}】实例重启失败: {self._safe_str(restart_e)}")
-                                # 重启失败时继续执行原有的失败处理逻辑
+                                # 先调用_refresh_cookies_via_browser刷新Cookie
+                                logger.info(f"【{self.cookie_id}】开始通过浏览器刷新Cookie...")
+                                refresh_success = await self._refresh_cookies_via_browser(triggered_by_refresh_token=True)
+
+                                if refresh_success:
+                                    logger.info(f"【{self.cookie_id}】Cookie刷新成功，准备重启实例...")
+
+                                    # Cookie刷新成功后重启实例
+                                    await self._restart_instance()
+                                    logger.info(f"【{self.cookie_id}】实例重启完成")
+                                    return None
+                                else:
+                                    logger.error(f"【{self.cookie_id}】Cookie刷新失败，跳过实例重启")
+                                    # Cookie刷新失败时继续执行原有的失败处理逻辑
+
+                            except Exception as refresh_e:
+                                logger.error(f"【{self.cookie_id}】Cookie刷新或实例重启失败: {self._safe_str(refresh_e)}")
+                                # 刷新失败时继续执行原有的失败处理逻辑
 
                     logger.error(f"【{self.cookie_id}】Token刷新失败: {res_json}")
 
@@ -2514,8 +2534,8 @@ class XianyuLive:
                     logger.info(f"📱 QQ通知 - 响应状态: {response.status}")
                     logger.info(f"📱 QQ通知 - 响应内容: {response_text}")
 
-                    if response.status == 200:
-                        logger.info(f"📱 QQ通知发送成功: {qq_number}")
+                    if response.status == 200 or response.status == 502:
+                        logger.info(f"📱 QQ通知发送成功: {qq_number} (状态码: {response.status})")
                     else:
                         logger.warning(f"📱 QQ通知发送失败: HTTP {response.status}, 响应: {response_text}")
 
@@ -4496,8 +4516,12 @@ class XianyuLive:
         remaining_time = max(0, self.qr_cookie_refresh_cooldown - time_since_qr_refresh)
         return int(remaining_time)
 
-    async def _refresh_cookies_via_browser(self):
-        """通过浏览器访问指定页面刷新Cookie"""
+    async def _refresh_cookies_via_browser(self, triggered_by_refresh_token: bool = False):
+        """通过浏览器访问指定页面刷新Cookie
+
+        Args:
+            triggered_by_refresh_token: 是否由refresh_token方法触发，如果是True则设置browser_cookie_refreshed标志
+        """
 
 
         playwright = None
@@ -4770,9 +4794,12 @@ class XianyuLive:
             # 更新数据库中的Cookie
             await self.update_config_cookies()
 
-            # 设置浏览器Cookie刷新成功标志
-            self.browser_cookie_refreshed = True
-            logger.info(f"【{self.cookie_id}】浏览器Cookie刷新成功标志已设置为True")
+            # 只有当由refresh_token触发时才设置浏览器Cookie刷新成功标志
+            if triggered_by_refresh_token:
+                self.browser_cookie_refreshed = True
+                logger.info(f"【{self.cookie_id}】由refresh_token触发，浏览器Cookie刷新成功标志已设置为True")
+            else:
+                logger.info(f"【{self.cookie_id}】由定时任务触发，不设置浏览器Cookie刷新成功标志")
 
             logger.info(f"【{self.cookie_id}】Cookie刷新完成")
             return True

@@ -3946,6 +3946,85 @@ def delete_user(user_id: int, admin_user: Dict[str, Any] = Depends(require_admin
         log_with_user('error', f"删除用户异常: {str(e)}", admin_user)
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get('/admin/risk-control-logs')
+async def get_admin_risk_control_logs(
+    cookie_id: str = None,
+    limit: int = 100,
+    offset: int = 0,
+    admin_user: Dict[str, Any] = Depends(require_admin)
+):
+    """获取风控日志（管理员专用）"""
+    try:
+        log_with_user('info', f"查询风控日志: cookie_id={cookie_id}, limit={limit}, offset={offset}", admin_user)
+
+        # 获取风控日志
+        logs = db_manager.get_risk_control_logs(cookie_id=cookie_id, limit=limit, offset=offset)
+        total_count = db_manager.get_risk_control_logs_count(cookie_id=cookie_id)
+
+        log_with_user('info', f"风控日志查询成功，共 {len(logs)} 条记录，总计 {total_count} 条", admin_user)
+
+        return {
+            "success": True,
+            "data": logs,
+            "total": total_count,
+            "limit": limit,
+            "offset": offset
+        }
+
+    except Exception as e:
+        log_with_user('error', f"查询风控日志失败: {str(e)}", admin_user)
+        return {"success": False, "message": f"查询失败: {str(e)}", "data": [], "total": 0}
+
+
+@app.get('/admin/cookies')
+def get_admin_cookies(admin_user: Dict[str, Any] = Depends(require_admin)):
+    """获取所有Cookie信息（管理员专用）"""
+    try:
+        log_with_user('info', "查询所有Cookie信息", admin_user)
+
+        if cookie_manager.manager is None:
+            return {
+                "success": True,
+                "cookies": [],
+                "message": "CookieManager 未就绪"
+            }
+
+        # 获取所有用户的cookies
+        from db_manager import db_manager
+        all_users = db_manager.get_all_users()
+        all_cookies = []
+
+        for user in all_users:
+            user_id = user['id']
+            user_cookies = db_manager.get_all_cookies(user_id)
+            for cookie_id, cookie_value in user_cookies.items():
+                # 获取cookie详细信息
+                cookie_details = db_manager.get_cookie_details(cookie_id)
+                cookie_info = {
+                    'cookie_id': cookie_id,
+                    'user_id': user_id,
+                    'username': user['username'],
+                    'nickname': cookie_details.get('remark', '') if cookie_details else '',
+                    'enabled': cookie_manager.manager.get_cookie_status(cookie_id)
+                }
+                all_cookies.append(cookie_info)
+
+        log_with_user('info', f"获取到 {len(all_cookies)} 个Cookie", admin_user)
+        return {
+            "success": True,
+            "cookies": all_cookies,
+            "total": len(all_cookies)
+        }
+
+    except Exception as e:
+        log_with_user('error', f"获取Cookie信息失败: {str(e)}", admin_user)
+        return {
+            "success": False,
+            "cookies": [],
+            "message": f"获取失败: {str(e)}"
+        }
+
+
 @app.get('/admin/logs')
 def get_system_logs(admin_user: Dict[str, Any] = Depends(require_admin),
                    lines: int = 100,
