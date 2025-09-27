@@ -131,7 +131,7 @@ class XianyuSearcher:
             if os.getenv('DOCKER_ENV') == 'true':
                 browser_args.extend([
                     '--disable-gpu',
-                    '--single-process'
+                    '--use-gl=swiftshader'
                 ])
 
             logger.info("正在启动浏览器...")

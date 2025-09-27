@@ -1607,10 +1607,9 @@ class XianyuLive:
                 '--no-pings'
             ]
 
-            # 在Docker环境中添加额外参数
+            # 在Docker环境中添加额外参数（移除 --single-process，避免崩溃；强制使用软件渲染）
             if os.getenv('DOCKER_ENV'):
                 browser_args.extend([
-                    '--single-process',
                     '--disable-background-networking',
                     '--disable-client-side-phishing-detection',
                     '--disable-hang-monitor',
@@ -1621,7 +1620,8 @@ class XianyuLive:
                     '--safebrowsing-disable-auto-update',
                     '--enable-automation',
                     '--password-store=basic',
-                    '--use-mock-keychain'
+                    '--use-mock-keychain',
+                    '--use-gl=swiftshader'
                 ])
 
             browser = await playwright.chromium.launch(
@@ -4302,10 +4302,9 @@ class XianyuLive:
                 '--no-pings'
             ]
 
-            # 在Docker环境中添加额外参数
+            # 在Docker环境中添加额外参数（移除 --single-process，避免崩溃；强制使用软件渲染）
             if os.getenv('DOCKER_ENV'):
                 browser_args.extend([
-                    '--single-process',
                     '--disable-background-networking',
                     '--disable-client-side-phishing-detection',
                     '--disable-hang-monitor',
@@ -4316,7 +4315,8 @@ class XianyuLive:
                     '--safebrowsing-disable-auto-update',
                     '--enable-automation',
                     '--password-store=basic',
-                    '--use-mock-keychain'
+                    '--use-mock-keychain',
+                    '--use-gl=swiftshader'
                 ])
 
             # 使用无头浏览器
@@ -4645,10 +4645,9 @@ class XianyuLive:
                 '--no-pings'
             ]
 
-            # 在Docker环境中添加额外参数
+            # 在Docker环境中添加额外参数（移除 --single-process，避免崩溃；强制使用软件渲染）
             if os.getenv('DOCKER_ENV'):
                 browser_args.extend([
-                    '--single-process',
                     '--disable-background-networking',
                     '--disable-client-side-phishing-detection',
                     '--disable-hang-monitor',
@@ -4659,7 +4658,8 @@ class XianyuLive:
                     '--safebrowsing-disable-auto-update',
                     '--enable-automation',
                     '--password-store=basic',
-                    '--use-mock-keychain'
+                    '--use-mock-keychain',
+                    '--use-gl=swiftshader'
                 ])
 
             # Cookie刷新模式使用无头浏览器

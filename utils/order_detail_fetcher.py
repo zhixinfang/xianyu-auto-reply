@@ -86,6 +86,7 @@ class OrderDetailFetcher:
                 '--no-first-run',
                 '--no-zygote',
                 '--disable-gpu',
+                '--use-gl=swiftshader',
                 '--disable-background-timer-throttling',
                 '--disable-backgrounding-occluded-windows',
                 '--disable-renderer-backgrounding',
@@ -100,10 +101,6 @@ class OrderDetailFetcher:
                 '--no-default-browser-check',
                 '--no-pings'
             ]
-
-            # 只在Docker环境中使用单进程模式
-            if os.getenv('DOCKER_ENV'):
-                browser_args.append('--single-process')
 
             # 在Docker环境中添加额外参数
             if os.getenv('DOCKER_ENV'):

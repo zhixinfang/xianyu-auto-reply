@@ -68,6 +68,7 @@ class XianyuSliderStealth:
                     "--no-first-run",
                     "--no-zygote",
                     "--disable-gpu",
+                    "--use-gl=swiftshader",
                     "--disable-web-security",
                     "--disable-features=VizDisplayCompositor",
                     f"--window-size={browser_features['window_size']}",
