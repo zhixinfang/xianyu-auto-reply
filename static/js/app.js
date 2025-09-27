@@ -10069,8 +10069,9 @@ async function clearRiskControlLogs() {
     try {
         const token = localStorage.getItem('auth_token');
 
-        // 获取所有日志ID并逐个删除
-        const response = await fetch('/admin/risk-control-logs?limit=10000', {
+        // 调用后端批量清空接口（管理员）
+        const response = await fetch('/admin/data/risk_control_logs', {
+            method: 'DELETE',
             headers: {
                 'Authorization': `Bearer ${token}`
             }
@@ -10078,25 +10079,11 @@ async function clearRiskControlLogs() {
 
         const data = await response.json();
 
-        if (data.success && data.data) {
-            let deleteCount = 0;
-            for (const log of data.data) {
-                const deleteResponse = await fetch(`/admin/risk-control-logs/${log.id}`, {
-                    method: 'DELETE',
-                    headers: {
-                        'Authorization': `Bearer ${token}`
-                    }
-                });
-
-                if (deleteResponse.ok) {
-                    deleteCount++;
-                }
-            }
-
-            showToast(`成功清空 ${deleteCount} 条风控日志`, 'success');
+        if (response.ok) {
+            showToast('风控日志已清空', 'success');
             loadRiskControlLogs(0);
         } else {
-            showToast('获取日志列表失败', 'danger');
+            showToast(data.detail || data.message || '清空失败', 'danger');
         }
     } catch (error) {
         console.error('清空风控日志失败:', error);
