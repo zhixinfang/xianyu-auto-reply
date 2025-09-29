@@ -161,7 +161,7 @@ class XianyuLive:
     # 类级别的实例管理字典，用于API调用
     _instances = {}  # {cookie_id: XianyuLive实例}
     _instances_lock = asyncio.Lock()
-    
+
     def _safe_str(self, e):
         """安全地将异常转换为字符串"""
         try:
@@ -251,6 +251,8 @@ class XianyuLive:
 
         # 浏览器Cookie刷新成功标志
         self.browser_cookie_refreshed = False  # 标记_refresh_cookies_via_browser是否成功更新过数据库
+        self.restarted_in_browser_refresh = False  # 刷新流程内部是否已触发重启（用于去重）
+
 
         # 滑块验证相关
         self.captcha_verification_count = 0  # 滑块验证次数计数器
@@ -428,7 +430,7 @@ class XianyuLive:
         except Exception as e:
             logger.error(f"【{self.cookie_id}】清理过期锁时发生错误: {self._safe_str(e)}")
 
-    
+
 
     def _is_auto_delivery_trigger(self, message: str) -> bool:
         """检查消息是否为自动发货触发关键字"""
@@ -772,6 +774,8 @@ class XianyuLive:
             logger.info(f"【{self.cookie_id}】开始刷新token... (滑块验证重试次数: {captcha_retry_count})")
             # 标记本次刷新状态
             self.last_token_refresh_status = "started"
+            # 重置“刷新流程内已重启”标记，避免多次重启
+            self.restarted_in_browser_refresh = False
 
             # 检查滑块验证重试次数，防止无限递归
             if captcha_retry_count >= self.max_captcha_verification_count:
@@ -1025,11 +1029,21 @@ class XianyuLive:
                                 refresh_success = await self._refresh_cookies_via_browser(triggered_by_refresh_token=True)
 
                                 if refresh_success:
+                                    # 如果在刷新流程内部已经触发过重启，则跳过重复重启
+                                    if getattr(self, 'restarted_in_browser_refresh', False):
+                                        logger.info(f"【{self.cookie_id}】Cookie刷新成功（刷新流程内已重启），跳过重复重启")
+                                        self.last_token_refresh_status = "restarted_after_cookie_refresh"
+                                        return None
+
                                     logger.info(f"【{self.cookie_id}】Cookie刷新成功，准备重启实例...")
 
                                     # Cookie刷新成功后重启实例
                                     await self._restart_instance()
                                     logger.info(f"【{self.cookie_id}】实例重启完成")
+
+                                    # 标记重启标志（无需主动关闭WS，重启由管理器处理）
+                                    self.connection_restart_flag = True
+
                                     # 标记为已重启（正常情况）
                                     self.last_token_refresh_status = "restarted_after_cookie_refresh"
                                     return None
@@ -1134,14 +1148,14 @@ class XianyuLive:
 
             logger.info(f"【{self.cookie_id}】验证URL: {verification_url}")
 
-            # 优先使用增强反检测滑块验证器
+            # 使用增强反检测滑块验证器（独立实例，解决并发冲突）
             try:
                 from utils.xianyu_slider_stealth import XianyuSliderStealth
                 logger.info(f"【{self.cookie_id}】XianyuSliderStealth导入成功，使用增强反检测滑块验证")
 
-                # 创建增强反检测滑块验证器实例
+                # 创建独立的滑块验证实例（每个用户独立实例，避免并发冲突）
                 slider_stealth = XianyuSliderStealth(
-                    user_id=self.cookie_id,
+                    user_id=f"{self.cookie_id}_{int(time.time() * 1000)}",  # 使用唯一ID避免冲突
                     enable_learning=True  # 启用学习功能
                 )
 
@@ -1157,9 +1171,6 @@ class XianyuLive:
                         slider_stealth.run,
                         verification_url
                     )
-
-                # 关闭浏览器
-                slider_stealth.close_browser()
 
                 if success and cookies:
                     logger.info(f"【{self.cookie_id}】增强反检测滑块验证成功，获取到新的cookies")
@@ -1211,7 +1222,7 @@ class XianyuLive:
                         await self.update_config_cookies()
                         logger.info(f"【{self.cookie_id}】滑块验证成功后，数据库cookies已自动更新")
 
-                            
+
                         # 记录成功更新到日志文件，包含x5相关的cookie信息
                         x5sec_cookies_str = "; ".join([f"{k}={v}" for k, v in x5sec_cookies.items()]) if x5sec_cookies else "无"
                         log_captcha_event(self.cookie_id, "滑块验证成功并自动更新数据库", True,
@@ -1610,6 +1621,7 @@ class XianyuLive:
             # 在Docker环境中添加额外参数（移除 --single-process，避免崩溃；强制使用软件渲染）
             if os.getenv('DOCKER_ENV'):
                 browser_args.extend([
+                    '--single-process',
                     '--disable-background-networking',
                     '--disable-client-side-phishing-detection',
                     '--disable-hang-monitor',
@@ -1620,8 +1632,7 @@ class XianyuLive:
                     '--safebrowsing-disable-auto-update',
                     '--enable-automation',
                     '--password-store=basic',
-                    '--use-mock-keychain',
-                    '--use-gl=swiftshader'
+                    '--use-mock-keychain'
                 ])
 
             browser = await playwright.chromium.launch(
@@ -2544,12 +2555,16 @@ class XianyuLive:
                 async with session.get(api_url, params=params, timeout=10) as response:
                     response_text = await response.text()
                     logger.info(f"📱 QQ通知 - 响应状态: {response.status}")
-                    logger.info(f"📱 QQ通知 - 响应内容: {response_text}")
 
-                    if response.status == 200 or response.status == 502:
+                    # 需求：502 视为成功，且不打印返回内容
+                    if response.status == 502:
                         logger.info(f"📱 QQ通知发送成功: {qq_number} (状态码: {response.status})")
+                    elif response.status == 200:
+                        logger.info(f"📱 QQ通知发送成功: {qq_number} (状态码: {response.status})")
+                        logger.debug(f"📱 QQ通知 - 响应内容: {response_text}")
                     else:
-                        logger.warning(f"📱 QQ通知发送失败: HTTP {response.status}, 响应: {response_text}")
+                        logger.warning(f"📱 QQ通知发送失败: HTTP {response.status}")
+                        logger.debug(f"📱 QQ通知 - 响应内容: {response_text}")
 
         except Exception as e:
             logger.error(f"📱 发送QQ通知异常: {self._safe_str(e)}")
@@ -2955,14 +2970,17 @@ class XianyuLive:
                 return
 
             # 构造通知消息
-            notification_msg = f"""🔴 闲鱼账号Token刷新异常
-
-账号ID: {self.cookie_id}
-聊天ID: {chat_id or '未知'}
-异常时间: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}
-异常信息: {error_message}
-
-请检查账号Cookie是否过期，如有需要请及时更新Cookie配置。"""
+            # 判断异常信息中是否包含"滑块验证成功"
+            if "滑块验证成功" in error_message:
+                notification_msg = f"{error_message}\n\n" \
+                                  f"账号: {self.cookie_id}\n" \
+                                  f"时间: {time.strftime('%Y-%m-%d %H:%M:%S')}\n"
+            else:
+                notification_msg = f"Token刷新异常\n\n" \
+                                  f"账号ID: {self.cookie_id}\n" \
+                                  f"异常时间: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}\n" \
+                                  f"异常信息: {error_message}\n\n" \
+                                  f"请检查账号Cookie是否过期，如有需要请及时更新Cookie配置。\n"
 
             logger.info(f"准备发送Token刷新异常通知: {self.cookie_id}")
 
@@ -3151,6 +3169,9 @@ class XianyuLive:
                             case 'telegram':
                                 await self._send_telegram_notification(config_data, notification_message)
                                 logger.info(f"已发送自动发货通知到Telegram")
+                            case 'bark':
+                                await self._send_bark_notification(config_data, notification_message)
+                                logger.info(f"已发送自动发货通知到Bark")
                             case _:
                                 logger.warning(f"不支持的通知渠道类型: {channel_type}")
 
@@ -3229,7 +3250,7 @@ class XianyuLive:
 
         async with order_detail_lock:
             logger.info(f"🔍 【{self.cookie_id}】获取订单详情锁 {order_id}，开始处理...")
-            
+
             try:
                 logger.info(f"【{self.cookie_id}】开始获取订单详情: {order_id}")
 
@@ -3862,8 +3883,7 @@ class XianyuLive:
                         # 注意：refresh_token方法中已经调用了_restart_instance()
                         # 这里只需要关闭当前连接，让main循环重新开始
                         self.connection_restart_flag = True
-                        if self.ws:
-                            await self.ws.close()
+                        await self._restart_instance()
                         break
                     else:
                         # 根据上一次刷新状态决定日志级别（冷却/已重启为正常情况）
@@ -4305,6 +4325,7 @@ class XianyuLive:
             # 在Docker环境中添加额外参数（移除 --single-process，避免崩溃；强制使用软件渲染）
             if os.getenv('DOCKER_ENV'):
                 browser_args.extend([
+                    '--single-process',
                     '--disable-background-networking',
                     '--disable-client-side-phishing-detection',
                     '--disable-hang-monitor',
@@ -4315,8 +4336,7 @@ class XianyuLive:
                     '--safebrowsing-disable-auto-update',
                     '--enable-automation',
                     '--password-store=basic',
-                    '--use-mock-keychain',
-                    '--use-gl=swiftshader'
+                    '--use-mock-keychain'
                 ])
 
             # 使用无头浏览器
@@ -4648,6 +4668,7 @@ class XianyuLive:
             # 在Docker环境中添加额外参数（移除 --single-process，避免崩溃；强制使用软件渲染）
             if os.getenv('DOCKER_ENV'):
                 browser_args.extend([
+                    '--single-process',
                     '--disable-background-networking',
                     '--disable-client-side-phishing-detection',
                     '--disable-hang-monitor',
@@ -4658,8 +4679,7 @@ class XianyuLive:
                     '--safebrowsing-disable-auto-update',
                     '--enable-automation',
                     '--password-store=basic',
-                    '--use-mock-keychain',
-                    '--use-gl=swiftshader'
+                    '--use-mock-keychain'
                 ])
 
             # Cookie刷新模式使用无头浏览器
@@ -4814,6 +4834,20 @@ class XianyuLive:
             if triggered_by_refresh_token:
                 self.browser_cookie_refreshed = True
                 logger.info(f"【{self.cookie_id}】由refresh_token触发，浏览器Cookie刷新成功标志已设置为True")
+
+                # 兜底：直接在此处触发实例重启，避免外层协程在返回后被取消导致未重启
+                try:
+                    # 标记“刷新流程内已触发重启”，供外层去重
+                    self.restarted_in_browser_refresh = True
+
+                    logger.info(f"【{self.cookie_id}】Cookie刷新成功，准备重启实例...(via _refresh_cookies_via_browser)")
+                    await self._restart_instance()
+                    logger.info(f"【{self.cookie_id}】实例重启完成(via _refresh_cookies_via_browser)")
+
+                    # 标记重启标志（无需主动关闭WS，重启由管理器处理）
+                    self.connection_restart_flag = True
+                except Exception as e:
+                    logger.error(f"【{self.cookie_id}】兜底重启失败: {self._safe_str(e)}")
             else:
                 logger.info(f"【{self.cookie_id}】由定时任务触发，不设置浏览器Cookie刷新成功标志")
 
@@ -4826,10 +4860,12 @@ class XianyuLive:
         finally:
             # 确保资源清理
             try:
-                if browser:
+                if 'browser' in locals() and browser:
                     await browser.close()
-                if playwright:
+                    logger.debug(f"【{self.cookie_id}】浏览器已关闭")
+                if 'playwright' in locals() and playwright:
                     await playwright.stop()
+                    logger.debug(f"【{self.cookie_id}】Playwright已停止")
             except Exception as cleanup_e:
                 logger.warning(f"【{self.cookie_id}】清理浏览器资源时出错: {self._safe_str(cleanup_e)}")
 

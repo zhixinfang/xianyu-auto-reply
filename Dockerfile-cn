@@ -75,8 +75,10 @@ RUN apt-get update && \
         libx11-xcb1 \
         libxfixes3 \
         xdg-utils \
-        # DrissionPage需要的Chrome/Chromium浏览器
         chromium \
+        # OpenCV运行时依赖
+        libgl1 \
+        libglib2.0-0 \
         && apt-get clean \
         && rm -rf /var/lib/apt/lists/* \
         && rm -rf /tmp/* \

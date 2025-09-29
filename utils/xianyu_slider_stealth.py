@@ -8,11 +8,23 @@
 import time
 import random
 import logging
-import asyncio
 import json
 import os
+import threading
+import tempfile
+import shutil
 from playwright.sync_api import sync_playwright, ElementHandle
 from typing import Optional, Tuple, List, Dict, Any
+
+# 导入配置
+try:
+    from config import config
+    SLIDER_MAX_CONCURRENT = config.get('SLIDER_VERIFICATION.max_concurrent', 3)
+    SLIDER_WAIT_TIMEOUT = config.get('SLIDER_VERIFICATION.wait_timeout', 60)
+except ImportError:
+    # 如果无法导入配置，使用默认值
+    SLIDER_MAX_CONCURRENT = 3
+    SLIDER_WAIT_TIMEOUT = 60
 
 # 配置日志
 logging.basicConfig(
@@ -21,6 +33,96 @@ logging.basicConfig(
     datefmt='%Y-%m-%d %H:%M:%S.%f'[:-3]
 )
 logger = logging.getLogger(__name__)
+
+# 全局并发控制
+class SliderConcurrencyManager:
+    """滑块验证并发管理器"""
+    _instance = None
+    _lock = threading.Lock()
+    
+    def __new__(cls):
+        if cls._instance is None:
+            with cls._lock:
+                if cls._instance is None:
+                    cls._instance = super().__new__(cls)
+                    cls._instance._initialized = False
+        return cls._instance
+    
+    def __init__(self):
+        if not self._initialized:
+            self.max_concurrent = SLIDER_MAX_CONCURRENT  # 从配置文件读取最大并发数
+            self.wait_timeout = SLIDER_WAIT_TIMEOUT  # 从配置文件读取等待超时时间
+            self.active_instances = {}  # 活跃实例
+            self.waiting_queue = []  # 等待队列
+            self.instance_lock = threading.Lock()
+            self._initialized = True
+            logger.info(f"滑块验证并发管理器初始化: 最大并发数={self.max_concurrent}, 等待超时={self.wait_timeout}秒")
+    
+    def can_start_instance(self, user_id: str) -> bool:
+        """检查是否可以启动新实例"""
+        with self.instance_lock:
+            return len(self.active_instances) < self.max_concurrent
+    
+    def wait_for_slot(self, user_id: str, timeout: int = None) -> bool:
+        """等待可用槽位"""
+        if timeout is None:
+            timeout = self.wait_timeout
+        
+        start_time = time.time()
+        
+        while time.time() - start_time < timeout:
+            with self.instance_lock:
+                if len(self.active_instances) < self.max_concurrent:
+                    return True
+            
+            # 检查是否在等待队列中
+            with self.instance_lock:
+                if user_id not in self.waiting_queue:
+                    self.waiting_queue.append(user_id)
+                    logger.info(f"用户 {user_id} 进入等待队列，当前队列长度: {len(self.waiting_queue)}")
+            
+            # 等待1秒后重试
+            time.sleep(1)
+        
+        # 超时后从队列中移除
+        with self.instance_lock:
+            if user_id in self.waiting_queue:
+                self.waiting_queue.remove(user_id)
+                logger.warning(f"用户 {user_id} 等待超时，从队列中移除")
+        
+        return False
+    
+    def register_instance(self, user_id: str, instance):
+        """注册实例"""
+        with self.instance_lock:
+            self.active_instances[user_id] = {
+                'instance': instance,
+                'start_time': time.time()
+            }
+            # 从等待队列中移除
+            if user_id in self.waiting_queue:
+                self.waiting_queue.remove(user_id)
+    
+    def unregister_instance(self, user_id: str):
+        """注销实例"""
+        with self.instance_lock:
+            if user_id in self.active_instances:
+                del self.active_instances[user_id]
+                logger.info(f"用户 {user_id} 实例已注销，当前活跃: {len(self.active_instances)}")
+    
+    def get_stats(self):
+        """获取统计信息"""
+        with self.instance_lock:
+            return {
+                'active_count': len(self.active_instances),
+                'max_concurrent': self.max_concurrent,
+                'available_slots': self.max_concurrent - len(self.active_instances),
+                'queue_length': len(self.waiting_queue),
+                'waiting_users': self.waiting_queue.copy()
+            }
+
+# 全局并发管理器实例
+concurrency_manager = SliderConcurrencyManager()
 
 class XianyuSliderStealth:
     
@@ -31,6 +133,22 @@ class XianyuSliderStealth:
         self.page = None
         self.context = None
         self.playwright = None
+        
+        # 为每个实例创建独立的临时目录
+        self.temp_dir = tempfile.mkdtemp(prefix=f"slider_{user_id}_")
+        logger.debug(f"用户 {self.user_id} 创建临时目录: {self.temp_dir}")
+        
+        # 等待可用槽位（排队机制）
+        logger.info(f"用户 {self.user_id} 检查并发限制...")
+        if not concurrency_manager.wait_for_slot(self.user_id):
+            stats = concurrency_manager.get_stats()
+            logger.error(f"用户 {self.user_id} 等待槽位超时，当前活跃: {stats['active_count']}/{stats['max_concurrent']}")
+            raise Exception(f"滑块验证等待槽位超时，请稍后重试")
+        
+        # 注册实例
+        concurrency_manager.register_instance(self.user_id, self)
+        stats = concurrency_manager.get_stats()
+        logger.info(f"用户 {self.user_id} 实例已注册，当前并发: {stats['active_count']}/{stats['max_concurrent']}")
         
         # 轨迹学习相关属性
         self.success_history_file = f"trajectory_history/{user_id}_success.json"
@@ -68,7 +186,6 @@ class XianyuSliderStealth:
                     "--no-first-run",
                     "--no-zygote",
                     "--disable-gpu",
-                    "--use-gl=swiftshader",
                     "--disable-web-security",
                     "--disable-features=VizDisplayCompositor",
                     f"--window-size={browser_features['window_size']}",
@@ -136,7 +253,39 @@ class XianyuSliderStealth:
             return self.page
         except Exception as e:
             logger.error(f"用户 {self.user_id} 初始化浏览器失败: {e}")
+            # 确保在异常时也清理已创建的资源
+            self._cleanup_on_init_failure()
             raise
+    
+    def _cleanup_on_init_failure(self):
+        """初始化失败时的清理"""
+        try:
+            if hasattr(self, 'page') and self.page:
+                self.page.close()
+                self.page = None
+        except Exception as e:
+            logger.warning(f"用户 {self.user_id} 清理页面时出错: {e}")
+        
+        try:
+            if hasattr(self, 'context') and self.context:
+                self.context.close()
+                self.context = None
+        except Exception as e:
+            logger.warning(f"用户 {self.user_id} 清理上下文时出错: {e}")
+        
+        try:
+            if hasattr(self, 'browser') and self.browser:
+                self.browser.close()
+                self.browser = None
+        except Exception as e:
+            logger.warning(f"用户 {self.user_id} 清理浏览器时出错: {e}")
+        
+        try:
+            if hasattr(self, 'playwright') and self.playwright:
+                self.playwright.stop()
+                self.playwright = None
+        except Exception as e:
+            logger.warning(f"用户 {self.user_id} 清理Playwright时出错: {e}")
     
     def _load_success_history(self) -> List[Dict[str, Any]]:
         """加载历史成功数据"""
@@ -309,8 +458,8 @@ class XianyuSliderStealth:
                 # 记录所有cookie的详细信息
                 logger.info(f"用户 {self.user_id} 获取到的所有cookie: {list(new_cookies.keys())}")
                 
-                # 只提取指定的cookie: _m_h5_tk, _m_h5_tk_enc, cookie2, t, sgcookie, unb, uc1, uc3, uc4
-                target_cookies = ['x5sec', '_m_h5_tk', '_m_h5_tk_enc', 'cookie2', 't', 'sgcookie', 'unb', 'uc1', 'uc3', 'uc4']
+                # 只提取指定的cookie: x5sec, _m_h5_tk, _m_h5_tk_enc, cookie2, t, sgcookie, unb, uc1, uc3, uc4
+                target_cookies = ['x5sec', '_m_h5_tk', '_m_h5_tk_enc', 'cookie2', 't']
                 filtered_cookies = {}
                 
                 for cookie_name in target_cookies:
@@ -334,7 +483,7 @@ class XianyuSliderStealth:
                     logger.info(f"用户 {self.user_id} 返回过滤后的cookie: {list(filtered_cookies.keys())}")
                     return filtered_cookies
                 else:
-                    logger.warning(f"用户 {self.user_id} 未找到目标cookie (_m_h5_tk, _m_h5_tk_enc, cookie2, t, sgcookie, unb, uc1, uc3, uc4)")
+                    logger.warning(f"用户 {self.user_id} 未找到目标cookie (x5sec, _m_h5_tk, _m_h5_tk_enc, cookie2, t)")
                     return None
             else:
                 logger.warning(f"用户 {self.user_id} 未获取到任何cookie")
@@ -1257,7 +1406,28 @@ class XianyuSliderStealth:
             return False
     
     def close_browser(self):
-        """安全关闭浏览器"""
+        """安全关闭浏览器并清理资源"""
+        logger.info(f"用户 {self.user_id} 开始清理资源...")
+        
+        # 清理页面
+        try:
+            if hasattr(self, 'page') and self.page:
+                self.page.close()
+                logger.debug(f"用户 {self.user_id} 页面已关闭")
+                self.page = None
+        except Exception as e:
+            logger.warning(f"用户 {self.user_id} 关闭页面时出错: {e}")
+        
+        # 清理上下文
+        try:
+            if hasattr(self, 'context') and self.context:
+                self.context.close()
+                logger.debug(f"用户 {self.user_id} 上下文已关闭")
+                self.context = None
+        except Exception as e:
+            logger.warning(f"用户 {self.user_id} 关闭上下文时出错: {e}")
+        
+        # 清理浏览器
         try:
             if hasattr(self, 'browser') and self.browser:
                 self.browser.close()
@@ -1266,6 +1436,7 @@ class XianyuSliderStealth:
         except Exception as e:
             logger.warning(f"用户 {self.user_id} 关闭浏览器时出错: {e}")
         
+        # 清理Playwright
         try:
             if hasattr(self, 'playwright') and self.playwright:
                 self.playwright.stop()
@@ -1273,6 +1444,24 @@ class XianyuSliderStealth:
                 self.playwright = None
         except Exception as e:
             logger.warning(f"用户 {self.user_id} 停止Playwright时出错: {e}")
+        
+        # 清理临时目录
+        try:
+            if hasattr(self, 'temp_dir') and self.temp_dir:
+                shutil.rmtree(self.temp_dir, ignore_errors=True)
+                logger.debug(f"用户 {self.user_id} 临时目录已清理: {self.temp_dir}")
+        except Exception as e:
+            logger.warning(f"用户 {self.user_id} 清理临时目录时出错: {e}")
+        
+        # 注销实例（最后执行，确保其他清理完成）
+        try:
+            concurrency_manager.unregister_instance(self.user_id)
+            stats = concurrency_manager.get_stats()
+            logger.info(f"用户 {self.user_id} 实例已注销，当前并发: {stats['active_count']}/{stats['max_concurrent']}，等待队列: {stats['queue_length']}")
+        except Exception as e:
+            logger.warning(f"用户 {self.user_id} 注销实例时出错: {e}")
+        
+        logger.info(f"用户 {self.user_id} 资源清理完成")
     
     def run(self, url: str):
         """运行主流程，返回(成功状态, cookie数据)"""
@@ -1355,18 +1544,9 @@ class XianyuSliderStealth:
             # 关闭浏览器
             self.close_browser()
 
-def process_user_url(user_id: str, url: str, enable_learning: bool = True):
-    """处理用户URL的滑块验证 - 增强反检测版本，返回(成功状态, cookie数据)"""
-    slider = XianyuSliderStealth(user_id, enable_learning)
-    try:
-        # run方法已经返回(成功状态, cookie数据)
-        return slider.run(url)
-    except Exception as e:
-        logger.error(f"用户 {user_id} 滑块验证处理异常: {str(e)}")
-        return False, None
-    finally:
-        # 安全关闭浏览器（run方法中已经会调用close_browser）
-        slider.close_browser()
+def get_slider_stats():
+    """获取滑块验证并发统计信息"""
+    return concurrency_manager.get_stats()
 
 if __name__ == "__main__":
     # 简单的命令行示例
@@ -1376,5 +1556,11 @@ if __name__ == "__main__":
         sys.exit(1)
     
     url = sys.argv[1]
-    result = process_user_url("test_user", url)
-    print(f"验证结果: {'成功' if result else '失败'}")
+    slider = XianyuSliderStealth("test_user", enable_learning=True)
+    try:
+        success, cookies = slider.run(url)
+        print(f"验证结果: {'成功' if success else '失败'}")
+        if cookies:
+            print(f"获取到 {len(cookies)} 个cookies")
+    except Exception as e:
+        print(f"验证异常: {e}")

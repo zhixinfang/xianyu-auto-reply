@@ -108,6 +108,9 @@ RUN playwright install chromium && \
 RUN mkdir -p /app/logs /app/data /app/backups /app/static/uploads/images && \
     chmod 777 /app/logs /app/data /app/backups /app/static/uploads /app/static/uploads/images
 
+# 配置系统限制，防止core文件生成
+RUN echo "ulimit -c 0" >> /etc/profile
+
 # 注意: 为了简化权限问题，使用root用户运行
 # 在生产环境中，建议配置适当的用户映射
 
