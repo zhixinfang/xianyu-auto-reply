@@ -2,19 +2,34 @@
 
 # Stubs included by default
 from __future__ import annotations
+from config import config
 from playwright.sync_api import ElementHandle, sync_playwright
 from typing import Any, Dict, List, Optional, Tuple
 from typing_extensions import Self
-import asyncio
 import json
 import logging
 import os
 import random
+import shutil
+import tempfile
+import threading
 import time
+
+SLIDER_MAX_CONCURRENT = 3
+SLIDER_WAIT_TIMEOUT = 60
+class SliderConcurrencyManager:
+    def __new__(cls: cls) -> Any: ...
+    def __init__(self: Self) -> None: ...
+    def can_start_instance(self: Self, user_id: str) -> bool: ...
+    def wait_for_slot(self: Self, user_id: str, timeout: int) -> bool: ...
+    def register_instance(self: Self, user_id: str, instance: Any) -> Any: ...
+    def unregister_instance(self: Self, user_id: str) -> Any: ...
+    def get_stats(self: Self) -> Any: ...
 
 class XianyuSliderStealth:
     def __init__(self: Self, user_id: str, enable_learning: bool) -> None: ...
     def init_browser(self: Self) -> Any: ...
+    def _cleanup_on_init_failure(self: Self) -> Any: ...
     def _load_success_history(self: Self) -> List[Dict[str, Any]]: ...
     def _save_success_record(self: Self, trajectory_data: Dict[str, Any]) -> Any: ...
     def _optimize_trajectory_params(self: Self) -> Dict[str, Any]: ...
@@ -33,7 +48,7 @@ class XianyuSliderStealth:
     def close_browser(self: Self) -> Any: ...
     def run(self: Self, url: str) -> Any: ...
 
-def process_user_url(user_id: str, url: str, enable_learning: bool) -> Any:
+def get_slider_stats() -> Any:
     ...
 
 
@@ -45,13 +60,16 @@ __name__ = ...
 import time
 import random
 import logging
-import asyncio
 import json
 import os
+import threading
+import tempfile
+import shutil
 import playwright
 import playwright.sync_api
 import playwright.sync_api.sync_playwright
 import playwright.sync_api.ElementHandle
 import typing
+import config
 import re
 import sys

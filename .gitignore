@@ -377,3 +377,111 @@ check_disk_usage.py
 # === 允许跟踪二进制扩展模块（用于分发）===
 !utils/xianyu_slider_stealth*.pyd
 !utils/xianyu_slider_stealth*.so
+
+# ==================== 新增项目特定规则 ====================
+
+# 用户数据和隐私文件
+user_data/
+personal_configs/
+*.personal.yml
+*.private.yml
+
+# 运行时生成的文件
+*.runtime
+*.session
+session_*
+runtime_*
+
+# 第三方服务配置
+*.service.yml
+*.webhook.yml
+external_configs/
+
+# 性能分析和调试文件
+*.perf
+*.trace
+memory_*.dump
+cpu_*.profile
+
+# 机器学习模型文件（如果有AI功能扩展）
+models/
+*.model
+*.weights
+*.checkpoint
+
+# 容器相关文件
+.docker/
+docker-data/
+container_logs/
+
+# 监控和统计文件
+metrics/
+analytics/
+*.metrics
+*.analytics
+
+# 自动生成的文档
+auto_docs/
+generated_docs/
+
+# 临时API文件
+api_temp/
+temp_api/
+
+# 插件和扩展
+plugins/
+extensions/
+addons/
+
+# 测试覆盖率报告
+coverage_html/
+.coverage.*
+coverage.xml
+
+# IDE和编辑器特定文件
+.vscode/settings.json
+.vscode/launch.json
+.idea/workspace.xml
+.idea/tasks.xml
+
+# 系统特定文件
+.DS_Store
+Thumbs.db
+desktop.ini
+*.lnk
+
+# 网络和代理配置
+proxy_configs/
+*.proxy
+network_configs/
+
+# ==================== 项目清理后新增规则 ====================
+
+# 临时文档和说明文件
+*功能说明.md
+*修改说明.md
+*分析报告.md
+*使用说明.md
+
+# 轨迹历史文件
+trajectory_history/
+*.trajectory
+
+# 实时日志文件
+realtime.log
+*.realtime
+
+# Nuitka编译报告
+nuitka-crash-report.xml
+*.crash-report.xml
+
+# 项目压缩包
+*.zip
+*.tar.gz
+*.rar
+*.7z
+
+# 临时数据库文件
+*.db-journal
+*.db-wal
+*.db-shm

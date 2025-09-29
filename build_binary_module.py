@@ -25,8 +25,55 @@ def ensure_nuitka():
         return False
 
 
+def clean_old_files():
+    """清理旧的编译产物"""
+    import os
+    import glob
+
+    patterns = [
+        "utils/xianyu_slider_stealth.*.pyd",
+        "utils/xianyu_slider_stealth.*.so",
+        "utils/xianyu_slider_stealth.build",
+        "utils/xianyu_slider_stealth.dist"
+    ]
+
+    for pattern in patterns:
+        for file_path in glob.glob(pattern):
+            try:
+                if os.path.isfile(file_path):
+                    os.remove(file_path)
+                    print(f"✓ 已删除旧文件: {file_path}")
+                elif os.path.isdir(file_path):
+                    import shutil
+                    shutil.rmtree(file_path)
+                    print(f"✓ 已删除旧目录: {file_path}")
+            except Exception as e:
+                print(f"⚠️ 无法删除 {file_path}: {e}")
+
+
+def check_permissions():
+    """检查目录权限"""
+    try:
+        test_file = OUT_DIR / "test_write.tmp"
+        test_file.write_text("test")
+        test_file.unlink()
+        return True
+    except Exception as e:
+        print(f"✗ 目录权限检查失败: {e}")
+        print("💡 请尝试以管理员身份运行此脚本")
+        return False
+
+
 def build():
     OUT_DIR.mkdir(parents=True, exist_ok=True)
+
+    # 检查权限
+    if not check_permissions():
+        return 1
+
+    # 清理旧文件
+    print("🧹 清理旧的编译产物...")
+    clean_old_files()
 
     cmd = [
         sys.executable, "-m", "nuitka",
@@ -45,9 +92,20 @@ def build():
     ]
 
     print("执行编译命令:\n ", " ".join(cmd))
-    result = subprocess.run(cmd, text=True)
-    if result.returncode != 0:
-        print("✗ 编译失败 (Nuitka 返回非零)")
+    try:
+        result = subprocess.run(cmd, text=True, timeout=300)  # 5分钟超时
+        if result.returncode != 0:
+            print("✗ 编译失败 (Nuitka 返回非零)")
+            print("💡 可能的解决方案:")
+            print("   1. 以管理员身份运行此脚本")
+            print("   2. 关闭杀毒软件的实时保护")
+            print("   3. 检查是否有其他Python进程在运行")
+            return 1
+    except subprocess.TimeoutExpired:
+        print("✗ 编译超时 (5分钟)")
+        return 1
+    except Exception as e:
+        print(f"✗ 编译过程中发生错误: {e}")
         return 1
 
     # 列出 utils 目录下的产物
@@ -65,11 +123,30 @@ def build():
 
 
 def main():
+    print("🔨 开始编译 xianyu_slider_stealth 模块...")
+    print("📁 项目目录:", Path.cwd())
+
     if not SRC.exists():
         print(f"✗ 源文件不存在: {SRC}")
         return 1
+
+    print(f"📄 源文件: {SRC}")
+    print(f"📂 输出目录: {OUT_DIR}")
+
     if not ensure_nuitka():
         return 2
+
+    # 检查是否以管理员身份运行（Windows）
+    import os
+    if os.name == 'nt':  # Windows
+        try:
+            import ctypes
+            is_admin = ctypes.windll.shell32.IsUserAnAdmin()
+            if not is_admin:
+                print("⚠️ 建议以管理员身份运行此脚本以避免权限问题")
+        except:
+            pass
+
     return build()
 
 

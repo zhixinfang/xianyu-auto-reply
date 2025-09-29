@@ -220,31 +220,39 @@ docker run -d -p 8080:8080 -v %cd%/xianyu-auto-reply/:/app/data/ --name xianyu-a
 
 ### 方式二：从源码构建部署
 
+#### 🌍 国际版（推荐海外用户）
 ```bash
 # 1. 克隆项目
 git clone https://github.com/zhinianboke/xianyu-auto-reply.git
 cd xianyu-auto-reply
 
-# 2. 设置脚本执行权限（Linux/macOS）
-chmod +x docker-deploy.sh
+# 2. 使用完整版配置（包含Redis缓存等增强功能）
+docker-compose up -d --build
 
-# 3. 一键部署（自动构建镜像）
-./docker-deploy.sh
+# 3. 访问系统
+# http://localhost:8080
+```
 
-# 4. 访问系统
+#### 🇨🇳 中国版（推荐国内用户）
+```bash
+# 1. 克隆项目
+git clone https://github.com/zhinianboke/xianyu-auto-reply.git
+cd xianyu-auto-reply
+
+# 2. 使用中国镜像源配置（下载速度更快）
+docker-compose -f docker-compose-cn.yml up -d --build
+
+# 3. 访问系统
 # http://localhost:8080
 ```
 
 **Windows用户**：
 ```cmd
-# 使用Windows批处理脚本（推荐）
-docker-deploy.bat
-
-# 或者使用Git Bash/WSL
-bash docker-deploy.sh
-
-# 或者直接使用Docker Compose
+# 国际版
 docker-compose up -d --build
+
+# 中国版（推荐）
+docker-compose -f docker-compose-cn.yml up -d --build
 ```
 
 ### 方式三：本地开发部署
@@ -283,6 +291,20 @@ python Start.py
 - **存储**: 建议10GB+
 - **Docker**: 20.10+ (Docker部署)
 - **Docker Compose**: 2.0+ (Docker部署)
+
+### ⚙️ 环境变量配置（可选）
+
+如需自定义配置，可以使用环境变量：
+
+```bash
+# 复制环境变量模板（可选）
+cp .env.example .env
+
+# 主要配置项
+WEB_PORT=8080                    # Web服务端口
+ADMIN_PASSWORD=your-password     # 管理员密码
+DEBUG=false                      # 调试模式
+```
 
 
 
