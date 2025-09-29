@@ -20,9 +20,15 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV TZ=Asia/Shanghai
 ENV DOCKER_ENV=true
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
-# DrissionPage环境变量
+
+# 无头浏览器环境变量
 ENV DISPLAY=:99
 ENV CHROME_BIN=/usr/bin/chromium
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=0
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+
+# 禁用GPU和图形加速，适合容器环境
+ENV CHROME_FLAGS="--no-sandbox --disable-dev-shm-usage --disable-gpu --disable-software-rasterizer --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-renderer-backgrounding --disable-features=TranslateUI --disable-extensions --disable-default-apps --disable-sync --disable-translate --hide-scrollbars --mute-audio --no-default-browser-check --no-pings --single-process"
 
 # 安装系统依赖（包括Playwright浏览器依赖）
 RUN apt-get update && \

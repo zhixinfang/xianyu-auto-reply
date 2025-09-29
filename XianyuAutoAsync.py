@@ -172,6 +172,78 @@ class XianyuLive:
             except:
                 return "未知错误"
 
+    def _get_browser_args(self):
+        """获取优化的浏览器启动参数"""
+        browser_args = [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-accelerated-2d-canvas',
+            '--no-first-run',
+            '--no-zygote',
+            '--disable-gpu',
+            '--disable-background-timer-throttling',
+            '--disable-backgrounding-occluded-windows',
+            '--disable-renderer-backgrounding',
+            '--disable-features=TranslateUI',
+            '--disable-ipc-flooding-protection',
+            '--disable-extensions',
+            '--disable-default-apps',
+            '--disable-sync',
+            '--disable-translate',
+            '--hide-scrollbars',
+            '--mute-audio',
+            '--no-default-browser-check',
+            '--no-pings'
+        ]
+
+        # 在Docker环境中添加额外参数（优化容器环境兼容性）
+        if os.getenv('DOCKER_ENV'):
+            browser_args.extend([
+                '--disable-background-networking',
+                '--disable-client-side-phishing-detection',
+                '--disable-hang-monitor',
+                '--disable-popup-blocking',
+                '--disable-prompt-on-repost',
+                '--disable-web-resources',
+                '--metrics-recording-only',
+                '--safebrowsing-disable-auto-update',
+                '--enable-automation',
+                '--password-store=basic',
+                '--use-mock-keychain',
+                # 容器环境特殊配置
+                '--disable-software-rasterizer',
+                '--disable-field-trial-config',
+                '--disable-back-forward-cache',
+                '--disable-breakpad',
+                '--disable-component-extensions-with-background-pages',
+                '--disable-component-update',
+                '--disable-domain-reliability',
+                '--disable-features=VizDisplayCompositor,AudioServiceOutOfProcess,TranslateUI',
+                '--force-color-profile=srgb',
+                '--disable-canvas-aa',
+                '--disable-2d-canvas-clip-aa',
+                '--disable-gl-drawing-for-tests',
+                '--disable-threaded-animation',
+                '--disable-threaded-scrolling',
+                '--disable-in-process-stack-traces',
+                '--disable-histogram-customizer',
+                '--disable-gl-extensions',
+                '--disable-composited-antialiasing',
+                # 音频和显示相关
+                '--disable-audio-output',
+                '--disable-audio-input',
+                '--autoplay-policy=no-user-gesture-required',
+                # 网络和安全相关
+                '--disable-web-security',
+                '--disable-ipc-flooding-protection',
+                # 内存和性能优化
+                '--memory-pressure-off',
+                '--max_old_space_size=4096'
+            ])
+
+        return browser_args
+
     def __init__(self, cookies_str=None, cookie_id: str = "default", user_id: int = None):
         """初始化闲鱼直播类"""
         logger.info(f"【{cookie_id}】开始初始化XianyuLive...")
@@ -1594,46 +1666,8 @@ class XianyuLive:
 
             playwright = await async_playwright().start()
 
-            # 启动浏览器（参照order_detail_fetcher的配置）
-            browser_args = [
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--disable-dev-shm-usage',
-                '--disable-accelerated-2d-canvas',
-                '--no-first-run',
-                '--no-zygote',
-                '--disable-gpu',
-                '--disable-background-timer-throttling',
-                '--disable-backgrounding-occluded-windows',
-                '--disable-renderer-backgrounding',
-                '--disable-features=TranslateUI',
-                '--disable-ipc-flooding-protection',
-                '--disable-extensions',
-                '--disable-default-apps',
-                '--disable-sync',
-                '--disable-translate',
-                '--hide-scrollbars',
-                '--mute-audio',
-                '--no-default-browser-check',
-                '--no-pings'
-            ]
-
-            # 在Docker环境中添加额外参数（移除 --single-process，避免崩溃；强制使用软件渲染）
-            if os.getenv('DOCKER_ENV'):
-                browser_args.extend([
-                    '--single-process',
-                    '--disable-background-networking',
-                    '--disable-client-side-phishing-detection',
-                    '--disable-hang-monitor',
-                    '--disable-popup-blocking',
-                    '--disable-prompt-on-repost',
-                    '--disable-web-resources',
-                    '--metrics-recording-only',
-                    '--safebrowsing-disable-auto-update',
-                    '--enable-automation',
-                    '--password-store=basic',
-                    '--use-mock-keychain'
-                ])
+            # 启动浏览器（使用统一的优化配置）
+            browser_args = self._get_browser_args()
 
             browser = await playwright.chromium.launch(
                 headless=True,
@@ -4298,46 +4332,8 @@ class XianyuLive:
                     logger.error(f"【{target_cookie_id}】Playwright启动超时")
                     return False
 
-            # 启动浏览器（参照商品搜索的配置）
-            browser_args = [
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--disable-dev-shm-usage',
-                '--disable-accelerated-2d-canvas',
-                '--no-first-run',
-                '--no-zygote',
-                '--disable-gpu',
-                '--disable-background-timer-throttling',
-                '--disable-backgrounding-occluded-windows',
-                '--disable-renderer-backgrounding',
-                '--disable-features=TranslateUI',
-                '--disable-ipc-flooding-protection',
-                '--disable-extensions',
-                '--disable-default-apps',
-                '--disable-sync',
-                '--disable-translate',
-                '--hide-scrollbars',
-                '--mute-audio',
-                '--no-default-browser-check',
-                '--no-pings'
-            ]
-
-            # 在Docker环境中添加额外参数（移除 --single-process，避免崩溃；强制使用软件渲染）
-            if os.getenv('DOCKER_ENV'):
-                browser_args.extend([
-                    '--single-process',
-                    '--disable-background-networking',
-                    '--disable-client-side-phishing-detection',
-                    '--disable-hang-monitor',
-                    '--disable-popup-blocking',
-                    '--disable-prompt-on-repost',
-                    '--disable-web-resources',
-                    '--metrics-recording-only',
-                    '--safebrowsing-disable-auto-update',
-                    '--enable-automation',
-                    '--password-store=basic',
-                    '--use-mock-keychain'
-                ])
+            # 启动浏览器（使用统一的优化配置）
+            browser_args = self._get_browser_args()
 
             # 使用无头浏览器
             browser = await playwright.chromium.launch(
@@ -4641,46 +4637,8 @@ class XianyuLive:
                     logger.error(f"【{self.cookie_id}】Playwright启动超时")
                     return False
 
-            # 启动浏览器（参照商品搜索的配置）
-            browser_args = [
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--disable-dev-shm-usage',
-                '--disable-accelerated-2d-canvas',
-                '--no-first-run',
-                '--no-zygote',
-                '--disable-gpu',
-                '--disable-background-timer-throttling',
-                '--disable-backgrounding-occluded-windows',
-                '--disable-renderer-backgrounding',
-                '--disable-features=TranslateUI',
-                '--disable-ipc-flooding-protection',
-                '--disable-extensions',
-                '--disable-default-apps',
-                '--disable-sync',
-                '--disable-translate',
-                '--hide-scrollbars',
-                '--mute-audio',
-                '--no-default-browser-check',
-                '--no-pings'
-            ]
-
-            # 在Docker环境中添加额外参数（移除 --single-process，避免崩溃；强制使用软件渲染）
-            if os.getenv('DOCKER_ENV'):
-                browser_args.extend([
-                    '--single-process',
-                    '--disable-background-networking',
-                    '--disable-client-side-phishing-detection',
-                    '--disable-hang-monitor',
-                    '--disable-popup-blocking',
-                    '--disable-prompt-on-repost',
-                    '--disable-web-resources',
-                    '--metrics-recording-only',
-                    '--safebrowsing-disable-auto-update',
-                    '--enable-automation',
-                    '--password-store=basic',
-                    '--use-mock-keychain'
-                ])
+            # 启动浏览器（使用统一的优化配置）
+            browser_args = self._get_browser_args()
 
             # Cookie刷新模式使用无头浏览器
             browser = await playwright.chromium.launch(
