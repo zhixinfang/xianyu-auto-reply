@@ -131,7 +131,8 @@ class XianyuSearcher:
             if os.getenv('DOCKER_ENV') == 'true':
                 browser_args.extend([
                     '--disable-gpu',
-                    '--use-gl=swiftshader'
+                    # 移除--single-process参数，使用多进程模式提高稳定性
+                    # '--single-process'  # 注释掉，避免崩溃
                 ])
 
             logger.info("正在启动浏览器...")
@@ -154,11 +155,19 @@ class XianyuSearcher:
 
     async def close_browser(self):
         """关闭浏览器"""
-        if self.browser:
-            await self.browser.close()
-            self.browser = None
-            self.context = None
-            self.page = None
+        try:
+            if self.page:
+                await self.page.close()
+                self.page = None
+            if self.context:
+                await self.context.close()
+                self.context = None
+            if self.browser:
+                await self.browser.close()
+                self.browser = None
+            logger.debug("商品搜索器浏览器已关闭")
+        except Exception as e:
+            logger.warning(f"关闭商品搜索器浏览器时出错: {e}")
     
     async def search_items(self, keyword: str, page: int = 1, page_size: int = 20) -> Dict[str, Any]:
         """

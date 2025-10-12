@@ -8624,6 +8624,7 @@ function getOrderStatusClass(status) {
         'processing': 'bg-warning text-dark',
         'processed': 'bg-info text-white',
         'completed': 'bg-success text-white',
+        'cancelled': 'bg-danger text-white',
         'unknown': 'bg-secondary text-white'
     };
     return statusMap[status] || 'bg-secondary text-white';
@@ -8634,7 +8635,9 @@ function getOrderStatusText(status) {
     const statusMap = {
         'processing': '处理中',
         'processed': '已处理',
+        'shipped': '已发货',
         'completed': '已完成',
+        'cancelled': '已关闭',
         'unknown': '未知'
     };
     return statusMap[status] || '未知';

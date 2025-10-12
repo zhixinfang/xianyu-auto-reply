@@ -4,6 +4,7 @@ import re
 import time
 import base64
 import os
+import random
 from loguru import logger
 import websockets
 from utils.xianyu_utils import (
@@ -161,7 +162,7 @@ class XianyuLive:
     # 类级别的实例管理字典，用于API调用
     _instances = {}  # {cookie_id: XianyuLive实例}
     _instances_lock = asyncio.Lock()
-
+    
     def _safe_str(self, e):
         """安全地将异常转换为字符串"""
         try:
@@ -171,78 +172,6 @@ class XianyuLive:
                 return repr(e)
             except:
                 return "未知错误"
-
-    def _get_browser_args(self):
-        """获取优化的浏览器启动参数"""
-        browser_args = [
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage',
-            '--disable-accelerated-2d-canvas',
-            '--no-first-run',
-            '--no-zygote',
-            '--disable-gpu',
-            '--disable-background-timer-throttling',
-            '--disable-backgrounding-occluded-windows',
-            '--disable-renderer-backgrounding',
-            '--disable-features=TranslateUI',
-            '--disable-ipc-flooding-protection',
-            '--disable-extensions',
-            '--disable-default-apps',
-            '--disable-sync',
-            '--disable-translate',
-            '--hide-scrollbars',
-            '--mute-audio',
-            '--no-default-browser-check',
-            '--no-pings'
-        ]
-
-        # 在Docker环境中添加额外参数（优化容器环境兼容性）
-        if os.getenv('DOCKER_ENV'):
-            browser_args.extend([
-                '--disable-background-networking',
-                '--disable-client-side-phishing-detection',
-                '--disable-hang-monitor',
-                '--disable-popup-blocking',
-                '--disable-prompt-on-repost',
-                '--disable-web-resources',
-                '--metrics-recording-only',
-                '--safebrowsing-disable-auto-update',
-                '--enable-automation',
-                '--password-store=basic',
-                '--use-mock-keychain',
-                # 容器环境特殊配置
-                '--disable-software-rasterizer',
-                '--disable-field-trial-config',
-                '--disable-back-forward-cache',
-                '--disable-breakpad',
-                '--disable-component-extensions-with-background-pages',
-                '--disable-component-update',
-                '--disable-domain-reliability',
-                '--disable-features=VizDisplayCompositor,AudioServiceOutOfProcess,TranslateUI',
-                '--force-color-profile=srgb',
-                '--disable-canvas-aa',
-                '--disable-2d-canvas-clip-aa',
-                '--disable-gl-drawing-for-tests',
-                '--disable-threaded-animation',
-                '--disable-threaded-scrolling',
-                '--disable-in-process-stack-traces',
-                '--disable-histogram-customizer',
-                '--disable-gl-extensions',
-                '--disable-composited-antialiasing',
-                # 音频和显示相关
-                '--disable-audio-output',
-                '--disable-audio-input',
-                '--autoplay-policy=no-user-gesture-required',
-                # 网络和安全相关
-                '--disable-web-security',
-                '--disable-ipc-flooding-protection',
-                # 内存和性能优化
-                '--memory-pressure-off',
-                '--max_old_space_size=4096'
-            ])
-
-        return browser_args
 
     def __init__(self, cookies_str=None, cookie_id: str = "default", user_id: int = None):
         """初始化闲鱼直播类"""
@@ -335,8 +264,22 @@ class XianyuLive:
         self.max_connection_failures = 5  # 最大连续失败次数
         self.last_successful_connection = 0  # 上次成功连接时间
 
+        # 初始化订单状态处理器
+        self._init_order_status_handler()
+
         # 注册实例到类级别字典（用于API调用）
         self._register_instance()
+
+    def _init_order_status_handler(self):
+        """初始化订单状态处理器"""
+        try:
+            # 直接导入订单状态处理器
+            from order_status_handler import order_status_handler
+            self.order_status_handler = order_status_handler
+            logger.info(f"【{self.cookie_id}】订单状态处理器已启用")
+        except Exception as e:
+            logger.error(f"【{self.cookie_id}】初始化订单状态处理器失败: {self._safe_str(e)}")
+            self.order_status_handler = None
 
     def _register_instance(self):
         """注册当前实例到类级别字典"""
@@ -401,6 +344,28 @@ class XianyuLive:
         """标记订单已发货"""
         self.delivery_sent_orders.add(order_id)
         logger.info(f"【{self.cookie_id}】订单 {order_id} 已标记为发货")
+        
+        # 更新订单状态为已发货
+        logger.info(f"【{self.cookie_id}】检查自动发货订单状态处理器: handler_exists={self.order_status_handler is not None}")
+        if self.order_status_handler:
+            logger.info(f"【{self.cookie_id}】准备调用订单状态处理器.handle_auto_delivery_order_status: {order_id}")
+            try:
+                success = self.order_status_handler.handle_auto_delivery_order_status(
+                    order_id=order_id,
+                    cookie_id=self.cookie_id,
+                    context="自动发货完成"
+                )
+                logger.info(f"【{self.cookie_id}】订单状态处理器.handle_auto_delivery_order_status返回结果: {success}")
+                if success:
+                    logger.info(f"【{self.cookie_id}】订单 {order_id} 状态已更新为已发货")
+                else:
+                    logger.warning(f"【{self.cookie_id}】订单 {order_id} 状态更新为已发货失败")
+            except Exception as e:
+                logger.error(f"【{self.cookie_id}】订单状态更新失败: {self._safe_str(e)}")
+                import traceback
+                logger.error(f"【{self.cookie_id}】详细错误信息: {traceback.format_exc()}")
+        else:
+            logger.warning(f"【{self.cookie_id}】订单状态处理器为None，跳过自动发货状态更新: {order_id}")
 
     async def _delayed_lock_release(self, lock_key: str, delay_minutes: int = 10):
         """
@@ -502,7 +467,7 @@ class XianyuLive:
         except Exception as e:
             logger.error(f"【{self.cookie_id}】清理过期锁时发生错误: {self._safe_str(e)}")
 
-
+    
 
     def _is_auto_delivery_trigger(self, message: str) -> bool:
         """检查消息是否为自动发货触发关键字"""
@@ -842,6 +807,9 @@ class XianyuLive:
         Args:
             captcha_retry_count: 滑块验证重试次数，用于防止无限递归
         """
+        # 初始化通知发送标志，避免重复发送通知
+        notification_sent = False
+        
         try:
             logger.info(f"【{self.cookie_id}】开始刷新token... (滑块验证重试次数: {captcha_retry_count})")
             # 标记本次刷新状态
@@ -856,6 +824,7 @@ class XianyuLive:
                     f"滑块验证重试次数已达上限，请手动处理",
                     "captcha_max_retries_exceeded"
                 )
+				notification_sent = True
                 return None
 
             # 【消息接收检查】检查是否在消息接收后的冷却时间内，与 cookie_refresh_loop 保持一致
@@ -1038,6 +1007,7 @@ class XianyuLive:
                                         f"滑块验证成功但cookies更新失败",
                                         "captcha_cookies_update_failed"
                                     )
+                                    notification_sent = True
                             else:
                                 logger.error(f"【{self.cookie_id}】滑块验证失败")
 
@@ -1060,6 +1030,9 @@ class XianyuLive:
                                     f"滑块验证失败，请检查网络连接或手动处理",
                                     "captcha_verification_failed"
                                 )
+                                
+                                # 标记已发送通知，避免后续重复发送
+                                notification_sent = True
                         except Exception as captcha_e:
                             logger.error(f"【{self.cookie_id}】滑块验证处理异常: {self._safe_str(captcha_e)}")
 
@@ -1084,6 +1057,9 @@ class XianyuLive:
                                 f"滑块验证处理异常: {str(captcha_e)}",
                                 "captcha_verification_exception"
                             )
+                            
+                            # 标记已发送通知，避免后续重复发送
+                            notification_sent = True
 
                     # 检查是否包含"令牌过期"或"Session过期"
                     if isinstance(res_json, dict):
@@ -1132,10 +1108,11 @@ class XianyuLive:
                     # 清空当前token，确保下次重试时重新获取
                     self.current_token = None
 
-                    # 发送Token刷新失败通知
-                    await self.send_token_refresh_notification(f"Token刷新失败: {res_json}", "token_refresh_failed")
-                    # 标记为失败
-                    self.last_token_refresh_status = "failed"
+                    # 只有在没有发送过通知的情况下才发送Token刷新失败通知
+                    if not notification_sent:
+                        await self.send_token_refresh_notification(f"Token刷新失败: {res_json}", "token_refresh_failed")
+                    else:
+                        logger.info(f"【{self.cookie_id}】已发送滑块验证相关通知，跳过Token刷新失败通知")
                     return None
 
         except Exception as e:
@@ -1144,10 +1121,11 @@ class XianyuLive:
             # 清空当前token，确保下次重试时重新获取
             self.current_token = None
 
-            # 发送Token刷新异常通知
-            await self.send_token_refresh_notification(f"Token刷新异常: {str(e)}", "token_refresh_exception")
-            # 标记为异常失败
-            self.last_token_refresh_status = "failed_exception"
+            # 只有在没有发送过通知的情况下才发送Token刷新异常通知
+            if not notification_sent:
+                await self.send_token_refresh_notification(f"Token刷新异常: {str(e)}", "token_refresh_exception")
+            else:
+                logger.info(f"【{self.cookie_id}】已发送滑块验证相关通知，跳过Token刷新异常通知")
             return None
 
     def _need_captcha_verification(self, res_json: dict) -> bool:
@@ -1220,10 +1198,10 @@ class XianyuLive:
 
             logger.info(f"【{self.cookie_id}】验证URL: {verification_url}")
 
-            # 使用增强反检测滑块验证器（独立实例，解决并发冲突）
+            # 使用滑块验证器（独立实例，解决并发冲突）
             try:
                 from utils.xianyu_slider_stealth import XianyuSliderStealth
-                logger.info(f"【{self.cookie_id}】XianyuSliderStealth导入成功，使用增强反检测滑块验证")
+                logger.info(f"【{self.cookie_id}】XianyuSliderStealth导入成功，使用滑块验证")
 
                 # 创建独立的滑块验证实例（每个用户独立实例，避免并发冲突）
                 slider_stealth = XianyuSliderStealth(
@@ -1245,7 +1223,7 @@ class XianyuLive:
                     )
 
                 if success and cookies:
-                    logger.info(f"【{self.cookie_id}】增强反检测滑块验证成功，获取到新的cookies")
+                    logger.info(f"【{self.cookie_id}】滑块验证成功，获取到新的cookies")
 
                     # 只提取x5sec相关的cookie值进行更新
                     updated_cookies = self.cookies.copy()  # 复制现有cookies
@@ -1294,7 +1272,7 @@ class XianyuLive:
                         await self.update_config_cookies()
                         logger.info(f"【{self.cookie_id}】滑块验证成功后，数据库cookies已自动更新")
 
-
+                            
                         # 记录成功更新到日志文件，包含x5相关的cookie信息
                         x5sec_cookies_str = "; ".join([f"{k}={v}" for k, v in x5sec_cookies.items()]) if x5sec_cookies else "无"
                         log_captcha_event(self.cookie_id, "滑块验证成功并自动更新数据库", True,
@@ -1326,15 +1304,15 @@ class XianyuLive:
 
                     return cookies_str
                 else:
-                    logger.error(f"【{self.cookie_id}】增强反检测滑块验证失败")
+                    logger.error(f"【{self.cookie_id}】滑块验证失败")
 
                     # 记录滑块验证失败到日志文件
-                    log_captcha_event(self.cookie_id, "增强反检测滑块验证失败", False,
+                    log_captcha_event(self.cookie_id, "滑块验证失败", False,
                         f"XianyuSliderStealth执行失败, 环境: {'Docker' if os.getenv('DOCKER_ENV') else '本地'}")
 
                     # 发送通知
                     await self.send_token_refresh_notification(
-                        f"增强反检测滑块验证失败，需要手动处理。验证URL: {verification_url}",
+                        f"滑块验证失败，需要手动处理。验证URL: {verification_url}",
                         "captcha_verification_failed"
                     )
                     return None
@@ -1355,10 +1333,10 @@ class XianyuLive:
                 return None
 
             except Exception as stealth_e:
-                logger.error(f"【{self.cookie_id}】增强反检测滑块验证异常: {self._safe_str(stealth_e)}")
+                logger.error(f"【{self.cookie_id}】滑块验证异常: {self._safe_str(stealth_e)}")
 
                 # 记录异常到日志文件
-                log_captcha_event(self.cookie_id, "增强反检测滑块验证异常", False,
+                log_captcha_event(self.cookie_id, "滑块验证异常", False,
                     f"执行异常, 错误: {self._safe_str(stealth_e)[:100]}")
 
                 # 发送通知
@@ -1666,8 +1644,46 @@ class XianyuLive:
 
             playwright = await async_playwright().start()
 
-            # 启动浏览器（使用统一的优化配置）
-            browser_args = self._get_browser_args()
+            # 启动浏览器（参照order_detail_fetcher的配置）
+            browser_args = [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-accelerated-2d-canvas',
+                '--no-first-run',
+                '--no-zygote',
+                '--disable-gpu',
+                '--disable-background-timer-throttling',
+                '--disable-backgrounding-occluded-windows',
+                '--disable-renderer-backgrounding',
+                '--disable-features=TranslateUI',
+                '--disable-ipc-flooding-protection',
+                '--disable-extensions',
+                '--disable-default-apps',
+                '--disable-sync',
+                '--disable-translate',
+                '--hide-scrollbars',
+                '--mute-audio',
+                '--no-default-browser-check',
+                '--no-pings'
+            ]
+
+            # 在Docker环境中添加额外参数
+            if os.getenv('DOCKER_ENV'):
+                browser_args.extend([
+                    # '--single-process',  # 注释掉，避免多用户并发时的进程冲突和资源泄漏
+                    '--disable-background-networking',
+                    '--disable-client-side-phishing-detection',
+                    '--disable-hang-monitor',
+                    '--disable-popup-blocking',
+                    '--disable-prompt-on-repost',
+                    '--disable-web-resources',
+                    '--metrics-recording-only',
+                    '--safebrowsing-disable-auto-update',
+                    '--enable-automation',
+                    '--password-store=basic',
+                    '--use-mock-keychain'
+                ])
 
             browser = await playwright.chromium.launch(
                 headless=True,
@@ -3284,7 +3300,7 @@ class XianyuLive:
 
         async with order_detail_lock:
             logger.info(f"🔍 【{self.cookie_id}】获取订单详情锁 {order_id}，开始处理...")
-
+            
             try:
                 logger.info(f"【{self.cookie_id}】开始获取订单详情: {order_id}")
 
@@ -3329,6 +3345,7 @@ class XianyuLive:
                         if not cookie_info:
                             logger.warning(f"Cookie ID {self.cookie_id} 不存在于cookies表中，丢弃订单 {order_id}")
                         else:
+                            # 先保存订单基本信息
                             success = db_manager.insert_or_update_order(
                                 order_id=order_id,
                                 item_id=item_id,
@@ -3337,9 +3354,31 @@ class XianyuLive:
                                 spec_value=spec_value,
                                 quantity=quantity,
                                 amount=amount,
-                                order_status='processed',  # 已处理状态
                                 cookie_id=self.cookie_id
                             )
+                            
+                            # 使用订单状态处理器设置状态
+                            logger.info(f"【{self.cookie_id}】检查订单状态处理器调用条件: success={success}, handler_exists={self.order_status_handler is not None}")
+                            if success and self.order_status_handler:
+                                logger.info(f"【{self.cookie_id}】准备调用订单状态处理器.handle_order_detail_fetched_status: {order_id}")
+                                try:
+                                    result = self.order_status_handler.handle_order_detail_fetched_status(
+                                        order_id=order_id,
+                                        cookie_id=self.cookie_id,
+                                        context="订单详情已拉取"
+                                    )
+                                    logger.info(f"【{self.cookie_id}】订单状态处理器.handle_order_detail_fetched_status返回结果: {result}")
+                                    
+                                    # 处理待处理队列
+                                    logger.info(f"【{self.cookie_id}】准备调用订单状态处理器.on_order_details_fetched: {order_id}")
+                                    self.order_status_handler.on_order_details_fetched(order_id)
+                                    logger.info(f"【{self.cookie_id}】订单状态处理器.on_order_details_fetched调用成功: {order_id}")
+                                except Exception as e:
+                                    logger.error(f"【{self.cookie_id}】订单状态处理器调用失败: {self._safe_str(e)}")
+                                    import traceback
+                                    logger.error(f"【{self.cookie_id}】详细错误信息: {traceback.format_exc()}")
+                            else:
+                                logger.warning(f"【{self.cookie_id}】订单状态处理器调用条件不满足: success={success}, handler_exists={self.order_status_handler is not None}")
 
                             if success:
                                 logger.info(f"【{self.cookie_id}】订单信息已保存到数据库: {order_id}")
@@ -3593,14 +3632,26 @@ class XianyuLive:
                         existing_order = db_manager.get_order_by_id(order_id)
                         if not existing_order:
                             # 插入基本订单信息
-                            db_manager.insert_or_update_order(
+                            success = db_manager.insert_or_update_order(
                                 order_id=order_id,
                                 item_id=item_id,
                                 buyer_id=send_user_id,
-                                order_status='processing',  # 处理中状态
                                 cookie_id=self.cookie_id
                             )
-                            logger.info(f"保存基本订单信息到数据库: {order_id}")
+                            
+                            # 使用订单状态处理器设置状态
+                            if success and self.order_status_handler:
+                                try:
+                                    self.order_status_handler.handle_order_basic_info_status(
+                                        order_id=order_id,
+                                        cookie_id=self.cookie_id,
+                                        context="自动发货-基本信息"
+                                    )
+                                except Exception as e:
+                                    logger.error(f"【{self.cookie_id}】订单状态处理器调用失败: {self._safe_str(e)}")
+                            
+                            if success:
+                                logger.info(f"保存基本订单信息到数据库: {order_id}")
                 except Exception as db_e:
                     logger.error(f"保存基本订单信息失败: {self._safe_str(db_e)}")
 
@@ -4332,8 +4383,46 @@ class XianyuLive:
                     logger.error(f"【{target_cookie_id}】Playwright启动超时")
                     return False
 
-            # 启动浏览器（使用统一的优化配置）
-            browser_args = self._get_browser_args()
+            # 启动浏览器（参照商品搜索的配置）
+            browser_args = [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-accelerated-2d-canvas',
+                '--no-first-run',
+                '--no-zygote',
+                '--disable-gpu',
+                '--disable-background-timer-throttling',
+                '--disable-backgrounding-occluded-windows',
+                '--disable-renderer-backgrounding',
+                '--disable-features=TranslateUI',
+                '--disable-ipc-flooding-protection',
+                '--disable-extensions',
+                '--disable-default-apps',
+                '--disable-sync',
+                '--disable-translate',
+                '--hide-scrollbars',
+                '--mute-audio',
+                '--no-default-browser-check',
+                '--no-pings'
+            ]
+
+            # 在Docker环境中添加额外参数
+            if os.getenv('DOCKER_ENV'):
+                browser_args.extend([
+                    # '--single-process',  # 注释掉，避免多用户并发时的进程冲突和资源泄漏
+                    '--disable-background-networking',
+                    '--disable-client-side-phishing-detection',
+                    '--disable-hang-monitor',
+                    '--disable-popup-blocking',
+                    '--disable-prompt-on-repost',
+                    '--disable-web-resources',
+                    '--metrics-recording-only',
+                    '--safebrowsing-disable-auto-update',
+                    '--enable-automation',
+                    '--password-store=basic',
+                    '--use-mock-keychain'
+                ])
 
             # 使用无头浏览器
             browser = await playwright.chromium.launch(
@@ -4637,8 +4726,46 @@ class XianyuLive:
                     logger.error(f"【{self.cookie_id}】Playwright启动超时")
                     return False
 
-            # 启动浏览器（使用统一的优化配置）
-            browser_args = self._get_browser_args()
+            # 启动浏览器（参照商品搜索的配置）
+            browser_args = [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-accelerated-2d-canvas',
+                '--no-first-run',
+                '--no-zygote',
+                '--disable-gpu',
+                '--disable-background-timer-throttling',
+                '--disable-backgrounding-occluded-windows',
+                '--disable-renderer-backgrounding',
+                '--disable-features=TranslateUI',
+                '--disable-ipc-flooding-protection',
+                '--disable-extensions',
+                '--disable-default-apps',
+                '--disable-sync',
+                '--disable-translate',
+                '--hide-scrollbars',
+                '--mute-audio',
+                '--no-default-browser-check',
+                '--no-pings'
+            ]
+
+            # 在Docker环境中添加额外参数
+            if os.getenv('DOCKER_ENV'):
+                browser_args.extend([
+                    # '--single-process',  # 注释掉，避免多用户并发时的进程冲突和资源泄漏
+                    '--disable-background-networking',
+                    '--disable-client-side-phishing-detection',
+                    '--disable-hang-monitor',
+                    '--disable-popup-blocking',
+                    '--disable-prompt-on-repost',
+                    '--disable-web-resources',
+                    '--metrics-recording-only',
+                    '--safebrowsing-disable-auto-update',
+                    '--enable-automation',
+                    '--password-store=basic',
+                    '--use-mock-keychain'
+                ])
 
             # Cookie刷新模式使用无头浏览器
             browser = await playwright.chromium.launch(
@@ -4816,17 +4943,81 @@ class XianyuLive:
             logger.error(f"【{self.cookie_id}】通过浏览器刷新Cookie失败: {self._safe_str(e)}")
             return False
         finally:
-            # 确保资源清理
+            # 异步关闭浏览器：创建清理任务，超时后强制关闭
             try:
-                if 'browser' in locals() and browser:
-                    await browser.close()
-                    logger.debug(f"【{self.cookie_id}】浏览器已关闭")
-                if 'playwright' in locals() and playwright:
-                    await playwright.stop()
-                    logger.debug(f"【{self.cookie_id}】Playwright已停止")
+                asyncio.create_task(self._async_close_browser(browser, playwright))
+                logger.info(f"【{self.cookie_id}】浏览器异步关闭任务已启动")  # 改为info级别，确保能看到
             except Exception as cleanup_e:
-                logger.warning(f"【{self.cookie_id}】清理浏览器资源时出错: {self._safe_str(cleanup_e)}")
+                logger.warning(f"【{self.cookie_id}】创建浏览器关闭任务时出错: {self._safe_str(cleanup_e)}")
 
+    async def _async_close_browser(self, browser, playwright):
+        """异步关闭：正常关闭，超时后强制关闭"""
+        try:
+            logger.info(f"【{self.cookie_id}】开始异步关闭浏览器...")  # 改为info级别
+            
+            # 正常关闭，设置超时
+            await asyncio.wait_for(
+                self._normal_close_resources(browser, playwright),
+                timeout=10.0
+            )
+            logger.info(f"【{self.cookie_id}】浏览器正常关闭完成")  # 改为info级别
+            
+        except asyncio.TimeoutError:
+            logger.warning(f"【{self.cookie_id}】正常关闭超时，开始强制关闭...")
+            await self._force_close_resources(browser, playwright)
+            
+        except Exception as e:
+            logger.warning(f"【{self.cookie_id}】异步关闭时出错，强制关闭: {self._safe_str(e)}")
+            await self._force_close_resources(browser, playwright)
+
+    async def _normal_close_resources(self, browser, playwright):
+        """正常关闭资源：浏览器+Playwright短超时关闭"""
+        try:
+            # 关闭浏览器
+            if browser:
+                try:
+                    await browser.close()
+                    logger.info(f"【{self.cookie_id}】浏览器关闭完成")
+                except Exception as e:
+                    logger.warning(f"【{self.cookie_id}】关闭浏览器时出错: {e}")
+            
+            # 关闭Playwright：使用非常短的超时，如果超时就放弃
+            if playwright:
+                try:
+                    logger.info(f"【{self.cookie_id}】正在关闭Playwright...")
+                    await asyncio.wait_for(playwright.stop(), timeout=2.0)
+                    logger.info(f"【{self.cookie_id}】Playwright关闭完成")
+                except asyncio.TimeoutError:
+                    logger.warning(f"【{self.cookie_id}】Playwright关闭超时，将自动清理")
+                except Exception as e:
+                    logger.warning(f"【{self.cookie_id}】关闭Playwright时出错: {e}")
+                
+        except Exception as e:
+            logger.error(f"【{self.cookie_id}】正常关闭时出现异常: {e}")
+            raise
+
+    
+    async def _force_close_resources(self, browser, playwright):
+        """强制关闭资源：强制关闭浏览器+Playwright超时等待"""
+        try:
+            logger.warning(f"【{self.cookie_id}】开始强制关闭资源...")
+            
+            # 强制关闭浏览器+Playwright，设置短超时
+            force_tasks = []
+            if browser:
+                force_tasks.append(asyncio.wait_for(browser.close(), timeout=2.0))
+            if playwright:
+                force_tasks.append(asyncio.wait_for(playwright.stop(), timeout=2.0))
+            
+            if force_tasks:
+                # 使用gather执行，所有失败都会被忽略
+                await asyncio.gather(*force_tasks, return_exceptions=True)
+                logger.info(f"【{self.cookie_id}】强制关闭完成")
+            else:
+                logger.info(f"【{self.cookie_id}】没有需要强制关闭的资源")
+            
+        except Exception as e:
+            logger.warning(f"【{self.cookie_id}】强制关闭时出现异常（已忽略）: {e}")
 
     async def send_msg_once(self, toid, item_id, text):
         headers = {
@@ -5111,6 +5302,19 @@ class XianyuLive:
                     msg_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
                     logger.info(f'[{msg_time}] 【{self.cookie_id}】✅ 检测到订单ID: {order_id}，开始获取订单详情')
 
+                    # 通知订单状态处理器订单ID已提取
+                    if self.order_status_handler:
+                        logger.info(f"【{self.cookie_id}】准备调用订单状态处理器.on_order_id_extracted: {order_id}")
+                        try:
+                            self.order_status_handler.on_order_id_extracted(order_id, self.cookie_id, message)
+                            logger.info(f"【{self.cookie_id}】订单状态处理器.on_order_id_extracted调用成功: {order_id}")
+                        except Exception as e:
+                            logger.error(f"【{self.cookie_id}】通知订单状态处理器订单ID提取失败: {self._safe_str(e)}")
+                            import traceback
+                            logger.error(f"【{self.cookie_id}】详细错误信息: {traceback.format_exc()}")
+                    else:
+                        logger.warning(f"【{self.cookie_id}】订单状态处理器为None，跳过订单ID提取通知: {order_id}")
+
                     # 立即获取订单详情信息
                     try:
                         # 先尝试提取用户ID和商品ID用于订单详情获取
@@ -5277,6 +5481,45 @@ class XianyuLive:
 
 
 
+
+            # 【优先处理】使用订单状态处理器处理系统消息
+            if self.order_status_handler:
+                try:
+                    # 处理系统消息的订单状态更新
+                    try:
+                        handled = self.order_status_handler.handle_system_message(
+                            message=message,
+                            send_message=send_message,
+                            cookie_id=self.cookie_id,
+                            msg_time=msg_time
+                        )
+                    except Exception as e:
+                        logger.error(f"【{self.cookie_id}】处理系统消息失败: {self._safe_str(e)}")
+                        handled = False
+                    
+                    # 处理红色提醒消息
+                    if not handled:
+                        try:
+                            if isinstance(message, dict) and "3" in message and isinstance(message["3"], dict):
+                                red_reminder = message["3"].get("redReminder")
+                                user_id = message["3"].get("userId", "unknown")
+                                
+                                if red_reminder:
+                                    try:
+                                        self.order_status_handler.handle_red_reminder_message(
+                                            message=message,
+                                            red_reminder=red_reminder,
+                                            user_id=user_id,
+                                            cookie_id=self.cookie_id,
+                                            msg_time=msg_time
+                                        )
+                                    except Exception as e:
+                                        logger.error(f"【{self.cookie_id}】处理红色提醒消息失败: {self._safe_str(e)}")
+                        except Exception as red_e:
+                            logger.debug(f"处理红色提醒消息失败: {self._safe_str(red_e)}")
+                            
+                except Exception as e:
+                    logger.error(f"订单状态处理失败: {self._safe_str(e)}")
 
             # 【优先处理】检查系统消息和自动发货触发消息（不受人工接入暂停影响）
             if send_message == '[我已拍下，待付款]':

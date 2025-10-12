@@ -21,29 +21,12 @@ ENV TZ=Asia/Shanghai
 ENV DOCKER_ENV=true
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
-# 无头浏览器环境变量
-ENV DISPLAY=:99
-ENV CHROME_BIN=/usr/bin/chromium
-ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=0
-ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
-
-# 禁用GPU和图形加速，适合容器环境
-ENV CHROME_FLAGS="--no-sandbox --disable-dev-shm-usage --disable-gpu --disable-software-rasterizer --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-renderer-backgrounding --disable-features=TranslateUI --disable-extensions --disable-default-apps --disable-sync --disable-translate --hide-scrollbars --mute-audio --no-default-browser-check --no-pings --single-process"
-
 # 安装系统依赖（包括Playwright浏览器依赖）
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         # 基础工具
         nodejs \
         npm \
-        build-essential \
-        gcc \
-        g++ \
-        make \
-        pkg-config \
-        patchelf \
-        git \
-
         tzdata \
         curl \
         ca-certificates \
@@ -80,16 +63,14 @@ RUN apt-get update && \
         libx11-xcb1 \
         libxfixes3 \
         xdg-utils \
-        # DrissionPage需要的Chrome/Chromium浏览器
         chromium \
+        # OpenCV运行时依赖
+        libgl1 \
+        libglib2.0-0 \
         && apt-get clean \
         && rm -rf /var/lib/apt/lists/* \
         && rm -rf /tmp/* \
         && rm -rf /var/tmp/*
-
-# 降低编译内存占用（针对 Nuitka 构建阶段）
-ENV CFLAGS="-O1" \
-    CXXFLAGS="-O1"
 
 # 设置时区
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
@@ -127,10 +108,9 @@ EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8080/health || exit 1
 
-# 复制启动脚本并设置权限
+# 复制启动脚本
 COPY entrypoint.sh /app/entrypoint.sh
-RUN chmod +x /app/entrypoint.sh && \
-    dos2unix /app/entrypoint.sh 2>/dev/null || true
+RUN chmod +x /app/entrypoint.sh
 
-# 启动命令（使用ENTRYPOINT确保脚本被执行）
-ENTRYPOINT ["/bin/bash", "/app/entrypoint.sh"]
+# 启动命令
+CMD ["/app/entrypoint.sh"]

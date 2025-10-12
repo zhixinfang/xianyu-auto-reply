@@ -7,7 +7,6 @@
 
 import time
 import random
-import logging
 import json
 import os
 import threading
@@ -15,24 +14,19 @@ import tempfile
 import shutil
 from playwright.sync_api import sync_playwright, ElementHandle
 from typing import Optional, Tuple, List, Dict, Any
+from loguru import logger
 
 # 导入配置
 try:
-    from config import config
-    SLIDER_MAX_CONCURRENT = config.get('SLIDER_VERIFICATION.max_concurrent', 3)
-    SLIDER_WAIT_TIMEOUT = config.get('SLIDER_VERIFICATION.wait_timeout', 60)
+    from config import SLIDER_VERIFICATION
+    SLIDER_MAX_CONCURRENT = SLIDER_VERIFICATION.get('max_concurrent', 3)
+    SLIDER_WAIT_TIMEOUT = SLIDER_VERIFICATION.get('wait_timeout', 60)
 except ImportError:
     # 如果无法导入配置，使用默认值
     SLIDER_MAX_CONCURRENT = 3
     SLIDER_WAIT_TIMEOUT = 60
 
-# 配置日志
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s | %(levelname)s | %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S.%f'[:-3]
-)
-logger = logging.getLogger(__name__)
+# 使用loguru日志库，与主程序保持一致
 
 # 全局并发控制
 class SliderConcurrencyManager:
@@ -79,7 +73,9 @@ class SliderConcurrencyManager:
             with self.instance_lock:
                 if user_id not in self.waiting_queue:
                     self.waiting_queue.append(user_id)
-                    logger.info(f"用户 {user_id} 进入等待队列，当前队列长度: {len(self.waiting_queue)}")
+                    # 提取纯用户ID用于日志显示
+                    pure_user_id = self._extract_pure_user_id(user_id)
+                    logger.info(f"【{pure_user_id}】进入等待队列，当前队列长度: {len(self.waiting_queue)}")
             
             # 等待1秒后重试
             time.sleep(1)
@@ -88,7 +84,9 @@ class SliderConcurrencyManager:
         with self.instance_lock:
             if user_id in self.waiting_queue:
                 self.waiting_queue.remove(user_id)
-                logger.warning(f"用户 {user_id} 等待超时，从队列中移除")
+                # 提取纯用户ID用于日志显示
+                pure_user_id = self._extract_pure_user_id(user_id)
+                logger.warning(f"【{pure_user_id}】等待超时，从队列中移除")
         
         return False
     
@@ -108,7 +106,24 @@ class SliderConcurrencyManager:
         with self.instance_lock:
             if user_id in self.active_instances:
                 del self.active_instances[user_id]
-                logger.info(f"用户 {user_id} 实例已注销，当前活跃: {len(self.active_instances)}")
+                # 提取纯用户ID用于日志显示
+                pure_user_id = self._extract_pure_user_id(user_id)
+                logger.info(f"【{pure_user_id}】实例已注销，当前活跃: {len(self.active_instances)}")
+    
+    def _extract_pure_user_id(self, user_id: str) -> str:
+        """提取纯用户ID（移除时间戳部分）"""
+        if '_' in user_id:
+            # 检查最后一部分是否为数字（时间戳）
+            parts = user_id.split('_')
+            if len(parts) >= 2 and parts[-1].isdigit() and len(parts[-1]) >= 10:
+                # 最后一部分是时间戳，移除它
+                return '_'.join(parts[:-1])
+            else:
+                # 不是时间戳格式，使用原始ID
+                return user_id
+        else:
+            # 没有下划线，直接使用
+            return user_id
     
     def get_stats(self):
         """获取统计信息"""
@@ -134,24 +149,28 @@ class XianyuSliderStealth:
         self.context = None
         self.playwright = None
         
+        # 提取纯用户ID（移除时间戳部分）
+        self.pure_user_id = concurrency_manager._extract_pure_user_id(user_id)
+        
         # 为每个实例创建独立的临时目录
         self.temp_dir = tempfile.mkdtemp(prefix=f"slider_{user_id}_")
-        logger.debug(f"用户 {self.user_id} 创建临时目录: {self.temp_dir}")
+        logger.debug(f"【{self.pure_user_id}】创建临时目录: {self.temp_dir}")
         
         # 等待可用槽位（排队机制）
-        logger.info(f"用户 {self.user_id} 检查并发限制...")
+        logger.info(f"【{self.pure_user_id}】检查并发限制...")
         if not concurrency_manager.wait_for_slot(self.user_id):
             stats = concurrency_manager.get_stats()
-            logger.error(f"用户 {self.user_id} 等待槽位超时，当前活跃: {stats['active_count']}/{stats['max_concurrent']}")
+            logger.error(f"【{self.pure_user_id}】等待槽位超时，当前活跃: {stats['active_count']}/{stats['max_concurrent']}")
             raise Exception(f"滑块验证等待槽位超时，请稍后重试")
         
         # 注册实例
         concurrency_manager.register_instance(self.user_id, self)
         stats = concurrency_manager.get_stats()
-        logger.info(f"用户 {self.user_id} 实例已注册，当前并发: {stats['active_count']}/{stats['max_concurrent']}")
+        logger.info(f"【{self.pure_user_id}】实例已注册，当前并发: {stats['active_count']}/{stats['max_concurrent']}")
         
         # 轨迹学习相关属性
-        self.success_history_file = f"trajectory_history/{user_id}_success.json"
+        
+        self.success_history_file = f"trajectory_history/{self.pure_user_id}_success.json"
         self.trajectory_params = {
             "total_steps_range": [50, 80],
             "base_delay_range": [0.05, 0.12],
@@ -252,7 +271,7 @@ class XianyuSliderStealth:
             
             return self.page
         except Exception as e:
-            logger.error(f"用户 {self.user_id} 初始化浏览器失败: {e}")
+            logger.error(f"【{self.pure_user_id}】初始化浏览器失败: {e}")
             # 确保在异常时也清理已创建的资源
             self._cleanup_on_init_failure()
             raise
@@ -264,28 +283,28 @@ class XianyuSliderStealth:
                 self.page.close()
                 self.page = None
         except Exception as e:
-            logger.warning(f"用户 {self.user_id} 清理页面时出错: {e}")
+            logger.warning(f"【{self.pure_user_id}】清理页面时出错: {e}")
         
         try:
             if hasattr(self, 'context') and self.context:
                 self.context.close()
                 self.context = None
         except Exception as e:
-            logger.warning(f"用户 {self.user_id} 清理上下文时出错: {e}")
+            logger.warning(f"【{self.pure_user_id}】清理上下文时出错: {e}")
         
         try:
             if hasattr(self, 'browser') and self.browser:
                 self.browser.close()
                 self.browser = None
         except Exception as e:
-            logger.warning(f"用户 {self.user_id} 清理浏览器时出错: {e}")
+            logger.warning(f"【{self.pure_user_id}】清理浏览器时出错: {e}")
         
         try:
             if hasattr(self, 'playwright') and self.playwright:
                 self.playwright.stop()
                 self.playwright = None
         except Exception as e:
-            logger.warning(f"用户 {self.user_id} 清理Playwright时出错: {e}")
+            logger.warning(f"【{self.pure_user_id}】清理Playwright时出错: {e}")
     
     def _load_success_history(self) -> List[Dict[str, Any]]:
         """加载历史成功数据"""
@@ -295,10 +314,10 @@ class XianyuSliderStealth:
             
             with open(self.success_history_file, 'r', encoding='utf-8') as f:
                 history = json.load(f)
-                logger.info(f"用户 {self.user_id} 加载历史成功数据: {len(history)}条记录")
+                logger.info(f"【{self.pure_user_id}】加载历史成功数据: {len(history)}条记录")
                 return history
         except Exception as e:
-            logger.warning(f"用户 {self.user_id} 加载历史数据失败: {e}")
+            logger.warning(f"【{self.pure_user_id}】加载历史数据失败: {e}")
             return []
     
     def _save_success_record(self, trajectory_data: Dict[str, Any]):
@@ -313,7 +332,7 @@ class XianyuSliderStealth:
             # 添加新记录 - 包含完整轨迹数据
             record = {
                 "timestamp": time.time(),
-                "user_id": self.user_id,
+                "user_id": self.pure_user_id,
                 "distance": trajectory_data.get("distance", 0),
                 "total_steps": trajectory_data.get("total_steps", 0),
                 "base_delay": trajectory_data.get("base_delay", 0),
@@ -340,10 +359,10 @@ class XianyuSliderStealth:
             with open(self.success_history_file, 'w', encoding='utf-8') as f:
                 json.dump(history, f, ensure_ascii=False, indent=2)
             
-            logger.info(f"用户 {self.user_id} 保存成功记录: 距离{record['distance']}px, 步数{record['total_steps']}, 轨迹点{len(record['trajectory_points'])}个")
+            logger.info(f"【{self.pure_user_id}】保存成功记录: 距离{record['distance']}px, 步数{record['total_steps']}, 轨迹点{len(record['trajectory_points'])}个")
             
         except Exception as e:
-            logger.error(f"用户 {self.user_id} 保存成功记录失败: {e}")
+            logger.error(f"【{self.pure_user_id}】保存成功记录失败: {e}")
     
     def _optimize_trajectory_params(self) -> Dict[str, Any]:
         """基于历史成功数据优化轨迹参数"""
@@ -353,7 +372,7 @@ class XianyuSliderStealth:
             
             history = self._load_success_history()
             if len(history) < 3:  # 至少需要3条成功记录才开始优化
-                logger.info(f"用户 {self.user_id} 历史成功数据不足({len(history)}条)，使用默认参数")
+                logger.info(f"【{self.pure_user_id}】历史成功数据不足({len(history)}条)，使用默认参数")
                 return self.trajectory_params
             
             # 计算成功记录的平均值
@@ -420,26 +439,26 @@ class XianyuSliderStealth:
                 "learning_enabled": True
             }
             
-            logger.info(f"用户 {self.user_id} 基于{len(history)}条成功记录优化轨迹参数")
+            logger.info(f"【{self.pure_user_id}】基于{len(history)}条成功记录优化轨迹参数")
 
             return optimized_params
             
         except Exception as e:
-            logger.error(f"用户 {self.user_id} 优化轨迹参数失败: {e}")
+            logger.error(f"【{self.pure_user_id}】优化轨迹参数失败: {e}")
             return self.trajectory_params
     
     def _get_cookies_after_success(self):
         """滑块验证成功后获取cookie"""
         try:
-            logger.info(f"用户 {self.user_id} 开始获取滑块验证成功后的页面cookie...")
+            logger.info(f"【{self.pure_user_id}】开始获取滑块验证成功后的页面cookie...")
             
             # 检查当前页面URL
             current_url = self.page.url
-            logger.info(f"用户 {self.user_id} 当前页面URL: {current_url}")
+            logger.info(f"【{self.pure_user_id}】当前页面URL: {current_url}")
             
             # 检查页面标题
             page_title = self.page.title()
-            logger.info(f"用户 {self.user_id} 当前页面标题: {page_title}")
+            logger.info(f"【{self.pure_user_id}】当前页面标题: {page_title}")
             
             # 等待一下确保cookie完全更新
             time.sleep(1)
@@ -453,44 +472,35 @@ class XianyuSliderStealth:
                 for cookie in cookies:
                     new_cookies[cookie['name']] = cookie['value']
                 
-                logger.info(f"用户 {self.user_id} 滑块验证成功后已获取cookie，共{len(new_cookies)}个cookie")
+                logger.info(f"【{self.pure_user_id}】滑块验证成功后已获取cookie，共{len(new_cookies)}个cookie")
                 
                 # 记录所有cookie的详细信息
-                logger.info(f"用户 {self.user_id} 获取到的所有cookie: {list(new_cookies.keys())}")
+                logger.info(f"【{self.pure_user_id}】获取到的所有cookie: {list(new_cookies.keys())}")
                 
-                # 只提取指定的cookie: x5sec, _m_h5_tk, _m_h5_tk_enc, cookie2, t, sgcookie, unb, uc1, uc3, uc4
-                target_cookies = ['x5sec', '_m_h5_tk', '_m_h5_tk_enc', 'cookie2', 't']
+                # 只提取x5sec相关的cookie
                 filtered_cookies = {}
                 
-                for cookie_name in target_cookies:
-                    if cookie_name in new_cookies:
-                        filtered_cookies[cookie_name] = new_cookies[cookie_name]
-                        logger.info(f"用户 {self.user_id} 重要cookie已获取: {cookie_name} = {new_cookies[cookie_name]}")
-                    else:
-                        logger.warning(f"用户 {self.user_id} 重要cookie缺失: {cookie_name}")
+                # 筛选出x5相关的cookies（包括x5sec, x5step等）
+                for cookie_name, cookie_value in new_cookies.items():
+                    cookie_name_lower = cookie_name.lower()
+                    if cookie_name_lower.startswith('x5') or 'x5sec' in cookie_name_lower:
+                        filtered_cookies[cookie_name] = cookie_value
+                        logger.info(f"【{self.pure_user_id}】x5相关cookie已获取: {cookie_name} = {cookie_value}")
                 
-                # 检查是否有新的cookie值
-                old_cookies = getattr(self, '_old_cookies', {})
-                new_cookie_count = 0
-                for name, value in filtered_cookies.items():
-                    if name not in old_cookies or old_cookies[name] != value:
-                        new_cookie_count += 1
-                        logger.info(f"用户 {self.user_id} 发现新/更新的cookie: {name} = {value}")
-                
-                logger.info(f"用户 {self.user_id} 发现 {new_cookie_count} 个新/更新的目标cookie")
+                logger.info(f"【{self.pure_user_id}】找到{len(filtered_cookies)}个x5相关cookies: {list(filtered_cookies.keys())}")
                 
                 if filtered_cookies:
-                    logger.info(f"用户 {self.user_id} 返回过滤后的cookie: {list(filtered_cookies.keys())}")
+                    logger.info(f"【{self.pure_user_id}】返回过滤后的x5相关cookie: {list(filtered_cookies.keys())}")
                     return filtered_cookies
                 else:
-                    logger.warning(f"用户 {self.user_id} 未找到目标cookie (x5sec, _m_h5_tk, _m_h5_tk_enc, cookie2, t)")
+                    logger.warning(f"【{self.pure_user_id}】未找到x5相关cookie")
                     return None
             else:
-                logger.warning(f"用户 {self.user_id} 未获取到任何cookie")
+                logger.warning(f"【{self.pure_user_id}】未获取到任何cookie")
                 return None
                 
         except Exception as e:
-            logger.error(f"用户 {self.user_id} 获取滑块验证成功后的cookie失败: {str(e)}")
+            logger.error(f"【{self.pure_user_id}】获取滑块验证成功后的cookie失败: {str(e)}")
             return None
     
     def _save_cookies_to_file(self, cookies):
@@ -505,10 +515,10 @@ class XianyuSliderStealth:
             with open(cookie_file, 'w', encoding='utf-8') as f:
                 json.dump(cookies, f, ensure_ascii=False, indent=2)
             
-            logger.info(f"用户 {self.user_id} Cookie已保存到文件: {cookie_file}")
+            logger.info(f"【{self.pure_user_id}】Cookie已保存到文件: {cookie_file}")
             
         except Exception as e:
-            logger.error(f"用户 {self.user_id} 保存cookie到文件失败: {str(e)}")
+            logger.error(f"【{self.pure_user_id}】保存cookie到文件失败: {str(e)}")
     
     def _get_random_browser_features(self):
         """获取随机浏览器特征"""
@@ -865,25 +875,25 @@ class XianyuSliderStealth:
             # 保存轨迹数据用于后续学习
             self.current_trajectory_data = trajectory_data
             
-            logger.info(f"用户 {self.user_id} 生成优化轨迹: {len(trajectory)}步, 总距离: {distance}px, 缓慢拖动开始位置: {distance * slow_start_ratio:.1f}px")
+            logger.info(f"【{self.pure_user_id}】生成优化轨迹: {len(trajectory)}步, 总距离: {distance}px, 缓慢拖动开始位置: {distance * slow_start_ratio:.1f}px")
             if self.enable_learning:
-                logger.info(f"用户 {self.user_id} 使用历史数据优化参数: 步数{optimized_params['total_steps_range']}, 延迟{optimized_params['base_delay_range']}")
+                logger.info(f"【{self.pure_user_id}】使用历史数据优化参数: 步数{optimized_params['total_steps_range']}, 延迟{optimized_params['base_delay_range']}")
             
             return trajectory
             
         except Exception as e:
-            logger.error(f"用户 {self.user_id} 生成轨迹时出错: {str(e)}")
+            logger.error(f"【{self.pure_user_id}】生成轨迹时出错: {str(e)}")
             return []
     
     def simulate_slide(self, slider_button: ElementHandle, trajectory):
         """模拟滑动 - 增强人类行为模拟"""
         try:
-            logger.info(f"用户 {self.user_id} 开始模拟滑动...")
+            logger.info(f"【{self.pure_user_id}】开始模拟滑动...")
             
             # 获取滑块按钮中心位置
             button_box = slider_button.bounding_box()
             if not button_box:
-                logger.error(f"用户 {self.user_id} 无法获取滑块按钮位置")
+                logger.error(f"【{self.pure_user_id}】无法获取滑块按钮位置")
                 return False
             
             start_x = button_box["x"] + button_box["width"] / 2
@@ -974,14 +984,14 @@ class XianyuSliderStealth:
                     except:
                         pass
                     
-                    logger.info(f"用户 {self.user_id} 滑动进度: {progress:.1f}% ({i+1}/{len(trajectory)}) - left: {left_value}{slow_phase}")
+                    logger.info(f"【{self.pure_user_id}】滑动进度: {progress:.1f}% ({i+1}/{len(trajectory)}) - left: {left_value}{slow_phase}")
             
             # 检查是否需要补全拖动到258px（使用轨迹执行过程中记录的left值）
             try:
                 # 如果left值还没到258px，需要补全
                 if final_left_px < 258:
                     remaining_distance = 258 - final_left_px
-                    logger.info(f"用户 {self.user_id} 检测到需要补全拖动: 当前left={final_left_px}px, 还需{remaining_distance}px")
+                    logger.info(f"【{self.pure_user_id}】检测到需要补全拖动: 当前left={final_left_px}px, 还需{remaining_distance}px")
                     
                     # 继续之前的拖动轨迹进行补全
                     current_x = start_x + trajectory[-1][0] if trajectory else start_x
@@ -1016,7 +1026,7 @@ class XianyuSliderStealth:
                         
                         # 每步记录进度
                         if step % 2 == 0 or step == completion_steps - 1:
-                            logger.info(f"用户 {self.user_id} 补全拖动进度: {progress*100:.1f}% ({step+1}/{completion_steps}) - 移动{move_distance:.1f}px")
+                            logger.info(f"【{self.pure_user_id}】补全拖动进度: {progress*100:.1f}% ({step+1}/{completion_steps}) - 移动{move_distance:.1f}px")
                     
                     # 更新轨迹数据
                     if hasattr(self, 'current_trajectory_data'):
@@ -1026,10 +1036,10 @@ class XianyuSliderStealth:
                         self.current_trajectory_data["trajectory_points"].extend(completion_trajectory)
                         self.current_trajectory_data["final_left_px"] = 258  # 更新最终位置
                     
-                    logger.info(f"用户 {self.user_id} 补全拖动完成: 从{final_left_px}px补全到258px")
+                    logger.info(f"【{self.pure_user_id}】补全拖动完成: 从{final_left_px}px补全到258px")
                     
             except Exception as e:
-                logger.warning(f"用户 {self.user_id} 检查补全拖动时出错: {str(e)}")
+                logger.warning(f"【{self.pure_user_id}】检查补全拖动时出错: {str(e)}")
             
             # 稍微回退一点，模拟人类可能的过冲
             if len(trajectory) > 0:
@@ -1044,12 +1054,12 @@ class XianyuSliderStealth:
             
             # 释放鼠标
             self.page.mouse.up()
-            logger.info(f"用户 {self.user_id} 滑动完成")
+            logger.info(f"【{self.pure_user_id}】滑动完成")
             
             return True
             
         except Exception as e:
-            logger.error(f"用户 {self.user_id} 模拟滑动时出错: {str(e)}")
+            logger.error(f"【{self.pure_user_id}】模拟滑动时出错: {str(e)}")
             return False
     
     def find_slider_elements(self):
@@ -1075,15 +1085,15 @@ class XianyuSliderStealth:
                 try:
                     element = self.page.wait_for_selector(selector, timeout=3000)
                     if element:
-                        logger.info(f"用户 {self.user_id} 找到滑块容器: {selector}")
+                        logger.info(f"【{self.pure_user_id}】找到滑块容器: {selector}")
                         slider_container = element
                         break
                 except Exception as e:
-                    logger.debug(f"用户 {self.user_id} 选择器 {selector} 未找到: {e}")
+                    logger.debug(f"【{self.pure_user_id}】选择器 {selector} 未找到: {e}")
                     continue
             
             if not slider_container:
-                logger.error(f"用户 {self.user_id} 未找到任何滑块容器")
+                logger.error(f"【{self.pure_user_id}】未找到任何滑块容器")
                 return None, None, None
             
             # 定义滑块按钮选择器
@@ -1102,15 +1112,15 @@ class XianyuSliderStealth:
                 try:
                     element = self.page.wait_for_selector(selector, timeout=3000)
                     if element:
-                        logger.info(f"用户 {self.user_id} 找到滑块按钮: {selector}")
+                        logger.info(f"【{self.pure_user_id}】找到滑块按钮: {selector}")
                         slider_button = element
                         break
                 except Exception as e:
-                    logger.debug(f"用户 {self.user_id} 选择器 {selector} 未找到: {e}")
+                    logger.debug(f"【{self.pure_user_id}】选择器 {selector} 未找到: {e}")
                     continue
             
             if not slider_button:
-                logger.error(f"用户 {self.user_id} 未找到任何滑块按钮")
+                logger.error(f"【{self.pure_user_id}】未找到任何滑块按钮")
                 return slider_container, None, None
             
             # 定义滑块轨道选择器
@@ -1128,21 +1138,21 @@ class XianyuSliderStealth:
                 try:
                     element = self.page.wait_for_selector(selector, timeout=3000)
                     if element:
-                        logger.info(f"用户 {self.user_id} 找到滑块轨道: {selector}")
+                        logger.info(f"【{self.pure_user_id}】找到滑块轨道: {selector}")
                         slider_track = element
                         break
                 except Exception as e:
-                    logger.debug(f"用户 {self.user_id} 选择器 {selector} 未找到: {e}")
+                    logger.debug(f"【{self.pure_user_id}】选择器 {selector} 未找到: {e}")
                     continue
             
             if not slider_track:
-                logger.error(f"用户 {self.user_id} 未找到任何滑块轨道")
+                logger.error(f"【{self.pure_user_id}】未找到任何滑块轨道")
                 return slider_container, slider_button, None
             
             return slider_container, slider_button, slider_track
             
         except Exception as e:
-            logger.error(f"用户 {self.user_id} 查找滑块元素时出错: {str(e)}")
+            logger.error(f"【{self.pure_user_id}】查找滑块元素时出错: {str(e)}")
             return None, None, None
     
     def calculate_slide_distance(self, slider_button: ElementHandle, slider_track: ElementHandle):
@@ -1151,29 +1161,29 @@ class XianyuSliderStealth:
             # 获取滑块按钮位置和大小
             button_box = slider_button.bounding_box()
             if not button_box:
-                logger.error(f"用户 {self.user_id} 无法获取滑块按钮位置")
+                logger.error(f"【{self.pure_user_id}】无法获取滑块按钮位置")
                 return 0
             
             # 获取滑块轨道位置和大小
             track_box = slider_track.bounding_box()
             if not track_box:
-                logger.error(f"用户 {self.user_id} 无法获取滑块轨道位置")
+                logger.error(f"【{self.pure_user_id}】无法获取滑块轨道位置")
                 return 0
             
             # 计算滑动距离 (轨道宽度 - 滑块宽度)
             slide_distance = track_box["width"] - button_box["width"]
-            logger.info(f"用户 {self.user_id} 计算滑动距离: {slide_distance}px (轨道宽度: {track_box['width']}px, 滑块宽度: {button_box['width']}px)")
+            logger.info(f"【{self.pure_user_id}】计算滑动距离: {slide_distance}px (轨道宽度: {track_box['width']}px, 滑块宽度: {button_box['width']}px)")
             
             return slide_distance
             
         except Exception as e:
-            logger.error(f"用户 {self.user_id} 计算滑动距离时出错: {str(e)}")
+            logger.error(f"【{self.pure_user_id}】计算滑动距离时出错: {str(e)}")
             return 0
     
     def check_verification_success(self, slider_button: ElementHandle):
         """检查验证结果"""
         try:
-            logger.info(f"用户 {self.user_id} 检查验证结果...")
+            logger.info(f"【{self.pure_user_id}】检查验证结果...")
             
             # 等待验证结果
             time.sleep(3)
@@ -1186,20 +1196,20 @@ class XianyuSliderStealth:
                     left_match = re.search(r'left:\s*([^;]+)', current_style)
                     if left_match:
                         left_value = left_match.group(1).strip()
-                        logger.info(f"用户 {self.user_id} 滑块最终位置: {left_value}")
+                        logger.info(f"【{self.pure_user_id}】滑块最终位置: {left_value}")
                         
                         # 如果left值大于0，说明滑块被移动了
                         try:
                             left_px = float(left_value.replace('px', ''))
                             if left_px > 0:
-                                logger.info(f"用户 {self.user_id} 滑块已移动，检查页面是否改变...")
+                                logger.info(f"【{self.pure_user_id}】滑块已移动，检查页面是否改变...")
                                 
                                 # 检查页面是否改变
                                 if self.check_page_changed():
-                                    logger.info(f"用户 {self.user_id} 页面已改变，验证成功")
+                                    logger.info(f"【{self.pure_user_id}】页面已改变，验证成功")
                                     return True
                                 else:
-                                    logger.warning(f"用户 {self.user_id} 页面未改变，检查验证失败提示...")
+                                    logger.warning(f"【{self.pure_user_id}】页面未改变，检查验证失败提示...")
                                     return self.check_verification_failure()
                         except:
                             pass
@@ -1210,10 +1220,10 @@ class XianyuSliderStealth:
             try:
                 container = self.page.query_selector(".nc-container")
                 if not container or not container.is_visible():
-                    logger.info(f"用户 {self.user_id} 滑块容器已消失，验证成功")
+                    logger.info(f"【{self.pure_user_id}】滑块容器已消失，验证成功")
                     return True
                 else:
-                    logger.warning(f"用户 {self.user_id} 滑块容器仍存在，验证失败")
+                    logger.warning(f"【{self.pure_user_id}】滑块容器仍存在，验证失败")
                     return False
             except:
                 pass
@@ -1222,10 +1232,10 @@ class XianyuSliderStealth:
             try:
                 track = self.page.query_selector("#nc_1_n1t")
                 if not track or not track.is_visible():
-                    logger.info(f"用户 {self.user_id} 滑块轨道已消失，验证成功")
+                    logger.info(f"【{self.pure_user_id}】滑块轨道已消失，验证成功")
                     return True
                 else:
-                    logger.warning(f"用户 {self.user_id} 滑块轨道仍存在，验证失败")
+                    logger.warning(f"【{self.pure_user_id}】滑块轨道仍存在，验证失败")
                     return False
             except:
                 pass
@@ -1243,16 +1253,16 @@ class XianyuSliderStealth:
                 try:
                     element = self.page.query_selector(selector)
                     if element and element.is_visible():
-                        logger.info(f"用户 {self.user_id} 找到成功提示: {selector}")
+                        logger.info(f"【{self.pure_user_id}】找到成功提示: {selector}")
                         return True
                 except:
                     continue
             
-            logger.warning(f"用户 {self.user_id} 未找到明确的成功或失败提示")
+            logger.warning(f"【{self.pure_user_id}】未找到明确的成功或失败提示")
             return False
             
         except Exception as e:
-            logger.error(f"用户 {self.user_id} 检查验证结果时出错: {str(e)}")
+            logger.error(f"【{self.pure_user_id}】检查验证结果时出错: {str(e)}")
             return False
     
     def check_page_changed(self):
@@ -1260,32 +1270,32 @@ class XianyuSliderStealth:
         try:
             # 检查页面标题是否改变
             current_title = self.page.title()
-            logger.info(f"用户 {self.user_id} 当前页面标题: {current_title}")
+            logger.info(f"【{self.pure_user_id}】当前页面标题: {current_title}")
             
             # 如果标题不再是验证码相关，说明页面已改变
             if "captcha" not in current_title.lower() and "验证" not in current_title and "拦截" not in current_title:
-                logger.info(f"用户 {self.user_id} 页面标题已改变，验证成功")
+                logger.info(f"【{self.pure_user_id}】页面标题已改变，验证成功")
                 return True
             
             # 检查URL是否改变
             current_url = self.page.url
-            logger.info(f"用户 {self.user_id} 当前页面URL: {current_url}")
+            logger.info(f"【{self.pure_user_id}】当前页面URL: {current_url}")
             
             # 如果URL不再包含验证码相关参数，说明页面已改变
             if "captcha" not in current_url.lower() and "action=captcha" not in current_url:
-                logger.info(f"用户 {self.user_id} 页面URL已改变，验证成功")
+                logger.info(f"【{self.pure_user_id}】页面URL已改变，验证成功")
                 return True
             
             return False
             
         except Exception as e:
-            logger.warning(f"用户 {self.user_id} 检查页面改变时出错: {e}")
+            logger.warning(f"【{self.pure_user_id}】检查页面改变时出错: {e}")
             return False
     
     def check_verification_failure(self):
         """检查验证失败提示"""
         try:
-            logger.info(f"用户 {self.user_id} 检查验证失败提示...")
+            logger.info(f"【{self.pure_user_id}】检查验证失败提示...")
             
             # 等待一下让失败提示出现
             time.sleep(3)
@@ -1305,12 +1315,12 @@ class XianyuSliderStealth:
             found_failure = False
             for keyword in failure_keywords:
                 if keyword in page_content:
-                    logger.info(f"用户 {self.user_id} 页面内容包含失败关键词: {keyword}")
+                    logger.info(f"【{self.pure_user_id}】页面内容包含失败关键词: {keyword}")
                     found_failure = True
                     break
             
             if not found_failure:
-                logger.info(f"用户 {self.user_id} 页面内容未包含失败关键词，可能验证真的成功了")
+                logger.info(f"【{self.pure_user_id}】页面内容未包含失败关键词，可能验证真的成功了")
                 return True
             
             # 检查各种可能的验证失败提示元素
@@ -1342,126 +1352,148 @@ class XianyuSliderStealth:
                         except:
                             pass
                         
-                        logger.info(f"用户 {self.user_id} 找到验证失败提示: {selector}, 文本: {element_text}")
+                        logger.info(f"【{self.pure_user_id}】找到验证失败提示: {selector}, 文本: {element_text}")
                         retry_button = element
                         break
                 except:
                     continue
             
             if retry_button:
-                logger.info(f"用户 {self.user_id} 检测到验证失败提示，但不执行点击操作")
+                logger.info(f"【{self.pure_user_id}】检测到验证失败提示，但不执行点击操作")
                 return False
             else:
-                logger.warning(f"用户 {self.user_id} 未找到验证失败提示元素")
+                logger.warning(f"【{self.pure_user_id}】未找到验证失败提示元素")
                 return False
                 
         except Exception as e:
-            logger.error(f"用户 {self.user_id} 检查验证失败时出错: {e}")
+            logger.error(f"【{self.pure_user_id}】检查验证失败时出错: {e}")
             return False
     
     def solve_slider(self):
         """处理滑块验证"""
         try:
-            logger.info(f"用户 {self.user_id} 开始处理滑块验证...")
+            logger.info(f"【{self.pure_user_id}】开始处理滑块验证...")
             
             # 1. 查找滑块元素
             slider_container, slider_button, slider_track = self.find_slider_elements()
             if not all([slider_container, slider_button, slider_track]):
-                logger.error(f"用户 {self.user_id} 滑块元素查找失败")
+                logger.error(f"【{self.pure_user_id}】滑块元素查找失败")
                 return False
             
             # 2. 计算滑动距离
             slide_distance = self.calculate_slide_distance(slider_button, slider_track)
             if slide_distance <= 0:
-                logger.error(f"用户 {self.user_id} 滑动距离计算失败")
+                logger.error(f"【{self.pure_user_id}】滑动距离计算失败")
                 return False
             
             # 3. 生成人类化轨迹
             trajectory = self.generate_human_trajectory(slide_distance)
             if not trajectory:
-                logger.error(f"用户 {self.user_id} 轨迹生成失败")
+                logger.error(f"【{self.pure_user_id}】轨迹生成失败")
                 return False
             
             # 4. 模拟滑动
             if not self.simulate_slide(slider_button, trajectory):
-                logger.error(f"用户 {self.user_id} 滑动模拟失败")
+                logger.error(f"【{self.pure_user_id}】滑动模拟失败")
                 return False
             
             # 5. 检查验证结果
             if self.check_verification_success(slider_button):
-                logger.info(f"用户 {self.user_id} 滑块验证成功!")
+                logger.info(f"【{self.pure_user_id}】滑块验证成功!")
                 
                 # 保存成功记录用于学习
                 if self.enable_learning and hasattr(self, 'current_trajectory_data'):
                     self._save_success_record(self.current_trajectory_data)
-                    logger.info(f"用户 {self.user_id} 已保存成功记录用于参数优化")
+                    logger.info(f"【{self.pure_user_id}】已保存成功记录用于参数优化")
                 
                 return True
             else:
-                logger.warning(f"用户 {self.user_id} 滑块验证失败")
+                logger.warning(f"【{self.pure_user_id}】滑块验证失败")
                 return False
                 
         except Exception as e:
-            logger.error(f"用户 {self.user_id} 处理滑块验证时出错: {str(e)}")
+            logger.error(f"【{self.pure_user_id}】处理滑块验证时出错: {str(e)}")
             return False
     
     def close_browser(self):
         """安全关闭浏览器并清理资源"""
-        logger.info(f"用户 {self.user_id} 开始清理资源...")
+        logger.info(f"【{self.pure_user_id}】开始清理资源...")
         
         # 清理页面
         try:
             if hasattr(self, 'page') and self.page:
                 self.page.close()
-                logger.debug(f"用户 {self.user_id} 页面已关闭")
+                logger.debug(f"【{self.pure_user_id}】页面已关闭")
                 self.page = None
         except Exception as e:
-            logger.warning(f"用户 {self.user_id} 关闭页面时出错: {e}")
+            logger.warning(f"【{self.pure_user_id}】关闭页面时出错: {e}")
         
         # 清理上下文
         try:
             if hasattr(self, 'context') and self.context:
                 self.context.close()
-                logger.debug(f"用户 {self.user_id} 上下文已关闭")
+                logger.debug(f"【{self.pure_user_id}】上下文已关闭")
                 self.context = None
         except Exception as e:
-            logger.warning(f"用户 {self.user_id} 关闭上下文时出错: {e}")
+            logger.warning(f"【{self.pure_user_id}】关闭上下文时出错: {e}")
         
-        # 清理浏览器
+        # 清理浏览器（异步操作，不等待完成）
         try:
             if hasattr(self, 'browser') and self.browser:
-                self.browser.close()
-                logger.info(f"用户 {self.user_id} 浏览器已关闭")
+                # 不等待浏览器关闭完成，避免阻塞
+                import asyncio
+                asyncio.create_task(self._async_close_browser())
+                logger.info(f"【{self.pure_user_id}】浏览器关闭任务已创建")
                 self.browser = None
         except Exception as e:
-            logger.warning(f"用户 {self.user_id} 关闭浏览器时出错: {e}")
+            logger.warning(f"【{self.pure_user_id}】创建浏览器关闭任务时出错: {e}")
         
-        # 清理Playwright
+        # 清理Playwright（异步操作，不等待完成）
         try:
             if hasattr(self, 'playwright') and self.playwright:
-                self.playwright.stop()
-                logger.info(f"用户 {self.user_id} Playwright已停止")
+                # 不等待Playwright停止完成，避免阻塞
+                import asyncio
+                asyncio.create_task(self._async_stop_playwright())
+                logger.info(f"【{self.pure_user_id}】Playwright停止任务已创建")
                 self.playwright = None
         except Exception as e:
-            logger.warning(f"用户 {self.user_id} 停止Playwright时出错: {e}")
+            logger.warning(f"【{self.pure_user_id}】创建Playwright停止任务时出错: {e}")
         
         # 清理临时目录
         try:
             if hasattr(self, 'temp_dir') and self.temp_dir:
                 shutil.rmtree(self.temp_dir, ignore_errors=True)
-                logger.debug(f"用户 {self.user_id} 临时目录已清理: {self.temp_dir}")
+                logger.debug(f"【{self.pure_user_id}】临时目录已清理: {self.temp_dir}")
         except Exception as e:
-            logger.warning(f"用户 {self.user_id} 清理临时目录时出错: {e}")
+            logger.warning(f"【{self.pure_user_id}】清理临时目录时出错: {e}")
         
         # 注销实例（最后执行，确保其他清理完成）
         try:
             concurrency_manager.unregister_instance(self.user_id)
             stats = concurrency_manager.get_stats()
-            logger.info(f"用户 {self.user_id} 实例已注销，当前并发: {stats['active_count']}/{stats['max_concurrent']}，等待队列: {stats['queue_length']}")
+            logger.info(f"【{self.pure_user_id}】实例已注销，当前并发: {stats['active_count']}/{stats['max_concurrent']}，等待队列: {stats['queue_length']}")
         except Exception as e:
-            logger.warning(f"用户 {self.user_id} 注销实例时出错: {e}")
+            logger.warning(f"【{self.pure_user_id}】注销实例时出错: {e}")
         
-        logger.info(f"用户 {self.user_id} 资源清理完成")
+        logger.info(f"【{self.pure_user_id}】资源清理完成")
+    
+    async def _async_close_browser(self):
+        """异步关闭浏览器"""
+        try:
+            if hasattr(self, 'browser') and self.browser:
+                await self.browser.close()
+                logger.info(f"【{self.pure_user_id}】浏览器已关闭")
+        except Exception as e:
+            logger.warning(f"【{self.pure_user_id}】异步关闭浏览器时出错: {e}")
+    
+    async def _async_stop_playwright(self):
+        """异步停止Playwright"""
+        try:
+            if hasattr(self, 'playwright') and self.playwright:
+                await self.playwright.stop()
+                logger.info(f"【{self.pure_user_id}】Playwright已停止")
+        except Exception as e:
+            logger.warning(f"【{self.pure_user_id}】异步停止Playwright时出错: {e}")
     
     def run(self, url: str):
         """运行主流程，返回(成功状态, cookie数据)"""
@@ -1471,23 +1503,12 @@ class XianyuSliderStealth:
             self.init_browser()
             
             # 导航到目标URL，添加随机延迟
-            logger.info(f"用户 {self.user_id} 导航到URL: {url}")
+            logger.info(f"【{self.pure_user_id}】导航到URL: {url}")
             self.page.goto(url, wait_until="networkidle", timeout=60000)
-            
-            # 保存初始cookie用于比较
-            try:
-                initial_cookies = self.context.cookies()
-                self._old_cookies = {}
-                for cookie in initial_cookies:
-                    self._old_cookies[cookie['name']] = cookie['value']
-                logger.info(f"用户 {self.user_id} 已保存初始cookie，共{len(self._old_cookies)}个")
-            except Exception as e:
-                logger.warning(f"用户 {self.user_id} 保存初始cookie失败: {str(e)}")
-                self._old_cookies = {}
             
             # 随机延迟，模拟人类行为
             delay = random.uniform(5, 10)
-            logger.info(f"用户 {self.user_id} 等待页面加载: {delay:.2f}秒")
+            logger.info(f"【{self.pure_user_id}】等待页面加载: {delay:.2f}秒")
             time.sleep(delay)
             
             # 模拟人类滚动行为
@@ -1498,47 +1519,47 @@ class XianyuSliderStealth:
             
             # 检查页面标题
             page_title = self.page.title()
-            logger.info(f"用户 {self.user_id} 页面标题: {page_title}")
+            logger.info(f"【{self.pure_user_id}】页面标题: {page_title}")
             
             # 检查页面内容
             page_content = self.page.content()
             if any(keyword in page_content for keyword in ["验证码", "captcha", "滑块", "slider"]):
-                logger.info(f"用户 {self.user_id} 页面内容包含验证码相关关键词")
+                logger.info(f"【{self.pure_user_id}】页面内容包含验证码相关关键词")
                 
                 # 处理滑块验证
                 success = self.solve_slider()
                 
                 if success:
-                    logger.info(f"用户 {self.user_id} 滑块验证成功")
+                    logger.info(f"【{self.pure_user_id}】滑块验证成功")
                     
                     # 等待页面完全加载和跳转，让新的cookie生效
                     try:
-                        logger.info(f"用户 {self.user_id} 等待页面完全加载...")
+                        logger.info(f"【{self.pure_user_id}】等待页面完全加载...")
                         time.sleep(3)  # 等待页面状态稳定
                         
                         # 等待页面跳转或刷新
                         self.page.wait_for_load_state("networkidle", timeout=10000)
                         time.sleep(2)  # 额外等待确保cookie更新
                         
-                        logger.info(f"用户 {self.user_id} 页面加载完成，开始获取cookie")
+                        logger.info(f"【{self.pure_user_id}】页面加载完成，开始获取cookie")
                     except Exception as e:
-                        logger.warning(f"用户 {self.user_id} 等待页面加载时出错: {str(e)}")
+                        logger.warning(f"【{self.pure_user_id}】等待页面加载时出错: {str(e)}")
                     
                     # 在关闭浏览器前获取cookie
                     try:
                         cookies = self._get_cookies_after_success()
                     except Exception as e:
-                        logger.warning(f"用户 {self.user_id} 获取cookie时出错: {str(e)}")
+                        logger.warning(f"【{self.pure_user_id}】获取cookie时出错: {str(e)}")
                 else:
-                    logger.warning(f"用户 {self.user_id} 滑块验证失败")
+                    logger.warning(f"【{self.pure_user_id}】滑块验证失败")
                 
                 return success, cookies
             else:
-                logger.info(f"用户 {self.user_id} 页面内容不包含验证码相关关键词，可能不需要验证")
+                logger.info(f"【{self.pure_user_id}】页面内容不包含验证码相关关键词，可能不需要验证")
                 return True, None
             
         except Exception as e:
-            logger.error(f"用户 {self.user_id} 执行过程中出错: {str(e)}")
+            logger.error(f"【{self.pure_user_id}】执行过程中出错: {str(e)}")
             return False, None
         finally:
             # 关闭浏览器
