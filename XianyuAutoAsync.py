@@ -824,7 +824,7 @@ class XianyuLive:
                     f"滑块验证重试次数已达上限，请手动处理",
                     "captcha_max_retries_exceeded"
                 )
-				notification_sent = True
+                notification_sent = True
                 return None
 
             # 【消息接收检查】检查是否在消息接收后的冷却时间内，与 cookie_refresh_loop 保持一致
