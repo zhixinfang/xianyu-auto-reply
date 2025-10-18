@@ -1205,7 +1205,8 @@ class XianyuLive:
 
                 # 创建独立的滑块验证实例（每个用户独立实例，避免并发冲突）
                 slider_stealth = XianyuSliderStealth(
-                    user_id=f"{self.cookie_id}_{int(time.time() * 1000)}",  # 使用唯一ID避免冲突
+                    # user_id=f"{self.cookie_id}_{int(time.time() * 1000)}",  # 使用唯一ID避免冲突
+                    user_id=f"{self.cookie_id}",  # 使用唯一ID避免冲突
                     enable_learning=True  # 启用学习功能
                 )
 
