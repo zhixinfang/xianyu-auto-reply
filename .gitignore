@@ -485,3 +485,140 @@ nuitka-crash-report.xml
 *.db-journal
 *.db-wal
 *.db-shm
+
+# ==================== 2025年新增规则 ====================
+
+# 编译相关临时文件
+*.build/
+*.dist/
+*.onefile-build/
+nuitka-crash-report*.xml
+nuitka-onefile-warning.txt
+
+# Nuitka 编译产物（保留在utils目录下的二进制模块）
+utils/*.build/
+utils/*.dist/
+!utils/xianyu_slider_stealth*.pyd
+!utils/xianyu_slider_stealth*.so
+
+# Python类型提示文件（Nuitka生成的）
+*.pyi
+!utils/xianyu_slider_stealth.pyi
+
+# DrissionPage浏览器缓存
+DrissionPage/
+.drission/
+
+# 其他浏览器数据
+selenium/
+webdriver/
+*.crdownload
+
+# 项目运行时生成的统计文件
+user_stats.txt
+user_stats.db
+stats.log
+stats_*.log
+
+# 临时Python脚本（不要提交临时脚本）
+temp_*.py
+tmp_*.py
+quick_*.py
+fix_*.py
+test_*.py
+check_*.py
+debug_*.py
+
+# 数据导出文件（避免提交用户数据）
+export_*.xlsx
+export_*.csv
+export_*.json
+dump_*.sql
+backup_*.db
+
+# 日志文件（更全面）
+*.log
+*.log.*
+logs/
+*.realtime
+realtime.log
+
+# 配置文件备份
+*.yml.bak
+*.yaml.bak
+*.json.bak
+*.conf.bak
+
+# 系统监控和性能分析
+*.perf
+*.trace
+*.profile
+memory_*.dump
+cpu_*.profile
+performance_*.txt
+
+# 容器相关（补充）
+.docker/
+docker-data/
+container_logs/
+docker-compose.override.yml
+
+# 数据目录（补充确保不提交用户数据）
+data/
+backups/
+trajectory_history/
+*.trajectory
+
+# 临时下载和缓存
+downloads/
+temp_downloads/
+.cache/
+cache/
+__cache__/
+
+# 开发环境配置（保护开发者隐私）
+.env
+.env.*
+!.env.example
+*.local.yml
+*.dev.yml
+*.test.yml
+*.personal.yml
+*.private.yml
+config.local.*
+config.dev.*
+
+# 加密密钥文件（确保安全）
+*.key
+*.pem
+*.crt
+*.cert
+*.p12
+*.pfx
+secrets/
+credentials/
+keys/
+
+# AI模型和大文件
+*.model
+*.weights
+*.h5
+*.pb
+*.onnx
+*.tflite
+models/
+checkpoints/
+
+# 媒体文件（避免提交大文件）
+*.mp4
+*.avi
+*.mov
+*.wmv
+*.flv
+*.mp3
+*.wav
+*.ogg
+
+# 项目特定排除（明确列出不需要跟踪的文件）
+check_silent_mode.py
+order_status_handler.py

@@ -115,6 +115,9 @@ class DBManager:
                 auto_confirm INTEGER DEFAULT 1,
                 remark TEXT DEFAULT '',
                 pause_duration INTEGER DEFAULT 10,
+                username TEXT DEFAULT '',
+                password TEXT DEFAULT '',
+                show_browser INTEGER DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
             )
@@ -593,6 +596,13 @@ class DBManager:
                 self.set_system_setting("db_version", "1.4", "数据库版本号")
                 logger.info("数据库升级到版本1.4完成")
 
+            # 升级到版本1.5 - 为cookies表添加账号登录字段
+            if current_version < "1.5":
+                logger.info("开始升级数据库到版本1.5...")
+                self.upgrade_cookies_table_for_account_login(cursor)
+                self.set_system_setting("db_version", "1.5", "数据库版本号")
+                logger.info("数据库升级到版本1.5完成")
+
             # 迁移遗留数据（在所有版本升级完成后执行）
             self.migrate_legacy_data(cursor)
 
@@ -905,6 +915,47 @@ class DBManager:
             logger.error(f"升级notification_channels表类型失败: {e}")
             raise
 
+    def upgrade_cookies_table_for_account_login(self, cursor):
+        """升级cookies表支持账号密码登录功能"""
+        try:
+            logger.info("开始为cookies表添加账号登录相关字段...")
+
+            # 为cookies表添加username字段（如果不存在）
+            try:
+                self._execute_sql(cursor, "SELECT username FROM cookies LIMIT 1")
+                logger.info("cookies表username字段已存在")
+            except sqlite3.OperationalError:
+                # username字段不存在，需要添加
+                self._execute_sql(cursor, "ALTER TABLE cookies ADD COLUMN username TEXT DEFAULT ''")
+                logger.info("为cookies表添加username字段")
+
+            # 为cookies表添加password字段（如果不存在）
+            try:
+                self._execute_sql(cursor, "SELECT password FROM cookies LIMIT 1")
+                logger.info("cookies表password字段已存在")
+            except sqlite3.OperationalError:
+                # password字段不存在，需要添加
+                self._execute_sql(cursor, "ALTER TABLE cookies ADD COLUMN password TEXT DEFAULT ''")
+                logger.info("为cookies表添加password字段")
+
+            # 为cookies表添加show_browser字段（如果不存在）
+            try:
+                self._execute_sql(cursor, "SELECT show_browser FROM cookies LIMIT 1")
+                logger.info("cookies表show_browser字段已存在")
+            except sqlite3.OperationalError:
+                # show_browser字段不存在，需要添加
+                self._execute_sql(cursor, "ALTER TABLE cookies ADD COLUMN show_browser INTEGER DEFAULT 0")
+                logger.info("为cookies表添加show_browser字段")
+
+            logger.info("✅ cookies表账号登录字段升级完成")
+            logger.info("   - username: 用于密码登录的用户名")
+            logger.info("   - password: 用于密码登录的密码")
+            logger.info("   - show_browser: 登录时是否显示浏览器（0=隐藏，1=显示）")
+            return True
+        except Exception as e:
+            logger.error(f"升级cookies表账号登录字段失败: {e}")
+            raise
+
     def migrate_legacy_data(self, cursor):
         """迁移遗留数据到新表结构"""
         try:
@@ -1214,11 +1265,11 @@ class DBManager:
                 return None
 
     def get_cookie_details(self, cookie_id: str) -> Optional[Dict[str, any]]:
-        """获取Cookie的详细信息，包括user_id、auto_confirm、remark和pause_duration"""
+        """获取Cookie的详细信息，包括user_id、auto_confirm、remark、pause_duration、username、password和show_browser"""
         with self.lock:
             try:
                 cursor = self.conn.cursor()
-                self._execute_sql(cursor, "SELECT id, value, user_id, auto_confirm, remark, pause_duration, created_at FROM cookies WHERE id = ?", (cookie_id,))
+                self._execute_sql(cursor, "SELECT id, value, user_id, auto_confirm, remark, pause_duration, username, password, show_browser, created_at FROM cookies WHERE id = ?", (cookie_id,))
                 result = cursor.fetchone()
                 if result:
                     return {
@@ -1228,7 +1279,10 @@ class DBManager:
                         'auto_confirm': bool(result[3]),
                         'remark': result[4] or '',
                         'pause_duration': result[5] if result[5] is not None else 10,  # 0是有效值，表示不暂停
-                        'created_at': result[6]
+                        'username': result[6] or '',
+                        'password': result[7] or '',
+                        'show_browser': bool(result[8]) if result[8] is not None else False,
+                        'created_at': result[9]
                     }
                 return None
             except Exception as e:
@@ -1295,6 +1349,47 @@ class DBManager:
             except Exception as e:
                 logger.error(f"获取账号自动回复暂停时间失败: {e}")
                 return 10
+
+    def update_cookie_account_info(self, cookie_id: str, cookie_value: str = None, username: str = None, password: str = None, show_browser: bool = None) -> bool:
+        """更新Cookie的账号信息（包括cookie值、用户名、密码和显示浏览器设置）"""
+        with self.lock:
+            try:
+                cursor = self.conn.cursor()
+                
+                # 构建动态SQL更新语句
+                update_fields = []
+                params = []
+                
+                if cookie_value is not None:
+                    update_fields.append("value = ?")
+                    params.append(cookie_value)
+                
+                if username is not None:
+                    update_fields.append("username = ?")
+                    params.append(username)
+                
+                if password is not None:
+                    update_fields.append("password = ?")
+                    params.append(password)
+                
+                if show_browser is not None:
+                    update_fields.append("show_browser = ?")
+                    params.append(1 if show_browser else 0)
+                
+                if not update_fields:
+                    logger.warning(f"更新账号 {cookie_id} 信息时没有提供任何更新字段")
+                    return False
+                
+                params.append(cookie_id)
+                sql = f"UPDATE cookies SET {', '.join(update_fields)} WHERE id = ?"
+                
+                self._execute_sql(cursor, sql, tuple(params))
+                self.conn.commit()
+                logger.info(f"更新账号 {cookie_id} 信息成功: {update_fields}")
+                return True
+            except Exception as e:
+                logger.error(f"更新账号信息失败: {e}")
+                return False
 
     def get_auto_confirm(self, cookie_id: str) -> bool:
         """获取Cookie的自动确认发货设置"""

@@ -3515,5 +3515,73 @@
     </div>
   </div>
 
+  <!-- 账号编辑模态框 -->
+  <div class="modal fade" id="accountEditModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">
+            <i class="bi bi-pencil-square me-2"></i>
+            编辑账号信息 - <span id="editAccountIdDisplay"></span>
+          </h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <form id="accountEditForm">
+            <input type="hidden" id="editAccountId">
+            
+            <div class="mb-3">
+              <label class="form-label">Cookie <span class="text-danger">*</span></label>
+              <textarea class="form-control" id="editAccountCookie" rows="3" placeholder="输入Cookie值" required></textarea>
+              <div class="form-text">账号的Cookie值，用于身份认证</div>
+            </div>
+            
+            <div class="mb-3">
+              <label class="form-label">用户名</label>
+              <input type="text" class="form-control" id="editAccountUsername" placeholder="输入用户名（可选）">
+              <div class="form-text">用于密码登录的用户名</div>
+            </div>
+            
+            <div class="mb-3">
+              <label class="form-label">密码</label>
+              <input type="password" class="form-control" id="editAccountPassword" placeholder="输入密码（可选）">
+              <div class="form-text">用于密码登录的密码</div>
+            </div>
+            
+            <div class="mb-3">
+              <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" id="editAccountShowBrowser">
+                <label class="form-check-label" for="editAccountShowBrowser">
+                  显示浏览器
+                  <i class="bi bi-info-circle text-info ms-1" data-bs-toggle="tooltip" title="使用用户名密码登录的时候浏览器可见，仅限Windows源码部署打开该开关"></i>
+                </label>
+              </div>
+              <div class="form-text text-warning">
+                <i class="bi bi-exclamation-triangle me-1"></i>
+                使用用户名密码登录的时候浏览器可见，仅限Windows源码部署打开该开关，开关打开密码登录会停留5分钟，防止第一次登录需要人脸，成功一次之后后续可关闭开关
+              </div>
+            </div>
+            
+            <div class="alert alert-info">
+              <i class="bi bi-info-circle me-2"></i>
+              <strong>提示：</strong>
+              <ul class="mb-0 mt-2">
+                <li>Cookie是必填项，其他字段可选</li>
+                <li>配置用户名和密码后，系统可自动通过密码登录刷新Cookie</li>
+                <li>使用用户名密码登录的时候浏览器可见，仅限Windows源码部署打开该开关，开关打开密码登录会停留5分钟，防止第一次登录需要人脸，成功一次之后后续可关闭开关</li>
+              </ul>
+            </div>
+          </form>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+          <button type="button" class="btn btn-primary" onclick="saveAccountEdit()">
+            <i class="bi bi-check-lg me-1"></i>保存
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
 </body>
 </html>

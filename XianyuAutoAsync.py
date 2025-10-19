@@ -1072,32 +1072,57 @@ class XianyuLive:
                                 f"检测到令牌/Session过期，准备刷新Cookie并重启实例")
 
                             try:
-                                # 先调用_refresh_cookies_via_browser刷新Cookie
-                                logger.info(f"【{self.cookie_id}】开始通过浏览器刷新Cookie...")
-                                refresh_success = await self._refresh_cookies_via_browser(triggered_by_refresh_token=True)
-
-                                if refresh_success:
-                                    # 如果在刷新流程内部已经触发过重启，则跳过重复重启
-                                    if getattr(self, 'restarted_in_browser_refresh', False):
-                                        logger.info(f"【{self.cookie_id}】Cookie刷新成功（刷新流程内已重启），跳过重复重启")
-                                        self.last_token_refresh_status = "restarted_after_cookie_refresh"
-                                        return None
-
-                                    logger.info(f"【{self.cookie_id}】Cookie刷新成功，准备重启实例...")
-
-                                    # Cookie刷新成功后重启实例
-                                    await self._restart_instance()
-                                    logger.info(f"【{self.cookie_id}】实例重启完成")
-
-                                    # 标记重启标志（无需主动关闭WS，重启由管理器处理）
-                                    self.connection_restart_flag = True
-
-                                    # 标记为已重启（正常情况）
-                                    self.last_token_refresh_status = "restarted_after_cookie_refresh"
-                                    return None
+                                # 从数据库获取账号登录信息
+                                from db_manager import db_manager
+                                account_info = db_manager.get_cookie_details(self.cookie_id)
+                                
+                                if not account_info:
+                                    logger.error(f"【{self.cookie_id}】无法获取账号信息")
+                                    raise Exception("无法获取账号信息")
+                                
+                                username = account_info.get('username', '')
+                                password = account_info.get('password', '')
+                                show_browser = account_info.get('show_browser', False)
+                                
+                                # 检查是否配置了用户名和密码
+                                if not username or not password:
+                                    logger.warning(f"【{self.cookie_id}】未配置用户名或密码，跳过密码登录刷新")
+                                    raise Exception("未配置用户名或密码")
+                                
+                                # 使用浏览器进行密码登录刷新Cookie
+                                from utils.xianyu_slider_stealth import XianyuSliderStealth
+                                browser_mode = "有头" if show_browser else "无头"
+                                logger.info(f"【{self.cookie_id}】开始使用{browser_mode}浏览器进行密码登录刷新Cookie...")
+                                logger.info(f"【{self.cookie_id}】使用账号: {username}")
+                                
+                                # 在单独的线程中运行同步的登录方法
+                                import asyncio
+                                slider = XianyuSliderStealth(user_id=self.cookie_id, enable_learning=False)
+                                result = await asyncio.to_thread(
+                                    slider.login_with_password_headful,
+                                    account=username,
+                                    password=password,
+                                    show_browser=show_browser
+                                )
+                                
+                                if result:
+                                    logger.info(f"【{self.cookie_id}】密码登录成功，获取到Cookie")
+                                    logger.info(f"【{self.cookie_id}】Cookie内容: {result}")
+                                    
+                                    # 将cookie字典转换为字符串格式
+                                    new_cookies_str = '; '.join([f"{k}={v}" for k, v in result.items()])
+                                    logger.info(f"【{self.cookie_id}】Cookie字符串格式: {new_cookies_str[:200]}..." if len(new_cookies_str) > 200 else f"【{self.cookie_id}】Cookie字符串格式: {new_cookies_str}")
+                                    
+                                    # 更新Cookie并重启任务
+                                    logger.info(f"【{self.cookie_id}】开始更新Cookie并重启任务...")
+                                    update_success = await self._update_cookies_and_restart(new_cookies_str)
+                                    
+                                    if update_success:
+                                        logger.info(f"【{self.cookie_id}】Cookie更新并重启任务成功")
+                                    else:
+                                        logger.warning(f"【{self.cookie_id}】Cookie更新或重启任务失败")
                                 else:
-                                    logger.error(f"【{self.cookie_id}】Cookie刷新失败，跳过实例重启")
-                                    # Cookie刷新失败时继续执行原有的失败处理逻辑
+                                    logger.warning(f"【{self.cookie_id}】密码登录失败，未获取到Cookie")
 
                             except Exception as refresh_e:
                                 logger.error(f"【{self.cookie_id}】Cookie刷新或实例重启失败: {self._safe_str(refresh_e)}")
@@ -1207,7 +1232,8 @@ class XianyuLive:
                 slider_stealth = XianyuSliderStealth(
                     # user_id=f"{self.cookie_id}_{int(time.time() * 1000)}",  # 使用唯一ID避免冲突
                     user_id=f"{self.cookie_id}",  # 使用唯一ID避免冲突
-                    enable_learning=True  # 启用学习功能
+                    enable_learning=True,  # 启用学习功能
+                    headless=True  # 使用无头模式
                 )
 
                 # 在线程池中执行滑块验证
@@ -1462,7 +1488,11 @@ class XianyuLive:
                     if hasattr(self, 'user_id') and self.user_id:
                         current_user_id = self.user_id
 
-                    db_manager.save_cookie(self.cookie_id, self.cookies_str, current_user_id)
+                    # 使用 update_cookie_account_info 避免覆盖其他字段（如 pause_duration, remark 等）
+                    success = db_manager.update_cookie_account_info(self.cookie_id, cookie_value=self.cookies_str)
+                    if not success:
+                        # 如果更新失败（可能是新账号），使用 save_cookie
+                        db_manager.save_cookie(self.cookie_id, self.cookies_str, current_user_id)
                     logger.debug(f"已更新Cookie到数据库: {self.cookie_id}")
                 except Exception as e:
                     logger.error(f"更新数据库Cookie失败: {self._safe_str(e)}")
@@ -1493,7 +1523,8 @@ class XianyuLive:
                 # 使用异步方式调用update_cookie，避免阻塞
                 def restart_task():
                     try:
-                        cookie_manager.update_cookie(self.cookie_id, self.cookies_str)
+                        # save_to_db=False 因为 update_config_cookies 已经保存过了
+                        cookie_manager.update_cookie(self.cookie_id, self.cookies_str, save_to_db=False)
                         logger.info(f"【{self.cookie_id}】实例重启请求已发送")
                     except Exception as e:
                         logger.error(f"【{self.cookie_id}】重启实例失败: {e}")
@@ -4468,7 +4499,7 @@ class XianyuLive:
             await asyncio.sleep(0.1)
 
             # 访问指定页面获取真实cookie
-            target_url = "https://www.goofish.com/im?spm=a21ybx.home.sidebar.1.4c053da6vYwnmf"
+            target_url = "https://www.goofish.com/im"
             logger.info(f"【{target_cookie_id}】访问页面获取真实cookie: {target_url}")
 
             # 使用更灵活的页面访问策略
@@ -4593,7 +4624,15 @@ class XianyuLive:
 
             # 保存真实Cookie到数据库
             from db_manager import db_manager
-            success = db_manager.save_cookie(target_cookie_id, real_cookies_str, target_user_id)
+            
+            # 检查是否为新账号
+            existing_cookie = db_manager.get_cookie_details(target_cookie_id)
+            if existing_cookie:
+                # 现有账号，使用 update_cookie_account_info 避免覆盖其他字段（如 pause_duration, remark 等）
+                success = db_manager.update_cookie_account_info(target_cookie_id, cookie_value=real_cookies_str)
+            else:
+                # 新账号，使用 save_cookie
+                success = db_manager.save_cookie(target_cookie_id, real_cookies_str, target_user_id)
 
             if success:
                 logger.info(f"【{target_cookie_id}】真实Cookie已成功保存到数据库")
@@ -4806,7 +4845,7 @@ class XianyuLive:
             await asyncio.sleep(0.1)
 
             # 访问指定页面
-            target_url = "https://www.goofish.com/im?spm=a21ybx.home.sidebar.1.4c053da6vYwnmf"
+            target_url = "https://www.goofish.com/im"
             logger.info(f"【{self.cookie_id}】访问页面: {target_url}")
 
             # 使用更灵活的页面访问策略

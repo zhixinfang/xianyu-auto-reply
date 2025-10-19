@@ -41,6 +41,7 @@ https://pan.baidu.com/s/1I6muOGJQYd6y3oxQSmtvrQ?pwd=gcpd
 - **数据完全隔离** - 每个用户的数据独立存储，互不干扰
 - **权限管理** - 严格的用户权限控制和JWT认证
 - **安全保护** - 防暴力破解、会话管理、安全日志
+- **授权期限管理** - 核心滑块验证模块包含授权期限验证，确保合规使用
 
 ### 📱 多账号管理
 - **无限账号支持** - 每个用户可管理多个闲鱼账号
@@ -188,6 +189,27 @@ xianyu-auto-reply/
 
 </details>
 
+## 🆕 最新更新
+
+### 2025年1月更新
+
+**🔥 性能与安全增强**
+- ✅ 新增 Nuitka 二进制编译支持，核心模块可编译为 .pyd/.so 提升性能和安全性
+- ✅ 滑块验证模块增加授权期限验证机制，确保合规使用
+- ✅ Docker 构建优化，自动编译二进制模块，提升容器启动效率
+- ✅ 完善的错误处理和重试机制，提升系统稳定性
+
+**🛠️ 配置文件优化**
+- ✅ 完善 `.gitignore`，新增编译产物、浏览器缓存等规则
+- ✅ 完善 `.dockerignore`，优化Docker构建速度和镜像体积
+- ✅ 增强 `entrypoint.sh`，添加环境验证和详细启动日志
+- ✅ 清理测试文件和临时文件，保持代码库整洁
+
+**📦 依赖管理**
+- ✅ `requirements.txt` 优化，移除Python内置模块，按功能分类
+- ✅ 添加 Nuitka 编译工具链（可选）
+- ✅ 详细的依赖说明和安装指南
+
 ## 🚀 快速开始
 
 **⚡ 最快部署方式（推荐）**：使用预构建镜像，无需下载源码，一条命令即可启动！
@@ -294,17 +316,36 @@ python Start.py
 
 ### ⚙️ 环境变量配置（可选）
 
-如需自定义配置，可以使用环境变量：
+系统支持通过环境变量进行配置，主要配置项包括：
 
 ```bash
-# 复制环境变量模板（可选）
-cp .env.example .env
+# 基础配置
+WEB_PORT=8080                          # Web服务端口
+API_HOST=0.0.0.0                       # API服务主机
+TZ=Asia/Shanghai                       # 时区设置
 
-# 主要配置项
-WEB_PORT=8080                    # Web服务端口
-ADMIN_PASSWORD=your-password     # 管理员密码
-DEBUG=false                      # 调试模式
+# 管理员配置
+ADMIN_USERNAME=admin                   # 管理员用户名
+ADMIN_PASSWORD=admin123                # 管理员密码（请修改）
+JWT_SECRET_KEY=your-secret-key         # JWT密钥（请修改）
+
+# 功能开关
+AUTO_REPLY_ENABLED=true                # 启用自动回复
+AUTO_DELIVERY_ENABLED=true             # 启用自动发货
+AI_REPLY_ENABLED=false                 # 启用AI回复
+
+# 日志配置
+LOG_LEVEL=INFO                         # 日志级别
+SQL_LOG_ENABLED=true                   # SQL日志
+
+# 资源限制
+MEMORY_LIMIT=2048                      # 内存限制(MB)
+CPU_LIMIT=2.0                          # CPU限制(核心数)
+
+# 更多配置请参考 docker-compose.yml 文件
 ```
+
+> 💡 **提示**：所有配置项都有默认值，可根据需要选择性配置
 
 
 
@@ -460,6 +501,8 @@ DEBUG=false                      # 调试模式
 - **`order_detail_fetcher.py`** - 订单详情获取工具，解析订单信息、买家信息、SKU详情，支持缓存优化、锁机制
 - **`image_utils.py`** - 图片处理工具，支持压缩、格式转换、尺寸调整、水印添加、质量优化
 - **`image_uploader.py`** - 图片上传工具，支持多种CDN服务商、自动压缩、格式优化、批量上传
+- **`xianyu_slider_stealth.py`** - 增强版滑块验证模块，采用高级反检测技术，支持密码登录、自动重试、并发控制，包含授权期限验证机制（可编译为二进制模块以提升性能和安全性）
+- **`refresh_util.py`** - Cookie刷新工具，自动检测和刷新过期的Cookie，保持账号连接状态
 
 ### 🌐 前端界面 (`static/`)
 - **`index.html`** - 主管理界面，集成所有功能模块：账号管理、关键词管理、商品管理、发货管理、系统监控、用户管理等
@@ -472,17 +515,18 @@ DEBUG=false                      # 调试模式
 - **`uploads/images/`** - 图片上传目录，支持发货图片和其他媒体文件存储
 
 ### 🐳 部署配置
-- **`Dockerfile`** - Docker镜像构建文件，基于Python 3.11-slim，包含Playwright浏览器、系统依赖，支持无头模式运行，优化构建层级
+- **`Dockerfile`** - Docker镜像构建文件，基于Python 3.11-slim，包含Playwright浏览器、C编译器（支持Nuitka编译）、系统依赖，支持无头模式运行，优化构建层级，自动编译性能关键模块
 - **`Dockerfile-cn`** - 国内优化版Docker镜像构建文件，使用国内镜像源加速构建，适合国内网络环境
 - **`docker-compose.yml`** - Docker Compose配置，支持一键部署、完整环境变量配置、资源限制、健康检查、可选Nginx代理
 - **`docker-compose-cn.yml`** - 国内优化版Docker Compose配置文件，使用国内镜像源
 - **`docker-deploy.sh`** - Docker部署管理脚本，提供构建、启动、停止、重启、监控、日志查看等功能（Linux/macOS）
 - **`docker-deploy.bat`** - Windows版本部署脚本，支持Windows环境一键部署和管理
-- **`entrypoint.sh`** - Docker容器启动脚本，处理环境初始化、目录创建、权限设置和服务启动
+- **`entrypoint.sh`** - Docker容器启动脚本，增强版包含环境验证、依赖检查、目录创建、权限设置和详细启动日志
 - **`nginx/nginx.conf`** - Nginx反向代理配置，支持负载均衡、SSL终端、WebSocket代理、静态文件服务
-- **`requirements.txt`** - Python依赖包列表，精简版本无内置模块，按功能分类组织，包含详细版本说明和安装指南
-- **`.gitignore`** - Git忽略文件配置，完整覆盖Python、Docker、前端、测试、临时文件等，支持项目特定文件类型
-- **`.dockerignore`** - Docker构建忽略文件，优化构建上下文大小和构建速度，排除不必要的文件和目录
+- **`requirements.txt`** - Python依赖包列表，精简版本无内置模块，按功能分类组织，包含详细版本说明和安装指南，可选Nuitka编译工具
+- **`.gitignore`** - Git忽略文件配置，完整覆盖Python、Docker、前端、测试、临时文件等，2025年更新包含编译产物、浏览器缓存、统计数据等新规则
+- **`.dockerignore`** - Docker构建忽略文件，优化构建上下文大小和构建速度，排除不必要的文件和目录，2025年更新包含Nuitka编译临时文件、浏览器数据等新规则
+- **`build_binary_module.py`** - 二进制模块编译脚本，使用Nuitka将性能关键的Python模块编译为二进制扩展(.pyd/.so)，提升执行效率和代码安全性
 
 ## 🏗️ 详细技术架构
 
@@ -600,6 +644,30 @@ DEBUG=false                      # 调试模式
 - 日志配置等
 
 ## 🔧 高级功能
+
+### 二进制模块编译（可选）
+
+为了提升性能和代码安全性，可以将核心模块编译为二进制文件：
+
+```bash
+# 1. 安装 Nuitka（已在 requirements.txt 中）
+pip install nuitka ordered-set zstandard
+
+# 2. 运行编译脚本
+python build_binary_module.py
+
+# 3. 编译完成后会生成 .pyd (Windows) 或 .so (Linux) 文件
+# Python 会自动优先加载二进制版本
+```
+
+**Docker 部署自动编译**：
+- Docker 构建时会自动检测并编译相关模块
+- 无需手动操作，构建完成即可使用
+
+**编译优势**：
+- ⚡ 性能提升：编译后的代码执行效率更高
+- 🔒 代码保护：二进制文件难以反编译
+- 🛡️ 授权管理：集成授权期限验证
 
 ### AI回复配置
 1. 在用户设置中配置OpenAI API密钥

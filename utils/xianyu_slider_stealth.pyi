@@ -2,12 +2,13 @@
 
 # Stubs included by default
 from __future__ import annotations
-from config import config
+from config import SLIDER_VERIFICATION
+from datetime import datetime
+from loguru import logger
 from playwright.sync_api import ElementHandle, sync_playwright
 from typing import Any, Dict, List, Optional, Tuple
 from typing_extensions import Self
 import json
-import logging
 import os
 import random
 import shutil
@@ -24,10 +25,12 @@ class SliderConcurrencyManager:
     def wait_for_slot(self: Self, user_id: str, timeout: int) -> bool: ...
     def register_instance(self: Self, user_id: str, instance: Any) -> Any: ...
     def unregister_instance(self: Self, user_id: str) -> Any: ...
+    def _extract_pure_user_id(self: Self, user_id: str) -> str: ...
     def get_stats(self: Self) -> Any: ...
 
 class XianyuSliderStealth:
-    def __init__(self: Self, user_id: str, enable_learning: bool) -> None: ...
+    def __init__(self: Self, user_id: str, enable_learning: bool, headless: bool) -> None: ...
+    def _check_date_validity(self: Self) -> bool: ...
     def init_browser(self: Self) -> Any: ...
     def _cleanup_on_init_failure(self: Self) -> Any: ...
     def _load_success_history(self: Self) -> List[Dict[str, Any]]: ...
@@ -46,6 +49,7 @@ class XianyuSliderStealth:
     def check_verification_failure(self: Self) -> Any: ...
     def solve_slider(self: Self) -> Any: ...
     def close_browser(self: Self) -> Any: ...
+    def login_with_password_headful(self: Self, account: str, password: str, show_browser: bool) -> Any: ...
     def run(self: Self, url: str) -> Any: ...
 
 def get_slider_stats() -> Any:
@@ -59,17 +63,26 @@ __name__ = ...
 # Modules used internally, to allow implicit dependencies to be seen:
 import time
 import random
-import logging
 import json
 import os
 import threading
 import tempfile
 import shutil
+import datetime
 import playwright
 import playwright.sync_api
 import playwright.sync_api.sync_playwright
 import playwright.sync_api.ElementHandle
 import typing
+import loguru
+import loguru.logger
 import config
+import traceback
 import re
+import asyncio
+import DrissionPage
+import DrissionPage.ChromiumPage
+import DrissionPage.ChromiumOptions
+import subprocess
+import platform
 import sys

@@ -1529,71 +1529,86 @@ async function delCookie(id) {
 }
 
 // 内联编辑Cookie
-function editCookieInline(id, currentValue) {
-    const row = event.target.closest('tr');
-    const cookieValueCell = row.querySelector('.cookie-value');
-    const originalContent = cookieValueCell.innerHTML;
-
-    // 存储原始数据到全局变量，避免HTML注入问题
-    window.editingCookieData = {
-    id: id,
-    originalContent: originalContent,
-    originalValue: currentValue || ''
-    };
-
-    // 创建编辑界面容器
-    const editContainer = document.createElement('div');
-    editContainer.className = 'd-flex gap-2';
-
-    // 创建输入框
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.className = 'form-control form-control-sm';
-    input.id = `edit-${id}`;
-    input.value = currentValue || '';
-    input.placeholder = '输入新的Cookie值';
-
-    // 创建保存按钮
-    const saveBtn = document.createElement('button');
-    saveBtn.className = 'btn btn-sm btn-success';
-    saveBtn.title = '保存';
-    saveBtn.innerHTML = '<i class="bi bi-check"></i>';
-    saveBtn.onclick = () => saveCookieInline(id);
-
-    // 创建取消按钮
-    const cancelBtn = document.createElement('button');
-    cancelBtn.className = 'btn btn-sm btn-secondary';
-    cancelBtn.title = '取消';
-    cancelBtn.innerHTML = '<i class="bi bi-x"></i>';
-    cancelBtn.onclick = () => cancelCookieEdit(id);
-
-    // 组装编辑界面
-    editContainer.appendChild(input);
-    editContainer.appendChild(saveBtn);
-    editContainer.appendChild(cancelBtn);
-
-    // 替换原内容
-    cookieValueCell.innerHTML = '';
-    cookieValueCell.appendChild(editContainer);
-
-    // 聚焦输入框
-    input.focus();
-    input.select();
-
-    // 添加键盘事件监听
-    input.addEventListener('keydown', function(e) {
-    if (e.key === 'Enter') {
-        e.preventDefault();
-        saveCookieInline(id);
-    } else if (e.key === 'Escape') {
-        e.preventDefault();
-        cancelCookieEdit(id);
+async function editCookieInline(id, currentValue) {
+    try {
+        toggleLoading(true);
+        
+        // 获取账号详细信息
+        const details = await fetchJSON(apiBase + `/cookie/${id}/details`);
+        
+        // 打开编辑模态框
+        openAccountEditModal(details);
+    } catch (err) {
+        console.error('获取账号详情失败:', err);
+        showToast(`获取账号详情失败: ${err.message || '未知错误'}`, 'danger');
+    } finally {
+        toggleLoading(false);
     }
-    });
+}
 
-    // 禁用该行的其他按钮
-    const actionButtons = row.querySelectorAll('.btn-group button');
-    actionButtons.forEach(btn => btn.disabled = true);
+// 打开账号编辑模态框
+function openAccountEditModal(accountData) {
+    // 设置模态框数据
+    document.getElementById('editAccountId').value = accountData.id;
+    document.getElementById('editAccountCookie').value = accountData.value || '';
+    document.getElementById('editAccountUsername').value = accountData.username || '';
+    document.getElementById('editAccountPassword').value = accountData.password || '';
+    document.getElementById('editAccountShowBrowser').checked = accountData.show_browser || false;
+    
+    // 显示账号ID
+    document.getElementById('editAccountIdDisplay').textContent = accountData.id;
+    
+    // 打开模态框
+    const modal = new bootstrap.Modal(document.getElementById('accountEditModal'));
+    modal.show();
+    
+    // 初始化模态框中的 tooltips
+    setTimeout(() => {
+        initTooltips();
+    }, 100);
+}
+
+// 保存账号编辑
+async function saveAccountEdit() {
+    const id = document.getElementById('editAccountId').value;
+    const cookie = document.getElementById('editAccountCookie').value.trim();
+    const username = document.getElementById('editAccountUsername').value.trim();
+    const password = document.getElementById('editAccountPassword').value.trim();
+    const showBrowser = document.getElementById('editAccountShowBrowser').checked;
+    
+    if (!cookie) {
+        showToast('Cookie值不能为空', 'warning');
+        return;
+    }
+    
+    try {
+        toggleLoading(true);
+        
+        await fetchJSON(apiBase + `/cookie/${id}/account-info`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                value: cookie,
+                username: username,
+                password: password,
+                show_browser: showBrowser
+            })
+        });
+        
+        showToast(`账号 "${id}" 信息已更新`, 'success');
+        
+        // 关闭模态框
+        const modal = bootstrap.Modal.getInstance(document.getElementById('accountEditModal'));
+        modal.hide();
+        
+        // 重新加载账号列表
+        loadCookies();
+    } catch (err) {
+        console.error('保存账号信息失败:', err);
+        showToast(`保存失败: ${err.message || '未知错误'}`, 'danger');
+    } finally {
+        toggleLoading(false);
+    }
 }
 
 // 保存内联编辑的Cookie

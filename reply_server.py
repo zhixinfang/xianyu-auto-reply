@@ -1171,13 +1171,106 @@ def update_cookie(cid: str, item: CookieIn, current_user: Dict[str, Any] = Depen
         if cid not in user_cookies:
             raise HTTPException(status_code=403, detail="无权限操作该Cookie")
 
-        # 更新cookie时保持用户绑定
-        db_manager.save_cookie(cid, item.value, user_id)
-        cookie_manager.manager.update_cookie(cid, item.value)
+        # 获取旧的 cookie 值，用于判断是否需要重启任务
+        old_cookie_details = db_manager.get_cookie_details(cid)
+        old_cookie_value = old_cookie_details.get('value') if old_cookie_details else None
+
+        # 使用 update_cookie_account_info 更新（只更新cookie值，不覆盖其他字段）
+        success = db_manager.update_cookie_account_info(cid, cookie_value=item.value)
+        
+        if not success:
+            raise HTTPException(status_code=400, detail="更新Cookie失败")
+        
+        # 只有当 cookie 值真的发生变化时才重启任务
+        if item.value != old_cookie_value:
+            logger.info(f"Cookie值已变化，重启任务: {cid}")
+            cookie_manager.manager.update_cookie(cid, item.value, save_to_db=False)
+        else:
+            logger.info(f"Cookie值未变化，无需重启任务: {cid}")
+        
         return {'msg': 'updated'}
     except HTTPException:
         raise
     except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+class CookieAccountInfo(BaseModel):
+    """账号信息更新模型"""
+    value: Optional[str] = None
+    username: Optional[str] = None
+    password: Optional[str] = None
+    show_browser: Optional[bool] = None
+
+
+@app.post("/cookie/{cid}/account-info")
+def update_cookie_account_info(cid: str, info: CookieAccountInfo, current_user: Dict[str, Any] = Depends(get_current_user)):
+    """更新账号信息（Cookie、用户名、密码、显示浏览器设置）"""
+    if cookie_manager.manager is None:
+        raise HTTPException(status_code=500, detail='CookieManager 未就绪')
+    try:
+        # 检查cookie是否属于当前用户
+        user_id = current_user['user_id']
+        from db_manager import db_manager
+        user_cookies = db_manager.get_all_cookies(user_id)
+
+        if cid not in user_cookies:
+            raise HTTPException(status_code=403, detail="无权限操作该Cookie")
+
+        # 获取旧的 cookie 值，用于判断是否需要重启任务
+        old_cookie_details = db_manager.get_cookie_details(cid)
+        old_cookie_value = old_cookie_details.get('value') if old_cookie_details else None
+        
+        # 更新数据库
+        success = db_manager.update_cookie_account_info(
+            cid, 
+            cookie_value=info.value,
+            username=info.username,
+            password=info.password,
+            show_browser=info.show_browser
+        )
+        
+        if not success:
+            raise HTTPException(status_code=400, detail="更新账号信息失败")
+        
+        # 只有当 cookie 值真的发生变化时才重启任务
+        if info.value is not None and info.value != old_cookie_value:
+            logger.info(f"Cookie值已变化，重启任务: {cid}")
+            cookie_manager.manager.update_cookie(cid, info.value, save_to_db=False)
+        else:
+            logger.info(f"Cookie值未变化，无需重启任务: {cid}")
+        
+        return {'msg': 'updated', 'success': True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"更新账号信息失败: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/cookie/{cid}/details")
+def get_cookie_account_details(cid: str, current_user: Dict[str, Any] = Depends(get_current_user)):
+    """获取账号详细信息（包括用户名、密码、显示浏览器设置）"""
+    try:
+        # 检查cookie是否属于当前用户
+        user_id = current_user['user_id']
+        from db_manager import db_manager
+        user_cookies = db_manager.get_all_cookies(user_id)
+
+        if cid not in user_cookies:
+            raise HTTPException(status_code=403, detail="无权限操作该Cookie")
+
+        # 获取详细信息
+        details = db_manager.get_cookie_details(cid)
+        
+        if not details:
+            raise HTTPException(status_code=404, detail="账号不存在")
+        
+        return details
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取账号详情失败: {e}")
         raise HTTPException(status_code=400, detail=str(e))
 
 
@@ -1338,7 +1431,8 @@ async def process_qr_login_cookies(cookies: str, unb: str, current_user: Dict[st
                             cookie_manager.manager.add_cookie(account_id, real_cookies)
                             log_with_user('info', f"已将真实cookie添加到cookie_manager: {account_id}", current_user)
                         else:
-                            cookie_manager.manager.update_cookie(account_id, real_cookies)
+                            # refresh_cookies_from_qr_login 已经保存到数据库了，这里不需要再保存
+                            cookie_manager.manager.update_cookie(account_id, real_cookies, save_to_db=False)
                             log_with_user('info', f"已更新cookie_manager中的真实cookie: {account_id}", current_user)
 
                     return {
@@ -1376,7 +1470,8 @@ async def _fallback_save_qr_cookie(account_id: str, cookies: str, user_id: int, 
             db_manager.save_cookie(account_id, cookies, user_id)
             log_with_user('info', f"降级处理 - 新账号原始cookie已保存: {account_id}", current_user)
         else:
-            db_manager.save_cookie(account_id, cookies, user_id)
+            # 现有账号使用 update_cookie_account_info 避免覆盖其他字段
+            db_manager.update_cookie_account_info(account_id, cookie_value=cookies)
             log_with_user('info', f"降级处理 - 现有账号原始cookie已更新: {account_id}", current_user)
 
         # 添加到或更新cookie_manager
@@ -1385,7 +1480,8 @@ async def _fallback_save_qr_cookie(account_id: str, cookies: str, user_id: int, 
                 cookie_manager.manager.add_cookie(account_id, cookies)
                 log_with_user('info', f"降级处理 - 已将原始cookie添加到cookie_manager: {account_id}", current_user)
             else:
-                cookie_manager.manager.update_cookie(account_id, cookies)
+                # update_cookie_account_info 已经保存到数据库了，这里不需要再保存
+                cookie_manager.manager.update_cookie(account_id, cookies, save_to_db=False)
                 log_with_user('info', f"降级处理 - 已更新cookie_manager中的原始cookie: {account_id}", current_user)
 
         return {
@@ -1444,7 +1540,8 @@ async def refresh_cookies_from_qr_login(
                 # 从数据库获取更新后的cookie
                 updated_cookie_info = db_manager.get_cookie_by_id(cookie_id)
                 if updated_cookie_info:
-                    cookie_manager.manager.update_cookie(cookie_id, updated_cookie_info['cookies_str'])
+                    # refresh_cookies_from_qr_login 已经保存到数据库了，这里不需要再保存
+                    cookie_manager.manager.update_cookie(cookie_id, updated_cookie_info['cookies_str'], save_to_db=False)
                     log_with_user('info', f"已更新cookie_manager中的cookie: {cookie_id}", current_user)
 
             return {
