@@ -264,6 +264,9 @@ class XianyuLive:
         self.max_connection_failures = 5  # 最大连续失败次数
         self.last_successful_connection = 0  # 上次成功连接时间
 
+        # 后台任务追踪（用于清理未等待的任务）
+        self.background_tasks = set()  # 追踪所有后台任务
+
         # 初始化订单状态处理器
         self._init_order_status_handler()
 
@@ -313,6 +316,13 @@ class XianyuLive:
     def get_instance_count(cls):
         """获取当前活跃实例数量"""
         return len(cls._instances)
+    
+    def _create_tracked_task(self, coro):
+        """创建并追踪后台任务，确保异常不会被静默忽略"""
+        task = asyncio.create_task(coro)
+        self.background_tasks.add(task)
+        task.add_done_callback(self.background_tasks.discard)
+        return task
 
     def is_auto_confirm_enabled(self) -> bool:
         """检查当前账号是否启用自动确认发货"""
@@ -971,11 +981,7 @@ class XianyuLive:
                             captcha_duration = time.time() - captcha_start_time
 
                             if new_cookies_str:
-                                logger.info(f"【{self.cookie_id}】滑块验证成功，获取到新的cookies")
-
-                                # 记录滑块验证成功到日志文件
-                                log_captcha_event(self.cookie_id, "滑块验证成功", True,
-                                    f"耗时: {captcha_duration:.2f}秒, 重试次数: {captcha_retry_count + 1}, cookies长度: {len(new_cookies_str)}")
+                                logger.info(f"【{self.cookie_id}】滑块验证成功，准备重启实例...")
 
                                 # 更新风控日志为成功状态
                                 if 'log_id' in locals() and log_id:
@@ -988,32 +994,13 @@ class XianyuLive:
                                     except Exception as update_e:
                                         logger.error(f"【{self.cookie_id}】更新风控日志失败: {update_e}")
 
-                                # 更新cookies并重启任务
-                                update_success = await self._update_cookies_and_restart(new_cookies_str)
-                                if update_success:
-                                    logger.info(f"【{self.cookie_id}】cookies更新成功，使用新cookies重新尝试刷新token...")
-
-                                    # 发送滑块验证成功通知
-                                    await self.send_token_refresh_notification(
-                                        f"滑块验证成功，cookies已更新，任务已重启",
-                                        "captcha_verification_success"
-                                    )
-
-                                    # 重新尝试刷新token（递归调用，但有深度限制）
-                                    return await self.refresh_token(captcha_retry_count + 1)
-                                else:
-                                    logger.error(f"【{self.cookie_id}】cookies更新失败")
-                                    await self.send_token_refresh_notification(
-                                        f"滑块验证成功但cookies更新失败",
-                                        "captcha_cookies_update_failed"
-                                    )
-                                    notification_sent = True
+                                # 重启实例（cookies已在_handle_captcha_verification中更新到数据库）
+                                # await self._restart_instance()
+                                
+                                # 重新尝试刷新token（递归调用，但有深度限制）
+                                return await self.refresh_token(captcha_retry_count + 1)
                             else:
                                 logger.error(f"【{self.cookie_id}】滑块验证失败")
-
-                                # 记录滑块验证失败到日志文件
-                                log_captcha_event(self.cookie_id, "滑块验证失败", False,
-                                    f"耗时: {captcha_duration:.2f}秒, 重试次数: {captcha_retry_count + 1}, 原因: 未获取到新cookies")
 
                                 # 更新风控日志为失败状态
                                 if 'log_id' in locals() and log_id:
@@ -1025,23 +1012,14 @@ class XianyuLive:
                                         )
                                     except Exception as update_e:
                                         logger.error(f"【{self.cookie_id}】更新风控日志失败: {update_e}")
-
-                                await self.send_token_refresh_notification(
-                                    f"滑块验证失败，请检查网络连接或手动处理",
-                                    "captcha_verification_failed"
-                                )
                                 
-                                # 标记已发送通知，避免后续重复发送
+                                # 标记已发送通知（通知已在_handle_captcha_verification中发送）
                                 notification_sent = True
                         except Exception as captcha_e:
                             logger.error(f"【{self.cookie_id}】滑块验证处理异常: {self._safe_str(captcha_e)}")
 
-                            # 记录滑块验证异常到日志文件
-                            captcha_duration = time.time() - captcha_start_time if 'captcha_start_time' in locals() else 0
-                            log_captcha_event(self.cookie_id, "滑块验证异常", False,
-                                f"耗时: {captcha_duration:.2f}秒, 重试次数: {captcha_retry_count + 1}, 异常: {str(captcha_e)}")
-
                             # 更新风控日志为异常状态
+                            captcha_duration = time.time() - captcha_start_time if 'captcha_start_time' in locals() else 0
                             if 'log_id' in locals() and log_id:
                                 try:
                                     db_manager.update_risk_control_log(
@@ -1052,13 +1030,8 @@ class XianyuLive:
                                     )
                                 except Exception as update_e:
                                     logger.error(f"【{self.cookie_id}】更新风控日志失败: {update_e}")
-
-                            await self.send_token_refresh_notification(
-                                f"滑块验证处理异常: {str(captcha_e)}",
-                                "captcha_verification_exception"
-                            )
                             
-                            # 标记已发送通知，避免后续重复发送
+                            # 标记已发送通知（通知已在_handle_captcha_verification中发送）
                             notification_sent = True
 
                     # 检查是否包含"令牌过期"或"Session过期"
@@ -1119,13 +1092,22 @@ class XianyuLive:
                                     
                                     if update_success:
                                         logger.info(f"【{self.cookie_id}】Cookie更新并重启任务成功")
+                                        
+                                        # 发送账号密码登录成功通知
+                                        await self.send_token_refresh_notification(
+                                            f"账号密码登录成功，Cookie已更新，任务已重启",
+                                            "password_login_success"
+                                        )
                                     else:
                                         logger.warning(f"【{self.cookie_id}】Cookie更新或重启任务失败")
+                                        
                                 else:
                                     logger.warning(f"【{self.cookie_id}】密码登录失败，未获取到Cookie")
+                                    
 
                             except Exception as refresh_e:
                                 logger.error(f"【{self.cookie_id}】Cookie刷新或实例重启失败: {self._safe_str(refresh_e)}")
+                                
                                 # 刷新失败时继续执行原有的失败处理逻辑
 
                     logger.error(f"【{self.cookie_id}】Token刷新失败: {res_json}")
@@ -4903,6 +4885,10 @@ class XianyuLive:
             # Cookie刷新模式：正常更新Cookie
             logger.info(f"【{self.cookie_id}】获取更新后的Cookie...")
             updated_cookies = await context.cookies()
+            
+            # 获取并打印当前页面标题
+            page_title = await page.title()
+            logger.info(f"【{self.cookie_id}】当前页面标题: {page_title}")
 
             # 构造新的Cookie字典
             new_cookies_dict = {}
@@ -5772,7 +5758,7 @@ class XianyuLive:
                     headers['Cookie'] = self.cookies_str
 
                     logger.info(f"【{self.cookie_id}】准备建立WebSocket连接到: {self.base_url}")
-                    logger.debug(f"【{self.cookie_id}】WebSocket headers: {headers}")
+                    logger.info(f"【{self.cookie_id}】WebSocket headers: {headers}")
 
                     # 兼容不同版本的websockets库
                     async with await self._create_websocket_connection(headers) as websocket:
@@ -5830,14 +5816,21 @@ class XianyuLive:
                     error_msg = self._safe_str(e)
                     self.connection_failures += 1
 
-                    logger.error(f"WebSocket连接异常 ({self.connection_failures}/{self.max_connection_failures}): {error_msg}")
+                    # 打印详细的错误信息
+                    import traceback
+                    error_type = type(e).__name__
+                    error_trace = traceback.format_exc()
+                    logger.error(f"WebSocket连接异常 ({self.connection_failures}/{self.max_connection_failures})")
+                    logger.error(f"异常类型: {error_type}")
+                    logger.error(f"异常信息: {error_msg}")
+                    logger.error(f"异常堆栈:\n{error_trace}")
 
                     # 检查是否超过最大失败次数
                     if self.connection_failures >= self.max_connection_failures:
-                        logger.error(f"【{self.cookie_id}】连续连接失败{self.max_connection_failures}次，暂停重试30分钟")
-                        await asyncio.sleep(1800)  # 暂停30分钟
+                        logger.error(f"【{self.cookie_id}】连续连接失败{self.max_connection_failures}次，准备重启实例...")
                         self.connection_failures = 0  # 重置失败计数
-                        continue
+                        await self._restart_instance()  # 重启实例
+                        return  # 重启后退出当前连接循环
 
                     # 根据错误类型和失败次数决定处理策略
                     if "no close frame received or sent" in error_msg:
@@ -5856,18 +5849,32 @@ class XianyuLive:
                         self.current_token = None
 
                     # 取消所有任务并重置为None
+                    tasks_to_cancel = []
                     if self.heartbeat_task:
-                        self.heartbeat_task.cancel()
-                        self.heartbeat_task = None
+                        tasks_to_cancel.append(self.heartbeat_task)
                     if self.token_refresh_task:
-                        self.token_refresh_task.cancel()
-                        self.token_refresh_task = None
+                        tasks_to_cancel.append(self.token_refresh_task)
                     if self.cleanup_task:
-                        self.cleanup_task.cancel()
-                        self.cleanup_task = None
+                        tasks_to_cancel.append(self.cleanup_task)
                     if self.cookie_refresh_task:
-                        self.cookie_refresh_task.cancel()
-                        self.cookie_refresh_task = None
+                        tasks_to_cancel.append(self.cookie_refresh_task)
+                    
+                    # 取消所有任务
+                    for task in tasks_to_cancel:
+                        task.cancel()
+                    
+                    # 等待所有任务完成取消
+                    if tasks_to_cancel:
+                        try:
+                            await asyncio.gather(*tasks_to_cancel, return_exceptions=True)
+                        except Exception:
+                            pass
+                    
+                    # 重置任务为None
+                    self.heartbeat_task = None
+                    self.token_refresh_task = None
+                    self.cleanup_task = None
+                    self.cookie_refresh_task = None
 
                     logger.info(f"【{self.cookie_id}】等待 {retry_delay} 秒后重试连接...")
                     await asyncio.sleep(retry_delay)
@@ -5879,18 +5886,39 @@ class XianyuLive:
                 self.current_token = None
 
             # 清理所有任务
+            tasks_to_cancel = []
             if self.heartbeat_task:
-                self.heartbeat_task.cancel()
+                tasks_to_cancel.append(self.heartbeat_task)
             if self.token_refresh_task:
-                self.token_refresh_task.cancel()
+                tasks_to_cancel.append(self.token_refresh_task)
             if self.cleanup_task:
-                self.cleanup_task.cancel()
+                tasks_to_cancel.append(self.cleanup_task)
             if self.cookie_refresh_task:
-                self.cookie_refresh_task.cancel()
+                tasks_to_cancel.append(self.cookie_refresh_task)
+            
+            # 取消所有任务
+            for task in tasks_to_cancel:
+                task.cancel()
+            
+            # 等待所有任务完成取消
+            if tasks_to_cancel:
+                await asyncio.gather(*tasks_to_cancel, return_exceptions=True)
+            
+            # 清理所有后台任务
+            if self.background_tasks:
+                logger.info(f"【{self.cookie_id}】等待 {len(self.background_tasks)} 个后台任务完成...")
+                try:
+                    await asyncio.wait_for(
+                        asyncio.gather(*self.background_tasks, return_exceptions=True),
+                        timeout=10.0  # 10秒超时
+                    )
+                except asyncio.TimeoutError:
+                    logger.warning(f"【{self.cookie_id}】后台任务清理超时，强制继续")
+            
             await self.close_session()  # 确保关闭session
 
             # 从全局实例字典中注销当前实例
-            # self._unregister_instance()
+            self._unregister_instance()
             logger.info(f"【{self.cookie_id}】XianyuLive主程序已完全退出")
 
     async def get_item_list_info(self, page_number=1, page_size=20, retry_count=0):
