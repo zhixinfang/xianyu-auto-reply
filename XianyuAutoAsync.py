@@ -1269,8 +1269,20 @@ class XianyuLive:
                     self.current_token = None
 
                     # 只有在没有发送过通知的情况下才发送Token刷新失败通知
+                    # 并且WebSocket未连接时才发送（已连接说明只是暂时失败）
                     if not notification_sent:
-                        await self.send_token_refresh_notification(f"Token刷新失败: {res_json}", "token_refresh_failed")
+                        # 检查WebSocket连接状态
+                        is_ws_connected = (
+                            self.connection_state == ConnectionState.CONNECTED and 
+                            self.ws and 
+                            not self.ws.closed
+                        )
+                        
+                        if is_ws_connected:
+                            logger.info(f"【{self.cookie_id}】WebSocket连接正常，Token刷新失败可能是暂时的，跳过失败通知")
+                        else:
+                            logger.warning(f"【{self.cookie_id}】WebSocket未连接，发送Token刷新失败通知")
+                            await self.send_token_refresh_notification(f"Token刷新失败: {res_json}", "token_refresh_failed")
                     else:
                         logger.info(f"【{self.cookie_id}】已发送滑块验证相关通知，跳过Token刷新失败通知")
                     return None
@@ -1282,8 +1294,20 @@ class XianyuLive:
             self.current_token = None
 
             # 只有在没有发送过通知的情况下才发送Token刷新异常通知
+            # 并且WebSocket未连接时才发送（已连接说明只是暂时失败）
             if not notification_sent:
-                await self.send_token_refresh_notification(f"Token刷新异常: {str(e)}", "token_refresh_exception")
+                # 检查WebSocket连接状态
+                is_ws_connected = (
+                    self.connection_state == ConnectionState.CONNECTED and 
+                    self.ws and 
+                    not self.ws.closed
+                )
+                
+                if is_ws_connected:
+                    logger.info(f"【{self.cookie_id}】WebSocket连接正常，Token刷新异常可能是暂时的，跳过失败通知")
+                else:
+                    logger.warning(f"【{self.cookie_id}】WebSocket未连接，发送Token刷新异常通知")
+                    await self.send_token_refresh_notification(f"Token刷新异常: {str(e)}", "token_refresh_exception")
             else:
                 logger.info(f"【{self.cookie_id}】已发送滑块验证相关通知，跳过Token刷新异常通知")
             return None
