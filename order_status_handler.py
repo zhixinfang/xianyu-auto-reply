@@ -8,6 +8,7 @@ import json
 import time
 import uuid
 import threading
+import asyncio
 from loguru import logger
 from typing import Optional, Dict, Any
 
@@ -68,7 +69,9 @@ class OrderStatusHandler:
         # 用于退款撤销时回退到上一次状态
         self._order_status_history = {}
         
-        # 线程锁，保护并发访问
+        # 使用threading.RLock保护并发访问
+        # 注意：虽然在async环境中asyncio.Lock更理想，但本类的所有方法都是同步的
+        # 且被同步代码调用，因此保持使用threading.RLock是合适的
         self._lock = threading.RLock()
         
         # 设置日志级别
