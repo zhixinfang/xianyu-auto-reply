@@ -63,9 +63,9 @@ class FileLogCollector:
             logger.add(
                 self.log_file,
                 format="{time:YYYY-MM-DD HH:mm:ss.SSS} | {level} | {name}:{function}:{line} - {message}",
-                level="DEBUG",
+                level="INFO",  # 从DEBUG改为INFO，减少日志量
                 rotation="10 MB",
-                retention="7 days",
+                retention="3 days",  # 从7天改为3天，减少磁盘占用
                 enqueue=False,  # 改为False，避免队列延迟
                 buffering=1     # 行缓冲，立即写入
             )

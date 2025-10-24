@@ -115,6 +115,9 @@ class DBManager:
                 auto_confirm INTEGER DEFAULT 1,
                 remark TEXT DEFAULT '',
                 pause_duration INTEGER DEFAULT 10,
+                username TEXT DEFAULT '',
+                password TEXT DEFAULT '',
+                show_browser INTEGER DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
             )
@@ -402,6 +405,22 @@ class DBManager:
             )
             ''')
 
+            # 创建风控日志表
+            cursor.execute('''
+            CREATE TABLE IF NOT EXISTS risk_control_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                cookie_id TEXT NOT NULL,
+                event_type TEXT NOT NULL DEFAULT 'slider_captcha',
+                event_description TEXT,
+                processing_result TEXT,
+                processing_status TEXT DEFAULT 'processing',
+                error_message TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (cookie_id) REFERENCES cookies(id) ON DELETE CASCADE
+            )
+            ''')
+
             # 插入默认系统设置（不包括管理员密码，由reply_server.py初始化）
             cursor.execute('''
             INSERT OR IGNORE INTO system_settings (key, value, description) VALUES
@@ -576,6 +595,13 @@ class DBManager:
                 self.upgrade_notification_channels_types(cursor)
                 self.set_system_setting("db_version", "1.4", "数据库版本号")
                 logger.info("数据库升级到版本1.4完成")
+
+            # 升级到版本1.5 - 为cookies表添加账号登录字段
+            if current_version < "1.5":
+                logger.info("开始升级数据库到版本1.5...")
+                self.upgrade_cookies_table_for_account_login(cursor)
+                self.set_system_setting("db_version", "1.5", "数据库版本号")
+                logger.info("数据库升级到版本1.5完成")
 
             # 迁移遗留数据（在所有版本升级完成后执行）
             self.migrate_legacy_data(cursor)
@@ -889,6 +915,47 @@ class DBManager:
             logger.error(f"升级notification_channels表类型失败: {e}")
             raise
 
+    def upgrade_cookies_table_for_account_login(self, cursor):
+        """升级cookies表支持账号密码登录功能"""
+        try:
+            logger.info("开始为cookies表添加账号登录相关字段...")
+
+            # 为cookies表添加username字段（如果不存在）
+            try:
+                self._execute_sql(cursor, "SELECT username FROM cookies LIMIT 1")
+                logger.info("cookies表username字段已存在")
+            except sqlite3.OperationalError:
+                # username字段不存在，需要添加
+                self._execute_sql(cursor, "ALTER TABLE cookies ADD COLUMN username TEXT DEFAULT ''")
+                logger.info("为cookies表添加username字段")
+
+            # 为cookies表添加password字段（如果不存在）
+            try:
+                self._execute_sql(cursor, "SELECT password FROM cookies LIMIT 1")
+                logger.info("cookies表password字段已存在")
+            except sqlite3.OperationalError:
+                # password字段不存在，需要添加
+                self._execute_sql(cursor, "ALTER TABLE cookies ADD COLUMN password TEXT DEFAULT ''")
+                logger.info("为cookies表添加password字段")
+
+            # 为cookies表添加show_browser字段（如果不存在）
+            try:
+                self._execute_sql(cursor, "SELECT show_browser FROM cookies LIMIT 1")
+                logger.info("cookies表show_browser字段已存在")
+            except sqlite3.OperationalError:
+                # show_browser字段不存在，需要添加
+                self._execute_sql(cursor, "ALTER TABLE cookies ADD COLUMN show_browser INTEGER DEFAULT 0")
+                logger.info("为cookies表添加show_browser字段")
+
+            logger.info("✅ cookies表账号登录字段升级完成")
+            logger.info("   - username: 用于密码登录的用户名")
+            logger.info("   - password: 用于密码登录的密码")
+            logger.info("   - show_browser: 登录时是否显示浏览器（0=隐藏，1=显示）")
+            return True
+        except Exception as e:
+            logger.error(f"升级cookies表账号登录字段失败: {e}")
+            raise
+
     def migrate_legacy_data(self, cursor):
         """迁移遗留数据到新表结构"""
         try:
@@ -1198,11 +1265,11 @@ class DBManager:
                 return None
 
     def get_cookie_details(self, cookie_id: str) -> Optional[Dict[str, any]]:
-        """获取Cookie的详细信息，包括user_id、auto_confirm、remark和pause_duration"""
+        """获取Cookie的详细信息，包括user_id、auto_confirm、remark、pause_duration、username、password和show_browser"""
         with self.lock:
             try:
                 cursor = self.conn.cursor()
-                self._execute_sql(cursor, "SELECT id, value, user_id, auto_confirm, remark, pause_duration, created_at FROM cookies WHERE id = ?", (cookie_id,))
+                self._execute_sql(cursor, "SELECT id, value, user_id, auto_confirm, remark, pause_duration, username, password, show_browser, created_at FROM cookies WHERE id = ?", (cookie_id,))
                 result = cursor.fetchone()
                 if result:
                     return {
@@ -1212,7 +1279,10 @@ class DBManager:
                         'auto_confirm': bool(result[3]),
                         'remark': result[4] or '',
                         'pause_duration': result[5] if result[5] is not None else 10,  # 0是有效值，表示不暂停
-                        'created_at': result[6]
+                        'username': result[6] or '',
+                        'password': result[7] or '',
+                        'show_browser': bool(result[8]) if result[8] is not None else False,
+                        'created_at': result[9]
                     }
                 return None
             except Exception as e:
@@ -1279,6 +1349,47 @@ class DBManager:
             except Exception as e:
                 logger.error(f"获取账号自动回复暂停时间失败: {e}")
                 return 10
+
+    def update_cookie_account_info(self, cookie_id: str, cookie_value: str = None, username: str = None, password: str = None, show_browser: bool = None) -> bool:
+        """更新Cookie的账号信息（包括cookie值、用户名、密码和显示浏览器设置）"""
+        with self.lock:
+            try:
+                cursor = self.conn.cursor()
+                
+                # 构建动态SQL更新语句
+                update_fields = []
+                params = []
+                
+                if cookie_value is not None:
+                    update_fields.append("value = ?")
+                    params.append(cookie_value)
+                
+                if username is not None:
+                    update_fields.append("username = ?")
+                    params.append(username)
+                
+                if password is not None:
+                    update_fields.append("password = ?")
+                    params.append(password)
+                
+                if show_browser is not None:
+                    update_fields.append("show_browser = ?")
+                    params.append(1 if show_browser else 0)
+                
+                if not update_fields:
+                    logger.warning(f"更新账号 {cookie_id} 信息时没有提供任何更新字段")
+                    return False
+                
+                params.append(cookie_id)
+                sql = f"UPDATE cookies SET {', '.join(update_fields)} WHERE id = ?"
+                
+                self._execute_sql(cursor, sql, tuple(params))
+                self.conn.commit()
+                logger.info(f"更新账号 {cookie_id} 信息成功: {update_fields}")
+                return True
+            except Exception as e:
+                logger.error(f"更新账号信息失败: {e}")
+                return False
 
     def get_auto_confirm(self, cookie_id: str) -> bool:
         """获取Cookie的自动确认发货设置"""
@@ -4664,6 +4775,274 @@ class DBManager:
 
         return {"success_count": success_count, "failed_count": failed_count}
 
+    # ==================== 风控日志管理 ====================
+
+    def add_risk_control_log(self, cookie_id: str, event_type: str = 'slider_captcha',
+                           event_description: str = None, processing_result: str = None,
+                           processing_status: str = 'processing', error_message: str = None) -> bool:
+        """
+        添加风控日志记录
+
+        Args:
+            cookie_id: Cookie ID
+            event_type: 事件类型，默认为'slider_captcha'
+            event_description: 事件描述
+            processing_result: 处理结果
+            processing_status: 处理状态 ('processing', 'success', 'failed')
+            error_message: 错误信息
+
+        Returns:
+            bool: 添加成功返回True，失败返回False
+        """
+        try:
+            with self.lock:
+                cursor = self.conn.cursor()
+                cursor.execute('''
+                    INSERT INTO risk_control_logs
+                    (cookie_id, event_type, event_description, processing_result, processing_status, error_message)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                ''', (cookie_id, event_type, event_description, processing_result, processing_status, error_message))
+                self.conn.commit()
+                return True
+        except Exception as e:
+            logger.error(f"添加风控日志失败: {e}")
+            return False
+
+    def update_risk_control_log(self, log_id: int, processing_result: str = None,
+                              processing_status: str = None, error_message: str = None) -> bool:
+        """
+        更新风控日志记录
+
+        Args:
+            log_id: 日志ID
+            processing_result: 处理结果
+            processing_status: 处理状态
+            error_message: 错误信息
+
+        Returns:
+            bool: 更新成功返回True，失败返回False
+        """
+        try:
+            with self.lock:
+                cursor = self.conn.cursor()
+
+                # 构建更新语句
+                update_fields = []
+                params = []
+
+                if processing_result is not None:
+                    update_fields.append("processing_result = ?")
+                    params.append(processing_result)
+
+                if processing_status is not None:
+                    update_fields.append("processing_status = ?")
+                    params.append(processing_status)
+
+                if error_message is not None:
+                    update_fields.append("error_message = ?")
+                    params.append(error_message)
+
+                if update_fields:
+                    update_fields.append("updated_at = CURRENT_TIMESTAMP")
+                    params.append(log_id)
+
+                    sql = f"UPDATE risk_control_logs SET {', '.join(update_fields)} WHERE id = ?"
+                    cursor.execute(sql, params)
+                    self.conn.commit()
+                    return cursor.rowcount > 0
+
+                return False
+        except Exception as e:
+            logger.error(f"更新风控日志失败: {e}")
+            return False
+
+    def get_risk_control_logs(self, cookie_id: str = None, limit: int = 100, offset: int = 0) -> List[Dict]:
+        """
+        获取风控日志列表
+
+        Args:
+            cookie_id: Cookie ID，为None时获取所有日志
+            limit: 限制返回数量
+            offset: 偏移量
+
+        Returns:
+            List[Dict]: 风控日志列表
+        """
+        try:
+            with self.lock:
+                cursor = self.conn.cursor()
+
+                if cookie_id:
+                    cursor.execute('''
+                        SELECT r.*, c.id as cookie_name
+                        FROM risk_control_logs r
+                        LEFT JOIN cookies c ON r.cookie_id = c.id
+                        WHERE r.cookie_id = ?
+                        ORDER BY r.created_at DESC
+                        LIMIT ? OFFSET ?
+                    ''', (cookie_id, limit, offset))
+                else:
+                    cursor.execute('''
+                        SELECT r.*, c.id as cookie_name
+                        FROM risk_control_logs r
+                        LEFT JOIN cookies c ON r.cookie_id = c.id
+                        ORDER BY r.created_at DESC
+                        LIMIT ? OFFSET ?
+                    ''', (limit, offset))
+
+                columns = [description[0] for description in cursor.description]
+                logs = []
+
+                for row in cursor.fetchall():
+                    log_info = dict(zip(columns, row))
+                    logs.append(log_info)
+
+                return logs
+        except Exception as e:
+            logger.error(f"获取风控日志失败: {e}")
+            return []
+
+    def get_risk_control_logs_count(self, cookie_id: str = None) -> int:
+        """
+        获取风控日志总数
+
+        Args:
+            cookie_id: Cookie ID，为None时获取所有日志数量
+
+        Returns:
+            int: 日志总数
+        """
+        try:
+            with self.lock:
+                cursor = self.conn.cursor()
+
+                if cookie_id:
+                    cursor.execute('SELECT COUNT(*) FROM risk_control_logs WHERE cookie_id = ?', (cookie_id,))
+                else:
+                    cursor.execute('SELECT COUNT(*) FROM risk_control_logs')
+
+                return cursor.fetchone()[0]
+        except Exception as e:
+            logger.error(f"获取风控日志数量失败: {e}")
+            return 0
+
+    def delete_risk_control_log(self, log_id: int) -> bool:
+        """
+        删除风控日志记录
+
+        Args:
+            log_id: 日志ID
+
+        Returns:
+            bool: 删除成功返回True，失败返回False
+        """
+        try:
+            with self.lock:
+                cursor = self.conn.cursor()
+                cursor.execute('DELETE FROM risk_control_logs WHERE id = ?', (log_id,))
+                self.conn.commit()
+                return cursor.rowcount > 0
+        except Exception as e:
+            logger.error(f"删除风控日志失败: {e}")
+            return False
+    
+    def cleanup_old_data(self, days: int = 90) -> dict:
+        """清理过期的历史数据，防止数据库无限增长
+        
+        Args:
+            days: 保留最近N天的数据，默认90天
+            
+        Returns:
+            清理统计信息
+        """
+        try:
+            with self.lock:
+                cursor = self.conn.cursor()
+                stats = {}
+                
+                # 清理AI对话历史（保留最近90天）
+                try:
+                    cursor.execute(
+                        "DELETE FROM ai_conversations WHERE created_at < datetime('now', '-' || ? || ' days')",
+                        (days,)
+                    )
+                    stats['ai_conversations'] = cursor.rowcount
+                    if cursor.rowcount > 0:
+                        logger.info(f"清理了 {cursor.rowcount} 条过期的AI对话记录（{days}天前）")
+                except Exception as e:
+                    logger.warning(f"清理AI对话历史失败: {e}")
+                    stats['ai_conversations'] = 0
+                
+                # 清理风控日志（保留最近90天）
+                try:
+                    cursor.execute(
+                        "DELETE FROM risk_control_logs WHERE created_at < datetime('now', '-' || ? || ' days')",
+                        (days,)
+                    )
+                    stats['risk_control_logs'] = cursor.rowcount
+                    if cursor.rowcount > 0:
+                        logger.info(f"清理了 {cursor.rowcount} 条过期的风控日志（{days}天前）")
+                except Exception as e:
+                    logger.warning(f"清理风控日志失败: {e}")
+                    stats['risk_control_logs'] = 0
+                
+                # 清理AI商品缓存（保留最近30天）
+                cache_days = min(days, 30)  # AI商品缓存最多保留30天
+                try:
+                    cursor.execute(
+                        "DELETE FROM ai_item_cache WHERE last_updated < datetime('now', '-' || ? || ' days')",
+                        (cache_days,)
+                    )
+                    stats['ai_item_cache'] = cursor.rowcount
+                    if cursor.rowcount > 0:
+                        logger.info(f"清理了 {cursor.rowcount} 条过期的AI商品缓存（{cache_days}天前）")
+                except Exception as e:
+                    logger.warning(f"清理AI商品缓存失败: {e}")
+                    stats['ai_item_cache'] = 0
+                
+                # 清理验证码记录（保留最近1天）
+                try:
+                    cursor.execute(
+                        "DELETE FROM captcha_codes WHERE created_at < datetime('now', '-1 day')"
+                    )
+                    stats['captcha_codes'] = cursor.rowcount
+                    if cursor.rowcount > 0:
+                        logger.info(f"清理了 {cursor.rowcount} 条过期的验证码记录")
+                except Exception as e:
+                    logger.warning(f"清理验证码记录失败: {e}")
+                    stats['captcha_codes'] = 0
+                
+                # 清理邮箱验证记录（保留最近7天）
+                try:
+                    cursor.execute(
+                        "DELETE FROM email_verifications WHERE created_at < datetime('now', '-7 days')"
+                    )
+                    stats['email_verifications'] = cursor.rowcount
+                    if cursor.rowcount > 0:
+                        logger.info(f"清理了 {cursor.rowcount} 条过期的邮箱验证记录")
+                except Exception as e:
+                    logger.warning(f"清理邮箱验证记录失败: {e}")
+                    stats['email_verifications'] = 0
+                
+                # 提交更改
+                self.conn.commit()
+                
+                # 执行VACUUM以释放磁盘空间（仅当清理了大量数据时）
+                total_cleaned = sum(stats.values())
+                if total_cleaned > 100:
+                    logger.info(f"共清理了 {total_cleaned} 条记录，执行VACUUM以释放磁盘空间...")
+                    cursor.execute("VACUUM")
+                    logger.info("VACUUM执行完成")
+                    stats['vacuum_executed'] = True
+                else:
+                    stats['vacuum_executed'] = False
+                
+                stats['total_cleaned'] = total_cleaned
+                return stats
+                
+        except Exception as e:
+            logger.error(f"清理历史数据时出错: {e}")
+            return {'error': str(e)}
 
 
 # 全局单例
