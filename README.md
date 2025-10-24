@@ -7,7 +7,8 @@
 
 ## 最新代码获取地址（尽量转存）
 
-https://pan.baidu.com/s/1I6muOGJQYd6y3oxQSmtvrQ?pwd=gcpd
+我用夸克网盘分享了「xianyu-auto-reply-1.0.4.zip」，点击链接即可保存。打开「夸克APP」，无需下载在线播放视频，畅享原画5倍速，支持电视投屏。
+链接：https://pan.quark.cn/s/aae774b662b0
 
 ## 📋 项目概述
 
@@ -218,6 +219,11 @@ xianyu-auto-reply/
 - ✅ 优化历史记录存储，减少90%磁盘和内存占用
 - ✅ 添加析构函数确保资源释放
 
+## 🚀 云服务器推荐
+
+### 【划算云】国内外云服务器、全球CDN、挂机宝  www.hsykj.com
+
+
 ## 🚀 快速开始
 
 **⚡ 最快部署方式（推荐）**：使用预构建镜像，无需下载源码，一条命令即可启动！
@@ -229,11 +235,7 @@ xianyu-auto-reply/
 mkdir -p xianyu-auto-reply
 
 # 2. 一键启动容器
-docker run -d \
-  -p 8080:8080 \
-  -v $PWD/xianyu-auto-reply/:/app/data/ \
-  --name xianyu-auto-reply \
-  registry.cn-shanghai.aliyuncs.com/zhinian-software/xianyu-auto-reply:1.0.2
+docker run -d -p 8080:8080 --restart always  -v $PWD/xianyu-auto-reply/:/app/data/ --name xianyu-auto-reply  registry.cn-shanghai.aliyuncs.com/zhinian-software/xianyu-auto-reply:1.0.4
 
 # 3. 访问系统
 # http://localhost:8080
@@ -245,7 +247,7 @@ docker run -d \
 mkdir xianyu-auto-reply
 
 # 启动容器
-docker run -d -p 8080:8080 -v %cd%/xianyu-auto-reply/:/app/data/ --name xianyu-auto-reply registry.cn-shanghai.aliyuncs.com/zhinian-software/xianyu-auto-reply:1.0
+docker run -d -p 8080:8080 -v %cd%/xianyu-auto-reply/:/app/data/ --name xianyu-auto-reply registry.cn-shanghai.aliyuncs.com/zhinian-software/xianyu-auto-reply:1.0.4
 ```
 
 ### 方式二：从源码构建部署
