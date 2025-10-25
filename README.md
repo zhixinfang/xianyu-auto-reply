@@ -800,10 +800,13 @@ docker logs --tail 100 xianyu-auto-reply
 docker stop xianyu-auto-reply
 docker rm xianyu-auto-reply
 
-# 2. 拉取最新镜像
+# 2. 删除旧镜像（释放磁盘空间）
+docker rmi $(docker images --filter "reference=*xianyu-auto-reply*" -q)
+
+# 3. 拉取最新镜像
 docker pull registry.cn-shanghai.aliyuncs.com/zhinian-software/xianyu-auto-reply:latest
 
-# 3. 启动新容器
+# 4. 启动新容器
 docker run -d -p 8080:8080 --restart always \
   -v $PWD/xianyu-auto-reply/:/app/data/ \
   --name xianyu-auto-reply \
@@ -816,10 +819,13 @@ docker run -d -p 8080:8080 --restart always \
 docker stop xianyu-auto-reply
 docker rm xianyu-auto-reply
 
-# 2. 拉取最新镜像
+# 2. 删除旧镜像（释放磁盘空间）
+docker rmi $(docker images --filter "reference=*xianyu-auto-reply*" -q)
+
+# 3. 拉取最新镜像
 docker pull zhinianblog/xianyu-auto-reply:latest
 
-# 3. 启动新容器
+# 4. 启动新容器
 docker run -d -p 8080:8080 --restart always \
   -v $PWD/xianyu-auto-reply/:/app/data/ \
   --name xianyu-auto-reply \
