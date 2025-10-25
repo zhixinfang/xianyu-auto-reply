@@ -219,6 +219,12 @@ xianyu-auto-reply/
 - ✅ 优化历史记录存储，减少90%磁盘和内存占用
 - ✅ 添加析构函数确保资源释放
 
+**🏗️ 多架构支持**
+- ✅ Docker镜像支持AMD64和ARM64双架构
+- ✅ GitHub Actions自动构建多架构镜像
+- ✅ 支持Oracle Cloud、AWS Graviton等ARM服务器
+- ✅ Docker自动选择匹配的架构，无需手动指定
+
 ## 🚀 云服务器推荐
 
 ### 【划算云】国内外云服务器、全球CDN、挂机宝  www.hsykj.com
@@ -234,28 +240,11 @@ xianyu-auto-reply/
 # 1. 创建数据目录
 mkdir -p xianyu-auto-reply
 
-# 2. 一键启动容器（自动选择架构）
-docker run -d \
-  -p 8080:8080 \
-  --restart always \
-  -v $PWD/xianyu-auto-reply/:/app/data/ \
-  --name xianyu-auto-reply \
-  registry.cn-shanghai.aliyuncs.com/zhinian-software/xianyu-auto-reply:1.0.4
+# 2. 一键启动容器
+docker run -d -p 8080:8080 --restart always  -v $PWD/xianyu-auto-reply/:/app/data/ --name xianyu-auto-reply  registry.cn-shanghai.aliyuncs.com/zhinian-software/xianyu-auto-reply:1.0.4
 
 # 3. 访问系统
 # http://localhost:8080
-```
-
-**ARM64服务器** (Oracle Cloud, AWS Graviton, 树莓派等):
-```bash
-# Docker会自动选择ARM64镜像，也可以明确指定架构
-docker run -d \
-  -p 8080:8080 \
-  --restart always \
-  --platform linux/arm64 \
-  -v $PWD/xianyu-auto-reply/:/app/data/ \
-  --name xianyu-auto-reply \
-  registry.cn-shanghai.aliyuncs.com/zhinian-software/xianyu-auto-reply:1.0.4
 ```
 
 **Windows用户**：
@@ -264,13 +253,7 @@ docker run -d \
 mkdir xianyu-auto-reply
 
 # 启动容器
-docker run -d -p 8080:8080 --restart always -v %cd%/xianyu-auto-reply/:/app/data/ --name xianyu-auto-reply registry.cn-shanghai.aliyuncs.com/zhinian-software/xianyu-auto-reply:1.0.4
-```
-
-**多架构说明**：
-- ✅ Docker会自动选择匹配当前系统架构的镜像
-- ✅ 支持 x86_64 (amd64) 和 ARM64 (aarch64)
-- ✅ 无需修改命令，一条命令适配所有架构
+docker run -d -p 8080:8080 -v %cd%/xianyu-auto-reply/:/app/data/ --name xianyu-auto-reply registry.cn-shanghai.aliyuncs.com/zhinian-software/xianyu-auto-reply:1.0.4
 ```
 
 ### 方式二：从源码构建部署
@@ -348,19 +331,20 @@ python Start.py
 - **Docker**: 20.10+ (Docker部署)
 - **Docker Compose**: 2.0+ (Docker部署)
 
-### 🖥️ 支持的架构
+### 🖥️ 多架构支持
 
-| 架构 | 说明 | 适用场景 |
-|------|------|---------|
-| **x86_64 (amd64)** | Intel/AMD处理器 | 传统服务器、PC、虚拟机 |
-| **ARM64 (aarch64)** | ARM处理器 | ARM服务器、树莓派4+、Apple M系列 |
+**支持的架构**:
+- ✅ **linux/amd64** - Intel/AMD处理器（传统服务器、PC、虚拟机）
+- ✅ **linux/arm64** - ARM64处理器（ARM服务器、树莓派4+、Apple M系列）
 
-**ARM云服务器**：
-- ✅ Oracle Cloud - Ampere A1 (永久免费4核24GB)
-- ✅ AWS - Graviton2/3实例
-- ✅ 阿里云 - 倚天710实例
-- ✅ 腾讯云 - 星星海ARM实例
-- ✅ 华为云 - 鲲鹏ARM实例
+**自动构建**: GitHub Actions自动构建并推送多架构镜像，Docker会自动选择匹配的架构
+
+**适用的ARM云服务器**:
+- Oracle Cloud - Ampere A1 (永久免费4核24GB)
+- AWS - Graviton2/3实例
+- 阿里云 - 倚天710实例
+- 腾讯云 - 星星海ARM实例
+- 华为云 - 鲲鹏ARM实例
 
 ### ⚙️ 环境变量配置（可选）
 
