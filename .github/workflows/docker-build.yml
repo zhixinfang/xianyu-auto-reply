@@ -35,14 +35,14 @@ jobs:
           # 国际版 (Docker Hub)
           - dockerfile: Dockerfile
             registry: docker.io
-            image_name: zhinianboke/xianyu-auto-reply
+            image_name: zhinianblog/xianyu-auto-reply
             tag_suffix: ''
           
           # 国内版 (阿里云)
-          - dockerfile: Dockerfile-cn
+          - dockerfile: Dockerfile
             registry: registry.cn-shanghai.aliyuncs.com
             image_name: zhinian-software/xianyu-auto-reply
-            tag_suffix: '-cn'
+            tag_suffix: ''
     
     steps:
     - name: 📥 Checkout代码
