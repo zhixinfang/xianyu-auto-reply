@@ -9,13 +9,12 @@ on:
         required: true
         default: '1.0.5'
   
-  # 当创建tag时自动触发
+  # 自动触发
   push:
+    # 当创建tag时触发
     tags:
       - 'v*'
-  
-  # 当Dockerfile或相关文件被修改时触发（可选）
-  push:
+    # 当Dockerfile或相关文件被修改时触发（可选）
     branches:
       - main
       - master
