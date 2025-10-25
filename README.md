@@ -234,11 +234,28 @@ xianyu-auto-reply/
 # 1. 创建数据目录
 mkdir -p xianyu-auto-reply
 
-# 2. 一键启动容器
-docker run -d -p 8080:8080 --restart always  -v $PWD/xianyu-auto-reply/:/app/data/ --name xianyu-auto-reply  registry.cn-shanghai.aliyuncs.com/zhinian-software/xianyu-auto-reply:1.0.4
+# 2. 一键启动容器（自动选择架构）
+docker run -d \
+  -p 8080:8080 \
+  --restart always \
+  -v $PWD/xianyu-auto-reply/:/app/data/ \
+  --name xianyu-auto-reply \
+  registry.cn-shanghai.aliyuncs.com/zhinian-software/xianyu-auto-reply:1.0.4
 
 # 3. 访问系统
 # http://localhost:8080
+```
+
+**ARM64服务器** (Oracle Cloud, AWS Graviton, 树莓派等):
+```bash
+# Docker会自动选择ARM64镜像，也可以明确指定架构
+docker run -d \
+  -p 8080:8080 \
+  --restart always \
+  --platform linux/arm64 \
+  -v $PWD/xianyu-auto-reply/:/app/data/ \
+  --name xianyu-auto-reply \
+  registry.cn-shanghai.aliyuncs.com/zhinian-software/xianyu-auto-reply:1.0.4
 ```
 
 **Windows用户**：
@@ -247,7 +264,13 @@ docker run -d -p 8080:8080 --restart always  -v $PWD/xianyu-auto-reply/:/app/dat
 mkdir xianyu-auto-reply
 
 # 启动容器
-docker run -d -p 8080:8080 -v %cd%/xianyu-auto-reply/:/app/data/ --name xianyu-auto-reply registry.cn-shanghai.aliyuncs.com/zhinian-software/xianyu-auto-reply:1.0.4
+docker run -d -p 8080:8080 --restart always -v %cd%/xianyu-auto-reply/:/app/data/ --name xianyu-auto-reply registry.cn-shanghai.aliyuncs.com/zhinian-software/xianyu-auto-reply:1.0.4
+```
+
+**多架构说明**：
+- ✅ Docker会自动选择匹配当前系统架构的镜像
+- ✅ 支持 x86_64 (amd64) 和 ARM64 (aarch64)
+- ✅ 无需修改命令，一条命令适配所有架构
 ```
 
 ### 方式二：从源码构建部署
@@ -319,10 +342,25 @@ python Start.py
 - **Python**: 3.11+
 - **Node.js**: 16+ (用于JavaScript执行)
 - **系统**: Windows/Linux/macOS
+- **架构**: x86_64 (amd64) / ARM64 (aarch64)
 - **内存**: 建议2GB+
 - **存储**: 建议10GB+
 - **Docker**: 20.10+ (Docker部署)
 - **Docker Compose**: 2.0+ (Docker部署)
+
+### 🖥️ 支持的架构
+
+| 架构 | 说明 | 适用场景 |
+|------|------|---------|
+| **x86_64 (amd64)** | Intel/AMD处理器 | 传统服务器、PC、虚拟机 |
+| **ARM64 (aarch64)** | ARM处理器 | ARM服务器、树莓派4+、Apple M系列 |
+
+**ARM云服务器**：
+- ✅ Oracle Cloud - Ampere A1 (永久免费4核24GB)
+- ✅ AWS - Graviton2/3实例
+- ✅ 阿里云 - 倚天710实例
+- ✅ 腾讯云 - 星星海ARM实例
+- ✅ 华为云 - 鲲鹏ARM实例
 
 ### ⚙️ 环境变量配置（可选）
 
@@ -655,29 +693,37 @@ CPU_LIMIT=2.0                          # CPU限制(核心数)
 
 ## 🔧 高级功能
 
-### 二进制模块编译（可选）
+### 滑块验证模块说明
 
-为了提升性能和代码安全性，可以将核心模块编译为二进制文件：
+本项目的滑块验证模块采用**二进制分发**方式：
 
-```bash
-# 1. 安装 Nuitka（已在 requirements.txt 中）
-pip install nuitka ordered-set zstandard
+**🔐 源代码保护**
+- ✅ 核心源代码保存在**私有仓库**中（不公开）
+- ✅ 通过GitHub Actions自动编译所有平台
+- ✅ 主项目只包含编译后的二进制文件
 
-# 2. 运行编译脚本
-python build_binary_module.py
+**📦 二进制文件**
 
-# 3. 编译完成后会生成 .pyd (Windows) 或 .so (Linux) 文件
-# Python 会自动优先加载二进制版本
-```
+项目已包含预编译的二进制模块（`utils/` 目录）：
+- Windows: `xianyu_slider_stealth.cp3XX-win_amd64.pyd`
+- Linux: `xianyu_slider_stealth.cpython-3XX-x86_64-linux-gnu.so`
+- macOS: `xianyu_slider_stealth.cpython-3XX-darwin.so`
+- 类型提示: `xianyu_slider_stealth.pyi`
 
-**Docker 部署自动编译**：
-- Docker 构建时会自动检测并编译相关模块
-- 无需手动操作，构建完成即可使用
+**🔄 更新二进制模块**
 
-**编译优势**：
-- ⚡ 性能提升：编译后的代码执行效率更高
+如需更新滑块验证模块：
+1. 从私有仓库的 Releases 页面下载最新版本
+2. 解压并复制到 `utils/` 目录
+3. 提交更新到主项目
+
+**⚡ 模块优势**
+- 🚀 高性能：编译后执行效率更高
 - 🔒 代码保护：二进制文件难以反编译
-- 🛡️ 授权管理：集成授权期限验证
+- 🛡️ 授权管理：内置授权期限验证
+- 🌍 多平台：支持Windows/Linux/macOS
+
+**注意**: 滑块验证模块源代码不在此项目中，如需修改请联系维护者。
 
 ### AI回复配置
 1. 在用户设置中配置OpenAI API密钥
