@@ -48,6 +48,34 @@ python -c "import fastapi, uvicorn, loguru, websockets" 2>/dev/null || {
 }
 echo "✓ Python 依赖检查完成"
 
+# 迁移数据库文件到data目录（如果需要）
+echo "检查数据库文件位置..."
+if [ -f "/app/xianyu_data.db" ] && [ ! -f "/app/data/xianyu_data.db" ]; then
+    echo "发现旧数据库文件，迁移到data目录..."
+    mv /app/xianyu_data.db /app/data/xianyu_data.db
+    echo "✓ 主数据库已迁移"
+elif [ -f "/app/xianyu_data.db" ] && [ -f "/app/data/xianyu_data.db" ]; then
+    echo "⚠ 检测到新旧数据库都存在，使用data目录中的数据库"
+    echo "  旧文件: /app/xianyu_data.db"
+    echo "  新文件: /app/data/xianyu_data.db"
+fi
+
+if [ -f "/app/user_stats.db" ] && [ ! -f "/app/data/user_stats.db" ]; then
+    echo "迁移统计数据库到data目录..."
+    mv /app/user_stats.db /app/data/user_stats.db
+    echo "✓ 统计数据库已迁移"
+fi
+
+# 迁移备份文件
+backup_count=$(ls /app/xianyu_data_backup_*.db 2>/dev/null | wc -l)
+if [ "$backup_count" -gt 0 ]; then
+    echo "发现 $backup_count 个备份文件，迁移到data目录..."
+    mv /app/xianyu_data_backup_*.db /app/data/ 2>/dev/null || true
+    echo "✓ 备份文件已迁移"
+fi
+
+echo "✓ 数据库文件位置检查完成"
+
 # 显示启动信息
 echo "========================================"
 echo "  系统启动参数："

@@ -4543,8 +4543,8 @@ def list_backup_files(admin_user: Dict[str, Any] = Depends(require_admin)):
     try:
         log_with_user('info', "查询备份文件列表", admin_user)
 
-        # 查找备份文件
-        backup_files = glob.glob("xianyu_data_backup_*.db")
+        # 查找备份文件（在data目录中）
+        backup_files = glob.glob("data/xianyu_data_backup_*.db")
 
         backup_list = []
         for file_path in backup_files:

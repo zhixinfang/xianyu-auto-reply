@@ -7,11 +7,98 @@
 
 import os
 import sys
+import shutil
+from pathlib import Path
+
+# ==================== 在导入任何模块之前先迁移数据库 ====================
+def _migrate_database_files_early():
+    """在启动前检查并迁移数据库文件到data目录（使用print，因为logger还未初始化）"""
+    print("检查数据库文件位置...")
+    
+    # 确保data目录存在
+    data_dir = Path("data")
+    if not data_dir.exists():
+        data_dir.mkdir(parents=True, exist_ok=True)
+        print("✓ 创建 data 目录")
+    
+    # 定义需要迁移的文件
+    files_to_migrate = [
+        ("xianyu_data.db", "data/xianyu_data.db", "主数据库"),
+        ("user_stats.db", "data/user_stats.db", "统计数据库"),
+    ]
+    
+    migrated_files = []
+    
+    # 迁移主数据库和统计数据库
+    for old_path, new_path, description in files_to_migrate:
+        old_file = Path(old_path)
+        new_file = Path(new_path)
+        
+        if old_file.exists():
+            if not new_file.exists():
+                # 新位置不存在，移动文件
+                try:
+                    shutil.move(str(old_file), str(new_file))
+                    print(f"✓ 迁移{description}: {old_path} -> {new_path}")
+                    migrated_files.append(description)
+                except Exception as e:
+                    print(f"⚠ 无法迁移{description}: {e}")
+                    print(f"  尝试复制文件...")
+                    try:
+                        shutil.copy2(str(old_file), str(new_file))
+                        print(f"✓ 已复制{description}到新位置")
+                        print(f"  请在确认数据正常后手动删除: {old_path}")
+                        migrated_files.append(f"{description}(已复制)")
+                    except Exception as e2:
+                        print(f"✗ 复制{description}失败: {e2}")
+            else:
+                # 新位置已存在，检查旧文件大小
+                try:
+                    if old_file.stat().st_size > 0:
+                        print(f"⚠ 发现旧{description}文件: {old_path}")
+                        print(f"  新数据库位于: {new_path}")
+                        print(f"  建议备份后删除旧文件")
+                except:
+                    pass
+    
+    # 迁移备份文件
+    backup_files = list(Path(".").glob("xianyu_data_backup_*.db"))
+    if backup_files:
+        print(f"发现 {len(backup_files)} 个备份文件")
+        backup_migrated = 0
+        for backup_file in backup_files:
+            new_backup_path = data_dir / backup_file.name
+            if not new_backup_path.exists():
+                try:
+                    shutil.move(str(backup_file), str(new_backup_path))
+                    print(f"✓ 迁移备份文件: {backup_file.name}")
+                    backup_migrated += 1
+                except Exception as e:
+                    print(f"⚠ 无法迁移备份文件 {backup_file.name}: {e}")
+        
+        if backup_migrated > 0:
+            migrated_files.append(f"{backup_migrated}个备份文件")
+    
+    # 输出迁移总结
+    if migrated_files:
+        print(f"✓ 数据库迁移完成，已迁移: {', '.join(migrated_files)}")
+    else:
+        print("✓ 数据库文件检查完成")
+    
+    return True
+
+# 在导入 db_manager 之前先执行数据库迁移
+try:
+    _migrate_database_files_early()
+except Exception as e:
+    print(f"⚠ 数据库迁移检查失败: {e}")
+    # 继续启动，因为可能是首次运行
+
+# ==================== 现在可以安全地导入其他模块 ====================
 import asyncio
 import threading
 import uvicorn
 from urllib.parse import urlparse
-from pathlib import Path
 from loguru import logger
 
 # 修复Linux环境下的asyncio子进程问题
@@ -54,6 +141,8 @@ def _start_api_server():
 
     logger.info(f"启动Web服务器: http://{host}:{port}")
     uvicorn.run("reply_server:app", host=host, port=port, log_level="info")
+
+
 
 
 def load_keywords_file(path: str):
