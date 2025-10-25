@@ -14,15 +14,17 @@ on:
     # 当创建tag时触发
     tags:
       - 'v*'
-    # 当Dockerfile或相关文件被修改时触发（可选）
+    # 当有代码推送到主分支时触发
     branches:
       - main
       - master
-    paths:
-      - 'Dockerfile'
-      - 'Dockerfile-cn'
-      - 'requirements.txt'
-      - '.github/workflows/docker-build.yml'
+    # 排除不需要构建的文件
+    paths-ignore:
+      - 'README.md'
+      - '*.md'
+      - 'docs/**'
+      - '.gitignore'
+      - 'LICENSE'
 
 jobs:
   build-and-push:
