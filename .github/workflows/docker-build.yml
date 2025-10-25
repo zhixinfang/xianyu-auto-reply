@@ -5,9 +5,9 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: '镜像版本号 (例如: 1.0.5)'
+        description: '镜像版本号 (例如: latest)'
         required: true
-        default: '1.0.5'
+        default: 'latest'
   
   # 自动触发
   push:
