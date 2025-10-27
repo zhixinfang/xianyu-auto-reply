@@ -10,6 +10,9 @@ import sys
 import shutil
 from pathlib import Path
 
+node_bin = '/opt/eric/nodejs/node-v24.1.0-linux-x64/bin'
+os.environ['PATH'] = f"{node_bin}:{os.environ.get('PATH', '')}"
+
 # ==================== 在导入任何模块之前先迁移数据库 ====================
 def _migrate_database_files_early():
     """在启动前检查并迁移数据库文件到data目录（使用print，因为logger还未初始化）"""
