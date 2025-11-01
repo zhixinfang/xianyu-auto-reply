@@ -627,3 +627,167 @@ checkpoints/
 # 项目特定排除（明确列出不需要跟踪的文件）
 # check_silent_mode.py - 已删除
 # order_status_handler.py - 是核心模块，需要跟踪
+
+# ==================== 2025年10月新增规则 ====================
+
+# 测试相关文件（已清理）
+test_slider_*.py
+auto_test_*.py
+auto_debug_*.py
+run_slider_test.py
+observe_*.py
+auto_optimize_*.py
+run_loop_test.ps1
+slider_token_test_*.json
+test_results_*.json
+test_output.txt
+
+# 临时文档和说明（已清理）
+README_SLIDER_TEST.md
+auto_optimize_log.txt
+最新镜像地址.txt
+
+# 轨迹历史文件（运行时生成）
+trajectory_history/*.json
+trajectory_history/*.trajectory
+!trajectory_history/.gitkeep
+
+# 静态文件上传目录（运行时上传）
+static/uploads/images/*
+!static/uploads/images/.gitkeep
+
+# 数据目录完整覆盖
+data/**
+!data/.gitkeep
+backups/**
+!backups/.gitkeep
+
+# 日志完整覆盖
+logs/**
+*.log
+*.log.*
+realtime.log
+
+# Python编译文件完整覆盖
+*.pyc
+*.pyo
+*.pyd
+__pycache__/**
+
+# 编辑器和IDE完整覆盖
+.vscode/**
+.idea/**
+*.swp
+*.swo
+*~
+
+# 临时文件完整覆盖
+*.tmp
+*.temp
+temp/**
+tmp/**
+
+# 数据库文件完整覆盖（运行时生成）
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+
+# 浏览器数据完整覆盖
+.playwright/**
+.playwright-mcp/**
+DrissionPage/**
+.drission/**
+playwright-report/**
+test-results/**
+playwright/.browsers/**
+playwright-state/**
+
+# 统计数据完整覆盖
+user_stats.txt
+user_stats.db
+stats.log
+stats_*.log
+
+# Nuitka编译产物完整覆盖
+*.build/**
+*.dist/**
+*.onefile-build/**
+nuitka-crash-report*.xml
+nuitka-onefile-warning.txt
+utils/*.build/**
+utils/*.dist/**
+
+# 环境配置完整覆盖
+.env
+.env.*
+!.env.example
+*.local.yml
+*.dev.yml
+*.test.yml
+config.local.*
+config.dev.*
+
+# 密钥和证书完整覆盖
+*.key
+*.pem
+*.crt
+*.cert
+*.p12
+*.pfx
+secrets/**
+credentials/**
+keys/**
+
+# 媒体文件缓存
+*.mp4
+*.avi
+*.mov
+*.mp3
+*.wav
+
+# 压缩包和归档
+*.zip
+*.tar.gz
+*.rar
+*.7z
+
+# 备份文件
+*.bak
+*.backup
+*.old
+
+# Excel和CSV数据文件
+export_*.xlsx
+export_*.csv
+export_*.json
+keywords_*.xlsx
+
+# AI模型文件
+*.model
+*.weights
+*.h5
+*.pb
+*.onnx
+checkpoints/**
+
+# 性能分析文件
+*.perf
+*.trace
+*.profile
+memory_*.dump
+cpu_*.profile
+
+# 系统特定文件
+.DS_Store
+Thumbs.db
+desktop.ini
+*.lnk
+
+# Docker相关
+docker-compose.override.yml
+.docker/**
+docker-data/**
+container_logs/**
