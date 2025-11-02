@@ -711,6 +711,32 @@ class OrderStatusHandler:
             
             # 获取对应的状态（new_status已经在上面通过_check_refund_message或message_status_mapping确定了）
             
+            # 检查当前订单状态，避免不合理的状态回退
+            from db_manager import db_manager
+            current_order = db_manager.get_order_by_id(order_id)
+            
+            # 如果订单存在，检查是否需要忽略这次状态更新
+            if current_order and current_order.get('order_status'):
+                current_status = current_order.get('order_status')
+                
+                # 定义状态优先级（数字越大，状态越靠后）
+                status_priority = {
+                    'processing': 1,      # 处理中
+                    'pending_ship': 2,    # 待发货
+                    'shipped': 3,         # 已发货
+                    'completed': 4,       # 已完成
+                    'refunding': 2,       # 退款中（与待发货同级）
+                    'cancelled': 5,       # 已取消（终态）
+                }
+                
+                current_priority = status_priority.get(current_status, 0)
+                new_priority = status_priority.get(new_status, 0)
+                
+                # 如果新状态的优先级低于当前状态，且不是特殊状态（退款、取消），则忽略
+                if new_priority < current_priority and new_status not in ['refunding', 'cancelled']:
+                    logger.warning(f'[{msg_time}] 【{cookie_id}】{send_message}，订单 {order_id} 当前状态为 {current_status}，忽略回退到 {new_status}')
+                    return True  # 返回True表示已处理，但实际上是忽略
+            
             # 更新订单状态
             success = self.update_order_status(
                 order_id=order_id,
