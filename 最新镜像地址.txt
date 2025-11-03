@@ -1,1 +1,1 @@
-docker run -d -p 8080:8080 --restart always  -v $PWD/xianyu-auto-reply/:/app/data/ --name xianyu-auto-reply  registry.cn-shanghai.aliyuncs.com/zhinian-software/xianyu-auto-reply:1.0.4
+docker run -d -p 8080:8080 --restart always  -v $PWD/xianyu-auto-reply/:/app/data/ --name xianyu-auto-reply  registry.cn-shanghai.aliyuncs.com/zhinian-software/xianyu-auto-reply:latest

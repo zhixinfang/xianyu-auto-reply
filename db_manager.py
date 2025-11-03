@@ -20,7 +20,7 @@ class DBManager:
         """初始化数据库连接和表结构"""
         # 支持环境变量配置数据库路径
         if db_path is None:
-            db_path = os.getenv('DB_PATH', 'xianyu_data.db')
+            db_path = os.getenv('DB_PATH', 'data/xianyu_data.db')
 
         # 确保数据目录存在并有正确权限
         db_dir = os.path.dirname(db_path)

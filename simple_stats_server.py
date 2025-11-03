@@ -16,7 +16,7 @@ from pathlib import Path
 app = FastAPI(title="闲鱼自动回复系统用户统计", version="1.0.0")
 
 # 数据库文件路径
-DB_PATH = Path(__file__).parent / "user_stats.db"
+DB_PATH = Path(__file__).parent / "data" / "user_stats.db"
 
 
 class UserStats(BaseModel):

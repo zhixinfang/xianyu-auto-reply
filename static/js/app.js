@@ -9916,7 +9916,7 @@ function displayRiskControlLogs(logs) {
         const row = document.createElement('tr');
 
         // 格式化时间
-        const createdAt = new Date(log.created_at).toLocaleString('zh-CN');
+        const createdAt = formatDateTime(log.created_at);
 
         // 状态标签
         let statusBadge = '';

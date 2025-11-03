@@ -7,8 +7,8 @@
 
 ## 最新代码获取地址（尽量转存）
 
-我用夸克网盘分享了「xianyu-auto-reply-1.0.4.zip」，点击链接即可保存。打开「夸克APP」，无需下载在线播放视频，畅享原画5倍速，支持电视投屏。
-链接：https://pan.quark.cn/s/aae774b662b0
+我用夸克网盘分享了「自动发货」，点击链接即可保存。打开「夸克APP」，无需下载在线播放视频，畅享原画5倍速，支持电视投屏。
+链接：https://pan.quark.cn/s/447e909f4107
 
 ## 📋 项目概述
 
@@ -184,10 +184,12 @@ xianyu-auto-reply/
 │   ├── .gitignore                # Git忽略文件配置（完整版）
 │   └── README.md                 # 项目说明文档（本文件）
 └── 📊 数据目录（运行时创建）
-    ├── data/                     # 数据目录（Docker挂载）
-    │   └── xianyu_data.db        # SQLite数据库文件
+    ├── data/                     # 数据目录（Docker挂载，自动创建）
+    │   ├── xianyu_data.db        # SQLite主数据库文件
+    │   ├── user_stats.db         # 用户统计数据库
+    │   └── xianyu_data_backup_*.db # 数据库备份文件
     ├── logs/                     # 按日期分割的日志文件
-    └── backups/                  # 数据备份文件
+    └── backups/                  # 其他备份文件
 ```
 
 </details>
@@ -202,6 +204,12 @@ xianyu-auto-reply/
 - ✅ Docker 构建优化，自动编译二进制模块，提升容器启动效率
 - ✅ 完善的错误处理和重试机制，提升系统稳定性
 - ✅ 修复滑块验证模块内存泄漏问题，浏览器资源正确释放
+
+**📦 数据管理优化**
+- ✅ 数据库文件统一迁移到 `data/` 目录，更好的组织和管理
+- ✅ 启动时自动检测并迁移旧数据库文件，无需手动操作
+- ✅ 备份文件自动整理到数据目录，便于集中管理
+- ✅ Docker挂载更简洁，一个data目录包含所有数据
 
 **🛠️ 配置文件优化**
 - ✅ 完善 `.gitignore`，新增编译产物、浏览器缓存等规则
@@ -219,6 +227,13 @@ xianyu-auto-reply/
 - ✅ 优化历史记录存储，减少90%磁盘和内存占用
 - ✅ 添加析构函数确保资源释放
 
+**🏗️ 多架构支持**
+- ✅ Docker镜像支持AMD64和ARM64双架构
+- ✅ GitHub Actions自动构建并推送到双镜像仓库
+- ✅ 支持Oracle Cloud、AWS Graviton等ARM服务器
+- ✅ Docker自动选择匹配的架构，无需手动指定
+- ✅ 国内外双镜像源，确保下载速度
+
 ## 🚀 云服务器推荐
 
 ### 【划算云】国内外云服务器、全球CDN、挂机宝  www.hsykj.com
@@ -228,26 +243,57 @@ xianyu-auto-reply/
 
 **⚡ 最快部署方式（推荐）**：使用预构建镜像，无需下载源码，一条命令即可启动！
 
-### 方式一：Docker 一键部署（最简单）
+### 方式一：Docker 一键部署（最简单）⭐
 
+**国内用户（阿里云镜像，推荐）**：
 ```bash
 # 1. 创建数据目录
 mkdir -p xianyu-auto-reply
 
-# 2. 一键启动容器
-docker run -d -p 8080:8080 --restart always  -v $PWD/xianyu-auto-reply/:/app/data/ --name xianyu-auto-reply  registry.cn-shanghai.aliyuncs.com/zhinian-software/xianyu-auto-reply:1.0.4
+# 2. 一键启动容器（支持AMD64/ARM64，自动选择架构）
+docker run -d \
+  -p 8080:8080 \
+  --restart always \
+  -v $PWD/xianyu-auto-reply/:/app/data/ \
+  --name xianyu-auto-reply \
+  registry.cn-shanghai.aliyuncs.com/zhinian-software/xianyu-auto-reply:latest
 
 # 3. 访问系统
 # http://localhost:8080
 ```
 
+**国际用户（Docker Hub镜像）**：
+```bash
+# 使用Docker Hub国际镜像
+docker run -d \
+  -p 8080:8080 \
+  --restart always \
+  -v $PWD/xianyu-auto-reply/:/app/data/ \
+  --name xianyu-auto-reply \
+  zhinianblog/xianyu-auto-reply:latest
+```
+
 **Windows用户**：
-```cmd
+```powershell
 # 创建数据目录
 mkdir xianyu-auto-reply
 
-# 启动容器
-docker run -d -p 8080:8080 -v %cd%/xianyu-auto-reply/:/app/data/ --name xianyu-auto-reply registry.cn-shanghai.aliyuncs.com/zhinian-software/xianyu-auto-reply:1.0.4
+# 国内用户（阿里云）
+docker run -d -p 8080:8080 --restart always -v %cd%/xianyu-auto-reply/:/app/data/ --name xianyu-auto-reply registry.cn-shanghai.aliyuncs.com/zhinian-software/xianyu-auto-reply:latest
+
+# 国际用户（Docker Hub）
+docker run -d -p 8080:8080 --restart always -v %cd%/xianyu-auto-reply/:/app/data/ --name xianyu-auto-reply zhinianblog/xianyu-auto-reply:latest
+```
+
+**ARM64服务器** (Oracle Cloud, AWS Graviton等)：
+```bash
+# Docker会自动选择ARM64镜像，无需特殊配置
+docker run -d \
+  -p 8080:8080 \
+  --restart always \
+  -v $PWD/xianyu-auto-reply/:/app/data/ \
+  --name xianyu-auto-reply \
+  registry.cn-shanghai.aliyuncs.com/zhinian-software/xianyu-auto-reply:latest
 ```
 
 ### 方式二：从源码构建部署
@@ -319,10 +365,30 @@ python Start.py
 - **Python**: 3.11+
 - **Node.js**: 16+ (用于JavaScript执行)
 - **系统**: Windows/Linux/macOS
+- **架构**: x86_64 (amd64) / ARM64 (aarch64)
 - **内存**: 建议2GB+
 - **存储**: 建议10GB+
 - **Docker**: 20.10+ (Docker部署)
 - **Docker Compose**: 2.0+ (Docker部署)
+
+### 🖥️ 多架构支持
+
+**支持的架构**:
+- ✅ **linux/amd64** - Intel/AMD处理器（传统服务器、PC、虚拟机）
+- ✅ **linux/arm64** - ARM64处理器（ARM服务器、树莓派4+、Apple M系列）
+
+**镜像仓库**:
+- 🇨🇳 **阿里云**: `registry.cn-shanghai.aliyuncs.com/zhinian-software/xianyu-auto-reply:latest`
+- 🌍 **Docker Hub**: `zhinianblog/xianyu-auto-reply:latest`
+
+**自动构建**: GitHub Actions自动构建并推送多架构镜像到两个镜像仓库，Docker会自动选择匹配的架构
+
+**适用的ARM云服务器**:
+- Oracle Cloud - Ampere A1 (永久免费4核24GB)
+- AWS - Graviton2/3实例
+- 阿里云 - 倚天710实例
+- 腾讯云 - 星星海ARM实例
+- 华为云 - 鲲鹏ARM实例
 
 ### ⚙️ 环境变量配置（可选）
 
@@ -333,6 +399,9 @@ python Start.py
 WEB_PORT=8080                          # Web服务端口
 API_HOST=0.0.0.0                       # API服务主机
 TZ=Asia/Shanghai                       # 时区设置
+
+# 数据库配置
+DB_PATH=data/xianyu_data.db            # 数据库文件路径（默认在data目录）
 
 # 管理员配置
 ADMIN_USERNAME=admin                   # 管理员用户名
@@ -655,29 +724,37 @@ CPU_LIMIT=2.0                          # CPU限制(核心数)
 
 ## 🔧 高级功能
 
-### 二进制模块编译（可选）
+### 滑块验证模块说明
 
-为了提升性能和代码安全性，可以将核心模块编译为二进制文件：
+本项目的滑块验证模块采用**二进制分发**方式：
 
-```bash
-# 1. 安装 Nuitka（已在 requirements.txt 中）
-pip install nuitka ordered-set zstandard
+**🔐 源代码保护**
+- ✅ 核心源代码保存在**私有仓库**中（不公开）
+- ✅ 通过GitHub Actions自动编译所有平台
+- ✅ 主项目只包含编译后的二进制文件
 
-# 2. 运行编译脚本
-python build_binary_module.py
+**📦 二进制文件**
 
-# 3. 编译完成后会生成 .pyd (Windows) 或 .so (Linux) 文件
-# Python 会自动优先加载二进制版本
-```
+项目已包含预编译的二进制模块（`utils/` 目录）：
+- Windows: `xianyu_slider_stealth.cp3XX-win_amd64.pyd`
+- Linux: `xianyu_slider_stealth.cpython-3XX-x86_64-linux-gnu.so`
+- macOS: `xianyu_slider_stealth.cpython-3XX-darwin.so`
+- 类型提示: `xianyu_slider_stealth.pyi`
 
-**Docker 部署自动编译**：
-- Docker 构建时会自动检测并编译相关模块
-- 无需手动操作，构建完成即可使用
+**🔄 更新二进制模块**
 
-**编译优势**：
-- ⚡ 性能提升：编译后的代码执行效率更高
+如需更新滑块验证模块：
+1. 从私有仓库的 Releases 页面下载最新版本
+2. 解压并复制到 `utils/` 目录
+3. 提交更新到主项目
+
+**⚡ 模块优势**
+- 🚀 高性能：编译后执行效率更高
 - 🔒 代码保护：二进制文件难以反编译
-- 🛡️ 授权管理：集成授权期限验证
+- 🛡️ 授权管理：内置授权期限验证
+- 🌍 多平台：支持Windows/Linux/macOS
+
+**注意**: 滑块验证模块源代码不在此项目中，如需修改请联系维护者。
 
 ### AI回复配置
 1. 在用户设置中配置OpenAI API密钥
@@ -704,6 +781,80 @@ python build_binary_module.py
 - **日志文件**：`logs/` 目录下的按日期分割的日志文件
 - **日志级别**：支持DEBUG、INFO、WARNING、ERROR级别
 
+### Docker容器管理
+
+**查看容器日志**：
+```bash
+# 实时查看日志
+docker logs -f xianyu-auto-reply
+
+# 查看最近100行
+docker logs --tail 100 xianyu-auto-reply
+```
+
+**更新到最新版本**：
+
+国内用户（阿里云镜像）：
+```bash
+# 1. 停止并删除旧容器
+docker stop xianyu-auto-reply
+docker rm xianyu-auto-reply
+
+# 2. 删除旧镜像（释放磁盘空间）
+docker rmi $(docker images --filter "reference=*xianyu-auto-reply*" -q)
+
+# 3. 拉取最新镜像
+docker pull registry.cn-shanghai.aliyuncs.com/zhinian-software/xianyu-auto-reply:latest
+
+# 4. 启动新容器
+docker run -d -p 8080:8080 --restart always \
+  -v $PWD/xianyu-auto-reply/:/app/data/ \
+  --name xianyu-auto-reply \
+  registry.cn-shanghai.aliyuncs.com/zhinian-software/xianyu-auto-reply:latest
+```
+
+国际用户（Docker Hub）：
+```bash
+# 1. 停止并删除旧容器
+docker stop xianyu-auto-reply
+docker rm xianyu-auto-reply
+
+# 2. 删除旧镜像（释放磁盘空间）
+docker rmi $(docker images --filter "reference=*xianyu-auto-reply*" -q)
+
+# 3. 拉取最新镜像
+docker pull zhinianblog/xianyu-auto-reply:latest
+
+# 4. 启动新容器
+docker run -d -p 8080:8080 --restart always \
+  -v $PWD/xianyu-auto-reply/:/app/data/ \
+  --name xianyu-auto-reply \
+  zhinianblog/xianyu-auto-reply:latest
+```
+
+**验证多架构镜像**：
+```bash
+# 查看镜像支持的架构
+docker manifest inspect registry.cn-shanghai.aliyuncs.com/zhinian-software/xianyu-auto-reply:latest | grep architecture
+
+# 或Docker Hub镜像
+docker manifest inspect zhinianblog/xianyu-auto-reply:latest | grep architecture
+
+# 应该显示: "architecture": "amd64" 和 "architecture": "arm64"
+```
+
+
+**容器重启**：
+```bash
+# 重启容器
+docker restart xianyu-auto-reply
+
+# 停止容器
+docker stop xianyu-auto-reply
+
+# 启动容器
+docker start xianyu-auto-reply
+```
 
 ## 🔒 安全特性
 

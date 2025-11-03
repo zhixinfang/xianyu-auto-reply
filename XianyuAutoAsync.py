@@ -1838,7 +1838,7 @@ class XianyuLive:
             return False
 
     async def fetch_item_detail_from_api(self, item_id: str) -> str:
-        """获取商品详情（优先使用浏览器，备用外部API，支持24小时缓存）
+        """获取商品详情（使用浏览器获取，支持24小时缓存）
 
         Args:
             item_id: 商品ID
@@ -1881,16 +1881,8 @@ class XianyuLive:
                 logger.info(f"成功通过浏览器获取商品详情: {item_id}, 长度: {len(detail_from_browser)}")
                 return detail_from_browser
 
-            # 3. 浏览器获取失败，使用外部API作为备用
-            logger.warning(f"浏览器获取商品详情失败，尝试外部API: {item_id}")
-            detail_from_api = await self._fetch_item_detail_from_external_api(item_id)
-            if detail_from_api:
-                # 保存到缓存（带大小限制）
-                await self._add_to_item_cache(item_id, detail_from_api)
-                logger.info(f"成功通过外部API获取商品详情: {item_id}, 长度: {len(detail_from_api)}")
-                return detail_from_api
-
-            logger.warning(f"所有方式都无法获取商品详情: {item_id}")
+            # 浏览器获取失败
+            logger.warning(f"浏览器获取商品详情失败: {item_id}")
             return ""
 
         except Exception as e:
@@ -2079,48 +2071,6 @@ class XianyuLive:
             except Exception as e:
                 logger.warning(f"停止playwright时出错: {self._safe_str(e)}")
 
-    async def _fetch_item_detail_from_external_api(self, item_id: str) -> str:
-        """从外部API获取商品详情（备用方案）"""
-        try:
-            from config import config
-            auto_fetch_config = config.get('ITEM_DETAIL', {}).get('auto_fetch', {})
-
-            # 从配置获取API地址和超时时间
-            api_base_url = auto_fetch_config.get('api_url', 'https://selfapi.zhinianboke.com/api/getItemDetail')
-            timeout_seconds = auto_fetch_config.get('timeout', 10)
-
-            api_url = f"{api_base_url}/{item_id}"
-
-            logger.info(f"正在从外部API获取商品详情: {item_id}")
-
-            # 使用aiohttp发送异步请求
-            import aiohttp
-
-            timeout = aiohttp.ClientTimeout(total=timeout_seconds)
-
-            async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.get(api_url) as response:
-                    if response.status == 200:
-                        result = await response.json()
-
-                        # 检查返回状态
-                        if result.get('status') == '200' and result.get('data'):
-                            item_detail = result['data']
-                            logger.info(f"外部API成功获取商品详情: {item_id}, 长度: {len(item_detail)}")
-                            return item_detail
-                        else:
-                            logger.warning(f"外部API返回状态异常: {result.get('status')}, message: {result.get('message')}")
-                            return ""
-                    else:
-                        logger.warning(f"外部API请求失败: HTTP {response.status}")
-                        return ""
-
-        except asyncio.TimeoutError:
-            logger.warning(f"外部API获取商品详情超时: {item_id}")
-            return ""
-        except Exception as e:
-            logger.error(f"外部API获取商品详情异常: {item_id}, 错误: {self._safe_str(e)}")
-            return ""
 
     async def save_items_list_to_db(self, items_list):
         """批量保存商品列表信息到数据库（并发安全）
@@ -3020,8 +2970,8 @@ class XianyuLive:
             if secret:
                 string_to_sign = f'{timestamp}\n{secret}'
                 hmac_code = hmac.new(
-                    secret.encode('utf-8'),
                     string_to_sign.encode('utf-8'),
+                    ''.encode('utf-8'),
                     digestmod=hashlib.sha256
                 ).digest()
                 sign = base64.b64encode(hmac_code).decode('utf-8')
@@ -3685,12 +3635,12 @@ class XianyuLive:
                             if success and self.order_status_handler:
                                 logger.info(f"【{self.cookie_id}】准备调用订单状态处理器.handle_order_detail_fetched_status: {order_id}")
                                 try:
-                                    result = self.order_status_handler.handle_order_detail_fetched_status(
+                                    handler_result = self.order_status_handler.handle_order_detail_fetched_status(
                                         order_id=order_id,
                                         cookie_id=self.cookie_id,
                                         context="订单详情已拉取"
                                     )
-                                    logger.info(f"【{self.cookie_id}】订单状态处理器.handle_order_detail_fetched_status返回结果: {result}")
+                                    logger.info(f"【{self.cookie_id}】订单状态处理器.handle_order_detail_fetched_status返回结果: {handler_result}")
                                     
                                     # 处理待处理队列
                                     logger.info(f"【{self.cookie_id}】准备调用订单状态处理器.on_order_details_fetched: {order_id}")
@@ -3733,90 +3683,57 @@ class XianyuLive:
             search_text = item_title  # 默认使用传入的标题
 
             if item_id and item_id != "未知商品":
-                # 优先尝试通过API获取商品信息
+                # 直接从数据库获取商品信息（发货时不再调用API）
                 try:
-                    logger.info(f"通过API获取商品详细信息: {item_id}")
-                    item_info = await self.get_item_info(item_id)
-                    if item_info and 'data' in item_info:
-                        data = item_info['data']
-                        item_data = data['itemDO']
-                        shareData = item_data['shareData']
-                        shareInfoJsonString = shareData['shareInfoJsonString']
+                    logger.info(f"从数据库获取商品信息: {item_id}")
+                    db_item_info = db_manager.get_item_info(self.cookie_id, item_id)
+                    if db_item_info:
+                        # 拼接商品标题和详情作为搜索文本
+                        item_title_db = db_item_info.get('item_title', '') or ''
+                        item_detail_db = db_item_info.get('item_detail', '') or ''
 
-                        # 解析 shareInfoJsonString 并提取 content 内容
-                        try:
-                            share_info = json.loads(shareInfoJsonString)
-                            content = share_info.get('contentParams', {}).get('mainParams', {}).get('content', '')
-                            if content:
-                                search_text = content
-                                logger.info(f"API成功提取商品内容作为搜索文本: {content[:100]}...")
+                        # 如果数据库中没有详情，尝试自动获取
+                        if not item_detail_db.strip():
+                            from config import config
+                            auto_fetch_config = config.get('ITEM_DETAIL', {}).get('auto_fetch', {})
+
+                            if auto_fetch_config.get('enabled', True):
+                                logger.info(f"数据库中商品详情为空，尝试自动获取: {item_id}")
+                                try:
+                                    fetched_detail = await self.fetch_item_detail_from_api(item_id)
+                                    if fetched_detail:
+                                        # 保存获取到的详情
+                                        await self.save_item_detail_only(item_id, fetched_detail)
+                                        item_detail_db = fetched_detail
+                                        logger.info(f"成功获取并保存商品详情: {item_id}")
+                                    else:
+                                        logger.warning(f"未能获取到商品详情: {item_id}")
+                                except Exception as api_e:
+                                    logger.warning(f"获取商品详情失败: {item_id}, 错误: {self._safe_str(api_e)}")
                             else:
-                                search_text = shareInfoJsonString
-                                logger.warning("未能从API商品信息中提取到content字段，使用完整JSON字符串")
-                        except json.JSONDecodeError as json_e:
-                            logger.warning(f"解析API商品信息JSON失败: {self._safe_str(json_e)}，使用原始字符串")
-                            search_text = shareInfoJsonString
-                        except Exception as parse_e:
-                            logger.warning(f"提取API商品内容失败: {self._safe_str(parse_e)}，使用原始字符串")
-                            search_text = shareInfoJsonString
+                                logger.debug(f"自动获取商品详情功能已禁用，跳过: {item_id}")
 
-                        logger.info(f"API获取到的商品信息为: {search_text[:200]}...")
-                    else:
-                        raise Exception("API返回数据格式异常")
+                        # 组合搜索文本：商品标题 + 商品详情
+                        search_parts = []
+                        if item_title_db.strip():
+                            search_parts.append(item_title_db.strip())
+                        if item_detail_db.strip():
+                            search_parts.append(item_detail_db.strip())
 
-                except Exception as e:
-                    logger.warning(f"API获取商品信息失败: {self._safe_str(e)}，尝试从数据库获取")
-
-                    # API失败时，从数据库获取商品信息
-                    try:
-                        db_item_info = db_manager.get_item_info(self.cookie_id, item_id)
-                        if db_item_info:
-                            # 拼接商品标题和详情作为搜索文本
-                            item_title_db = db_item_info.get('item_title', '') or ''
-                            item_detail_db = db_item_info.get('item_detail', '') or ''
-
-                            # 如果数据库中没有详情，尝试从外部API获取
-                            if not item_detail_db.strip():
-                                from config import config
-                                auto_fetch_config = config.get('ITEM_DETAIL', {}).get('auto_fetch', {})
-
-                                if auto_fetch_config.get('enabled', True):
-                                    logger.info(f"数据库中商品详情为空，尝试从外部API获取: {item_id}")
-                                    try:
-                                        fetched_detail = await self.fetch_item_detail_from_api(item_id)
-                                        if fetched_detail:
-                                            # 保存获取到的详情
-                                            await self.save_item_detail_only(item_id, fetched_detail)
-                                            item_detail_db = fetched_detail
-                                            logger.info(f"成功从外部API获取并保存商品详情: {item_id}")
-                                        else:
-                                            logger.warning(f"外部API未能获取到商品详情: {item_id}")
-                                    except Exception as api_e:
-                                        logger.warning(f"从外部API获取商品详情失败: {item_id}, 错误: {self._safe_str(api_e)}")
-                                else:
-                                    logger.debug(f"自动获取商品详情功能已禁用，跳过: {item_id}")
-
-                            # 组合搜索文本：商品标题 + 商品详情
-                            search_parts = []
-                            if item_title_db.strip():
-                                search_parts.append(item_title_db.strip())
-                            if item_detail_db.strip():
-                                search_parts.append(item_detail_db.strip())
-
-                            if search_parts:
-                                search_text = ' '.join(search_parts)
-                                logger.info(f"使用数据库商品标题+详情作为搜索文本: 标题='{item_title_db}', 详情长度={len(item_detail_db)}")
-                                logger.debug(f"完整搜索文本: {search_text[:200]}...")
-                            else:
-                                logger.warning(f"数据库中商品标题和详情都为空，且无法从API获取: {item_id}")
-                                search_text = item_title or item_id
+                        if search_parts:
+                            search_text = ' '.join(search_parts)
+                            logger.info(f"使用数据库商品标题+详情作为搜索文本: 标题='{item_title_db}', 详情长度={len(item_detail_db)}")
+                            logger.debug(f"完整搜索文本: {search_text[:200]}...")
                         else:
-                            logger.debug(f"数据库中未找到商品信息: {item_id}")
+                            logger.warning(f"数据库中商品标题和详情都为空: {item_id}")
                             search_text = item_title or item_id
-
-                    except Exception as db_e:
-                        logger.debug(f"从数据库获取商品信息失败: {self._safe_str(db_e)}")
+                    else:
+                        logger.debug(f"数据库中未找到商品信息: {item_id}")
                         search_text = item_title or item_id
+
+                except Exception as db_e:
+                    logger.warning(f"从数据库获取商品信息失败: {self._safe_str(db_e)}")
+                    search_text = item_title or item_id
 
             if not search_text:
                 search_text = item_id or "未知商品"
@@ -3833,7 +3750,8 @@ class XianyuLive:
                 logger.info(f"检测到多规格商品，获取订单规格信息: {order_id}")
                 try:
                     order_detail = await self.fetch_order_detail_info(order_id, item_id, send_user_id)
-                    if order_detail:
+                    # 确保order_detail是字典类型
+                    if order_detail and isinstance(order_detail, dict):
                         spec_name = order_detail.get('spec_name', '')
                         spec_value = order_detail.get('spec_value', '')
                         if spec_name and spec_value:
@@ -3841,7 +3759,7 @@ class XianyuLive:
                         else:
                             logger.warning(f"未能获取到规格信息，将使用兜底匹配")
                     else:
-                        logger.warning(f"获取订单详情失败，将使用兜底匹配")
+                        logger.warning(f"获取订单详情失败（返回类型: {type(order_detail).__name__}），将使用兜底匹配")
                 except Exception as e:
                     logger.error(f"获取订单规格信息失败: {self._safe_str(e)}，将使用兜底匹配")
 
@@ -4339,7 +4257,7 @@ class XianyuLive:
         text = {
             "contentType": 1,
             "text": {
-                "text": text + "\n\n\n购买后如果没有发货，可尝试点击提醒发货按钮"
+                "text": text
             }
         }
         text_base64 = str(base64.b64encode(json.dumps(text).encode('utf-8')), 'utf-8')
