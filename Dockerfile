@@ -1,14 +1,14 @@
-# syntax=docker/dockerfile:1
-
-# Base stage with shared environment configuration
+# 使用Python 3.11作为基础镜像
 FROM python:3.11-slim-bookworm AS base
 
+# 设置环境变量
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     TZ=Asia/Shanghai \
     DOCKER_ENV=true \
     PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
+# 设置工作目录
 WORKDIR /app
 
 # Builder stage: install build tooling, Python deps and optional binary modules
@@ -18,6 +18,7 @@ ENV CC=gcc \
     CXX=g++ \
     NUITKA_CACHE_DIR=/tmp/nuitka-cache
 
+# 安装系统依赖
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         build-essential \
@@ -34,9 +35,11 @@ RUN python -m venv /opt/venv && \
 ENV VIRTUAL_ENV=/opt/venv
 ENV PATH="$VIRTUAL_ENV/bin:/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin"
 
+# 复制requirements.txt并安装Python依赖
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# 复制项目文件
 COPY . .
 
 RUN if [ -f "utils/xianyu_slider_stealth.py" ]; then \
@@ -70,6 +73,7 @@ RUN if [ -f "utils/xianyu_slider_stealth.py" ]; then \
 # Runtime stage: only keep what is needed to run the app
 FROM base AS runtime
 
+# 设置标签信息
 LABEL maintainer="zhinianboke" \
       version="2.2.0" \
       description="闲鱼自动回复系统 - 企业级多用户版本，支持自动发货和免拼发货" \
@@ -127,8 +131,10 @@ RUN apt-get update && \
         libglib2.0-0 \
         && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
+# 设置时区        
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
+# 验证Node.js安装并设置环境变量
 RUN node --version && npm --version
 
 COPY --from=builder /opt/venv /opt/venv
@@ -139,16 +145,24 @@ ENV PATH="$VIRTUAL_ENV/bin:/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bi
 RUN playwright install chromium && \
     playwright install-deps chromium
 
+# 创建必要的目录并设置权限    
 RUN mkdir -p /app/logs /app/data /app/backups /app/static/uploads/images && \
     chmod 777 /app/logs /app/data /app/backups /app/static/uploads /app/static/uploads/images
 
+# 配置系统限制，防止core文件生成    
 RUN echo "ulimit -c 0" >> /etc/profile
 
+# 注意: 为了简化权限问题，使用root用户运行
+# 在生产环境中，建议配置适当的用户映射
+
+# 暴露端口
 EXPOSE 8080
 
+# 健康检查
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8080/health || exit 1
 
 RUN chmod +x /app/entrypoint.sh
 
+# 启动命令
 CMD ["/app/entrypoint.sh"]
