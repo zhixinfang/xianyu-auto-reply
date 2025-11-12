@@ -145,11 +145,11 @@ ENV PATH="$VIRTUAL_ENV/bin:/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bi
 RUN playwright install chromium && \
     playwright install-deps chromium
 
-# 创建必要的目录并设置权限    
+# 创建必要的目录并设置权限
 RUN mkdir -p /app/logs /app/data /app/backups /app/static/uploads/images && \
     chmod 777 /app/logs /app/data /app/backups /app/static/uploads /app/static/uploads/images
 
-# 配置系统限制，防止core文件生成    
+# 配置系统限制，防止core文件生成
 RUN echo "ulimit -c 0" >> /etc/profile
 
 # 注意: 为了简化权限问题，使用root用户运行
