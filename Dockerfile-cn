@@ -173,4 +173,5 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 
 RUN chmod +x /app/entrypoint.sh
 
+# 启动命令
 CMD ["/app/entrypoint.sh"]
