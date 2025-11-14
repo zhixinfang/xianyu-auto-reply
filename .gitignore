@@ -1,5 +1,6 @@
 __pycache__
 *node_modules/*
+.playwright-mcp/*
 *.so
 .Python
 build/
@@ -376,7 +377,7 @@ check_disk_usage.py
 
 # === 滑块验证模块配置（二进制分发）===
 # 源代码已移到私有仓库，主项目不再包含源文件
-utils/xianyu_slider_stealth.py
+# utils/xianyu_slider_stealth.py
 
 # 但允许跟踪二进制扩展模块（用于分发）
 !utils/xianyu_slider_stealth*.pyd
