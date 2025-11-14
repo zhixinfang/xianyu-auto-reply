@@ -11,21 +11,14 @@ ENV PYTHONUNBUFFERED=1 \
 # 设置工作目录
 WORKDIR /app
 
-# Builder stage: install build tooling, Python deps and optional binary modules
+# Builder stage: install Python dependencies
 FROM base AS builder
 
-ENV CC=gcc \
-    CXX=g++ \
-    NUITKA_CACHE_DIR=/tmp/nuitka-cache
+# 项目已完全开源，简化构建流程
 
-# 安装系统依赖
+# 安装基础依赖
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-        build-essential \
-        gcc \
-        g++ \
-        ccache \
-        patchelf \
         curl \
         ca-certificates \
         && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
@@ -42,33 +35,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # 复制项目文件
 COPY . .
 
-RUN if [ -f "utils/xianyu_slider_stealth.py" ]; then \
-        echo "===================================="; \
-        echo "检测到 xianyu_slider_stealth.py"; \
-        echo "开始编译为二进制模块..."; \
-        echo "===================================="; \
-        pip install --no-cache-dir nuitka ordered-set zstandard && \
-        python build_binary_module.py; \
-        BUILD_RESULT=$?; \
-        if [ $BUILD_RESULT -eq 0 ]; then \
-            echo "===================================="; \
-            echo "✓ 二进制模块编译成功"; \
-            echo "===================================="; \
-            ls -lh utils/xianyu_slider_stealth.* 2>/dev/null || true; \
-        else \
-            echo "===================================="; \
-            echo "✗ 二进制模块编译失败 (错误码: $BUILD_RESULT)"; \
-            echo "将继续使用 Python 源代码版本"; \
-            echo "===================================="; \
-        fi; \
-        pip uninstall -y nuitka ordered-set zstandard >/dev/null 2>&1 || true; \
-        rm -rf /tmp/nuitka-cache utils/xianyu_slider_stealth.build utils/xianyu_slider_stealth.dist; \
-    else \
-        echo "===================================="; \
-        echo "未检测到 xianyu_slider_stealth.py"; \
-        echo "跳过二进制编译"; \
-        echo "===================================="; \
-    fi
+# 项目已完全开源，无需编译二进制模块
 
 # Runtime stage: only keep what is needed to run the app
 FROM base AS runtime
