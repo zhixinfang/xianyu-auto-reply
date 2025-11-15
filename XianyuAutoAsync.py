@@ -180,10 +180,10 @@ class XianyuLive:
         """安全地将异常转换为字符串"""
         try:
             return str(e)
-        except:
+        except Exception as str_error:
             try:
                 return repr(e)
-            except:
+            except Exception as repr_error:
                 return "未知错误"
 
     def _set_connection_state(self, new_state: ConnectionState, reason: str = ""):
@@ -434,10 +434,13 @@ class XianyuLive:
 
         # Cookie刷新定时任务
         self.cookie_refresh_task = None
-        self.cookie_refresh_interval = 1200  # 1小时 = 3600秒
+        self.cookie_refresh_interval = 3600  # 1小时 = 3600秒（降低刷新频率，减少对性能的影响）
         self.last_cookie_refresh_time = 0
         self.cookie_refresh_lock = asyncio.Lock()  # 使用Lock防止重复执行Cookie刷新
-        self.cookie_refresh_enabled = True  # 是否启用Cookie刷新功能
+        # 可通过环境变量DISABLE_COOKIE_REFRESH=1禁用Cookie自动刷新
+        self.cookie_refresh_enabled = os.getenv('DISABLE_COOKIE_REFRESH', '0') != '1'
+        if not self.cookie_refresh_enabled:
+            logger.warning(f"【{cookie_id}】Cookie自动刷新已被环境变量DISABLE_COOKIE_REFRESH禁用")
 
         # 扫码登录Cookie刷新标志
         self.last_qr_cookie_refresh_time = 0  # 记录上次扫码登录Cookie刷新时间
@@ -1447,7 +1450,7 @@ class XianyuLive:
                     # user_id=f"{self.cookie_id}_{int(time.time() * 1000)}",  # 使用唯一ID避免冲突
                     user_id=f"{self.cookie_id}",  # 使用唯一ID避免冲突
                     enable_learning=True,  # 启用学习功能
-                    headless=True  # 使用有头模式（可视化浏览器）
+                    headless=False  # 使用有头模式（可视化浏览器）
                 )
 
                 # 在线程池中执行滑块验证
@@ -2741,7 +2744,7 @@ class XianyuLive:
             # 移除非数字字符，保留小数点
             price_clean = re.sub(r'[^\d.]', '', str(price_str))
             return float(price_clean) if price_clean else 0.0
-        except:
+        except Exception as e:
             return 0.0
 
     async def send_notification(self, send_user_name: str, send_user_id: str, send_message: str, item_id: str = None, chat_id: str = None):
@@ -3801,7 +3804,7 @@ class XianyuLive:
                 db_item_info = db_manager.get_item_info(self.cookie_id, item_id)
                 if db_item_info:
                     item_title_for_save = db_item_info.get('item_title', '').strip()
-            except:
+            except Exception as e:
                 pass
 
             # 如果有商品标题，则保存商品信息
@@ -4039,7 +4042,7 @@ class XianyuLive:
                         content = result.get('data') or result.get('content') or result.get('card') or str(result)
                     else:
                         content = str(result)
-                except:
+                except Exception as e:
                     content = response_text
 
                 logger.info(f"API调用成功，返回内容长度: {len(content)}")
@@ -4528,31 +4531,25 @@ class XianyuLive:
         # 使用Lock确保原子性，防止重复执行
         async with self.cookie_refresh_lock:
             try:
-                logger.info(f"【{self.cookie_id}】开始Cookie刷新任务，暂时暂停心跳以避免连接冲突...")
+                import time
+                start_time = time.time()
+                logger.info(f"【{self.cookie_id}】开始Cookie刷新任务（心跳保持运行，避免消息丢失）...")
 
-                # 暂时暂停心跳任务，避免与浏览器操作冲突
-                heartbeat_was_running = False
-                if self.heartbeat_task and not self.heartbeat_task.done():
-                    heartbeat_was_running = True
-                    self.heartbeat_task.cancel()
-                    logger.debug(f"【{self.cookie_id}】已暂停心跳任务")
+                # 不再暂停心跳任务，让心跳和Cookie刷新并行执行
+                # 这样可以确保WebSocket连接保持活跃，避免消息丢失
 
-                # 为整个Cookie刷新任务添加超时保护（3分钟，缩短时间减少影响）
+                # 为整个Cookie刷新任务添加超时保护（3分钟）
                 success = await asyncio.wait_for(
                     self._refresh_cookies_via_browser(),
-                    timeout=180.0  # 3分钟超时，减少对WebSocket的影响
+                    timeout=180.0  # 3分钟超时
                 )
 
-                # 重新启动心跳任务
-                if heartbeat_was_running and self.ws and not self.ws.closed:
-                    logger.debug(f"【{self.cookie_id}】重新启动心跳任务")
-                    self.heartbeat_task = asyncio.create_task(self.heartbeat_loop(self.ws))
-
+                elapsed = time.time() - start_time
                 if success:
                     self.last_cookie_refresh_time = current_time
-                    logger.info(f"【{self.cookie_id}】Cookie刷新任务完成，心跳已恢复")
+                    logger.info(f"【{self.cookie_id}】Cookie刷新任务完成，耗时 {elapsed:.1f} 秒")
                 else:
-                    logger.warning(f"【{self.cookie_id}】Cookie刷新任务失败")
+                    logger.warning(f"【{self.cookie_id}】Cookie刷新任务失败，耗时 {elapsed:.1f} 秒")
                     # 即使失败也要更新时间，避免频繁重试
                     self.last_cookie_refresh_time = current_time
 
@@ -5418,7 +5415,7 @@ class XianyuLive:
                 and isinstance(message["1"]["10"], dict)
                 and "reminderContent" in message["1"]["10"]
             )
-        except Exception:
+        except Exception as e:
             return False
 
     def is_sync_package(self, message_data):
@@ -5431,7 +5428,7 @@ class XianyuLive:
                 and "data" in message_data["body"]["syncPushPackage"]
                 and len(message_data["body"]["syncPushPackage"]["data"]) > 0
             )
-        except Exception:
+        except Exception as e:
             return False
 
     async def create_session(self):
@@ -5644,7 +5641,7 @@ class XianyuLive:
                                     temp_user_id = "unknown_user"
                             else:
                                 temp_user_id = "unknown_user"
-                        except:
+                        except Exception as e:
                             temp_user_id = "unknown_user"
 
                         # 提取商品ID
@@ -5656,7 +5653,7 @@ class XianyuLive:
 
                             if not temp_item_id:
                                 temp_item_id = self.extract_item_id_from_message(message)
-                        except:
+                        except Exception as e:
                             pass
 
                         # 调用订单详情获取方法
@@ -5734,7 +5731,7 @@ class XianyuLive:
                     user_url = f'https://www.goofish.com/personal?userId={user_id}'
                     logger.info(f'[{msg_time}] 【系统】交易成功 {user_url} 等待卖家发货')
                     # return
-            except:
+            except Exception as e:
                 pass
 
             # 判断是否为聊天消息

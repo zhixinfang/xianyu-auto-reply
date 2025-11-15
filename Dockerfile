@@ -1,45 +1,64 @@
 # 使用Python 3.11作为基础镜像
-FROM python:3.11-slim-bookworm
+FROM python:3.11-slim-bookworm AS base
 
-# 设置标签信息
-LABEL maintainer="zhinianboke"
-LABEL version="2.2.0"
-LABEL description="闲鱼自动回复系统 - 企业级多用户版本，支持自动发货和免拼发货"
-LABEL repository="https://github.com/zhinianboke/xianyu-auto-reply"
-LABEL license="仅供学习使用，禁止商业用途"
-LABEL author="zhinianboke"
-LABEL build-date=""
-LABEL vcs-ref=""
+# 设置环境变量
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    TZ=Asia/Shanghai \
+    DOCKER_ENV=true \
+    PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
 # 设置工作目录
 WORKDIR /app
 
-# 设置环境变量
-ENV PYTHONUNBUFFERED=1
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV TZ=Asia/Shanghai
-ENV DOCKER_ENV=true
-ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
-# Nuitka编译优化
-ENV CC=gcc
-ENV CXX=g++
-ENV NUITKA_CACHE_DIR=/tmp/nuitka-cache
+# Builder stage: install Python dependencies
+FROM base AS builder
 
-# 安装系统依赖（包括Playwright浏览器依赖）
+# 项目已完全开源，简化构建流程
+
+# 安装基础依赖
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-        # 基础工具
+        curl \
+        ca-certificates \
+        && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+
+RUN python -m venv /opt/venv && \
+    /opt/venv/bin/pip install --no-cache-dir --upgrade pip
+ENV VIRTUAL_ENV=/opt/venv
+ENV PATH="$VIRTUAL_ENV/bin:/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin"
+
+# 复制requirements.txt并安装Python依赖
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# 复制项目文件
+COPY . .
+
+# 项目已完全开源，无需编译二进制模块
+
+# Runtime stage: only keep what is needed to run the app
+FROM base AS runtime
+
+# 设置标签信息
+LABEL maintainer="zhinianboke" \
+      version="2.2.0" \
+      description="闲鱼自动回复系统 - 企业级多用户版本，支持自动发货和免拼发货" \
+      repository="https://github.com/zhinianboke/xianyu-auto-reply" \
+      license="仅供学习使用，禁止商业用途" \
+      author="zhinianboke" \
+      build-date="" \
+      vcs-ref=""
+
+ENV NODE_PATH=/usr/lib/node_modules
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
         nodejs \
         npm \
         tzdata \
         curl \
         ca-certificates \
-        # 编译工具（Nuitka需要）
-        build-essential \
-        gcc \
-        g++ \
-        ccache \
-        patchelf \
         # 图像处理依赖
         libjpeg-dev \
         libpng-dev \
@@ -77,55 +96,19 @@ RUN apt-get update && \
         # OpenCV运行时依赖
         libgl1 \
         libglib2.0-0 \
-        && apt-get clean \
-        && rm -rf /var/lib/apt/lists/* \
-        && rm -rf /tmp/* \
-        && rm -rf /var/tmp/*
+        && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
-# 设置时区
+# 设置时区        
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
 # 验证Node.js安装并设置环境变量
 RUN node --version && npm --version
-ENV NODE_PATH=/usr/lib/node_modules
 
-# 复制requirements.txt并安装Python依赖
-COPY requirements.txt .
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+COPY --from=builder /opt/venv /opt/venv
+COPY --from=builder /app /app
+ENV VIRTUAL_ENV=/opt/venv
+ENV PATH="$VIRTUAL_ENV/bin:/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin"
 
-# 复制项目文件
-COPY . .
-
-# 条件执行：如果 xianyu_slider_stealth.py 存在，则编译为二进制模块
-RUN if [ -f "utils/xianyu_slider_stealth.py" ]; then \
-        echo "===================================="; \
-        echo "检测到 xianyu_slider_stealth.py"; \
-        echo "开始编译为二进制模块..."; \
-        echo "===================================="; \
-        pip install --no-cache-dir nuitka ordered-set zstandard && \
-        python build_binary_module.py; \
-        BUILD_RESULT=$?; \
-        if [ $BUILD_RESULT -eq 0 ]; then \
-            echo "===================================="; \
-            echo "✓ 二进制模块编译成功"; \
-            echo "===================================="; \
-            ls -lh utils/xianyu_slider_stealth.* 2>/dev/null || true; \
-        else \
-            echo "===================================="; \
-            echo "✗ 二进制模块编译失败 (错误码: $BUILD_RESULT)"; \
-            echo "将继续使用 Python 源代码版本"; \
-            echo "===================================="; \
-        fi; \
-        rm -rf /tmp/nuitka-cache utils/xianyu_slider_stealth.build utils/xianyu_slider_stealth.dist; \
-    else \
-        echo "===================================="; \
-        echo "未检测到 xianyu_slider_stealth.py"; \
-        echo "跳过二进制编译"; \
-        echo "===================================="; \
-    fi
-
-# 安装Playwright浏览器（必须在复制项目文件之后）
 RUN playwright install chromium && \
     playwright install-deps chromium
 
@@ -146,8 +129,6 @@ EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8080/health || exit 1
 
-# 复制启动脚本
-COPY entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
 
 # 启动命令

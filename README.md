@@ -122,7 +122,6 @@ xianyu-auto-reply/
 │   ├── config.py                  # 全局配置文件管理器
 │   ├── usage_statistics.py        # 用户统计和数据分析模块
 │   ├── simple_stats_server.py     # 简单统计服务器（可选）
-│   ├── build_binary_module.py     # 二进制模块编译脚本（Nuitka编译工具）
 │   ├── secure_confirm_ultra.py    # 自动确认发货模块（多层加密保护）
 │   ├── secure_confirm_decrypted.py # 自动确认发货模块（解密版本）
 │   ├── secure_freeshipping_ultra.py # 自动免拼发货模块（多层加密保护）
@@ -602,10 +601,9 @@ CPU_LIMIT=2.0                          # CPU限制(核心数)
 - **`docker-deploy.bat`** - Windows版本部署脚本，支持Windows环境一键部署和管理
 - **`entrypoint.sh`** - Docker容器启动脚本，增强版包含环境验证、依赖检查、目录创建、权限设置和详细启动日志
 - **`nginx/nginx.conf`** - Nginx反向代理配置，支持负载均衡、SSL终端、WebSocket代理、静态文件服务
-- **`requirements.txt`** - Python依赖包列表，精简版本无内置模块，按功能分类组织，包含详细版本说明和安装指南，可选Nuitka编译工具
+- **`requirements.txt`** - Python依赖包列表，精简版本无内置模块，按功能分类组织，包含详细版本说明和安装指南
 - **`.gitignore`** - Git忽略文件配置，完整覆盖Python、Docker、前端、测试、临时文件等，2025年更新包含编译产物、浏览器缓存、统计数据等新规则
-- **`.dockerignore`** - Docker构建忽略文件，优化构建上下文大小和构建速度，排除不必要的文件和目录，2025年更新包含Nuitka编译临时文件、浏览器数据等新规则
-- **`build_binary_module.py`** - 二进制模块编译脚本，使用Nuitka将性能关键的Python模块编译为二进制扩展(.pyd/.so)，提升执行效率和代码安全性
+- **`.dockerignore`** - Docker构建忽略文件，优化构建上下文大小和构建速度，排除不必要的文件和目录，2025年更新包含浏览器数据等新规则
 
 ## 🏗️ 详细技术架构
 
