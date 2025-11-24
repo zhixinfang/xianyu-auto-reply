@@ -1057,7 +1057,21 @@ function toggleLoading(show) {
 
 // 显示提示消息
 function showToast(message, type = 'success') {
-    const toastContainer = document.querySelector('.toast-container');
+    // 将 'error' 类型映射为 'danger'，因为 Bootstrap 使用 'danger' 作为错误类型
+    if (type === 'error') {
+        type = 'danger';
+    }
+    
+    let toastContainer = document.querySelector('.toast-container');
+    
+    // 如果 toast 容器不存在，创建一个
+    if (!toastContainer) {
+        toastContainer = document.createElement('div');
+        toastContainer.className = 'toast-container position-fixed top-0 end-0 p-3';
+        toastContainer.style.zIndex = '9999';
+        document.body.appendChild(toastContainer);
+    }
+    
     const toast = document.createElement('div');
     toast.className = `toast align-items-center text-white bg-${type} border-0`;
     toast.setAttribute('role', 'alert');
@@ -1074,12 +1088,12 @@ function showToast(message, type = 'success') {
     `;
 
     toastContainer.appendChild(toast);
-    const bsToast = new bootstrap.Toast(toast, { delay: 3000 });
+    const bsToast = new bootstrap.Toast(toast, { delay: 5000 });  // 增加显示时间到5秒
     bsToast.show();
 
     // 自动移除
     toast.addEventListener('hidden.bs.toast', () => {
-    toast.remove();
+        toast.remove();
     });
 }
 
@@ -1940,6 +1954,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     loadSystemVersion();
     // 启动项目使用人数定时刷新
     startProjectUsersRefresh();
+    // 启动验证会话监控
+    startCaptchaSessionMonitor();
     // 添加Cookie表单提交
     document.getElementById('addForm').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -1963,6 +1979,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         // 错误已在fetchJSON中处理
     }
     });
+
+    // 添加账号密码登录表单提交
+    const passwordLoginForm = document.getElementById('passwordLoginFormElement');
+    if (passwordLoginForm) {
+        passwordLoginForm.addEventListener('submit', handlePasswordLogin);
+    }
 
     // 增强的键盘快捷键和用户体验
     document.getElementById('newKeyword')?.addEventListener('keypress', function(e) {
@@ -7041,12 +7063,328 @@ async function importKeywords() {
 // 切换手动输入表单显示/隐藏
 function toggleManualInput() {
     const manualForm = document.getElementById('manualInputForm');
+    const passwordForm = document.getElementById('passwordLoginForm');
     if (manualForm.style.display === 'none') {
-    manualForm.style.display = 'block';
-    // 清空表单
-    document.getElementById('addForm').reset();
+        // 隐藏账号密码登录表单
+        if (passwordForm) {
+            passwordForm.style.display = 'none';
+        }
+        manualForm.style.display = 'block';
+        // 清空表单
+        document.getElementById('addForm').reset();
     } else {
-    manualForm.style.display = 'none';
+        manualForm.style.display = 'none';
+    }
+}
+
+// 切换账号密码登录表单显示/隐藏
+function togglePasswordLogin() {
+    const passwordForm = document.getElementById('passwordLoginForm');
+    const manualForm = document.getElementById('manualInputForm');
+    if (passwordForm.style.display === 'none') {
+        // 隐藏手动输入表单
+        if (manualForm) {
+            manualForm.style.display = 'none';
+        }
+        passwordForm.style.display = 'block';
+        // 清空表单
+        document.getElementById('passwordLoginFormElement').reset();
+    } else {
+        passwordForm.style.display = 'none';
+    }
+}
+
+// ========================= 账号密码登录相关函数 =========================
+
+let passwordLoginCheckInterval = null;
+let passwordLoginSessionId = null;
+
+// 处理账号密码登录表单提交
+async function handlePasswordLogin(event) {
+    event.preventDefault();
+    
+    const accountId = document.getElementById('passwordLoginAccountId').value.trim();
+    const account = document.getElementById('passwordLoginAccount').value.trim();
+    const password = document.getElementById('passwordLoginPassword').value;
+    const showBrowser = document.getElementById('passwordLoginShowBrowser').checked;
+    
+    if (!accountId || !account || !password) {
+        showToast('请填写完整的登录信息', 'warning');
+        return;
+    }
+    
+    // 禁用提交按钮，显示加载状态
+    const submitBtn = event.target.querySelector('button[type="submit"]');
+    const originalText = submitBtn.innerHTML;
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>登录中...';
+    
+    try {
+        const response = await fetch(`${apiBase}/password-login`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${authToken}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                account_id: accountId,
+                account: account,
+                password: password,
+                show_browser: showBrowser
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok && data.success && data.session_id) {
+            passwordLoginSessionId = data.session_id;
+            // 开始轮询检查登录状态
+            startPasswordLoginCheck();
+        } else {
+            showToast(data.message || '登录失败，请检查账号密码是否正确', 'danger');
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = originalText;
+        }
+    } catch (error) {
+        console.error('账号密码登录失败:', error);
+        showToast('网络错误，请重试', 'danger');
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = originalText;
+    }
+}
+
+// 开始检查账号密码登录状态
+function startPasswordLoginCheck() {
+    if (passwordLoginCheckInterval) {
+        clearInterval(passwordLoginCheckInterval);
+    }
+    
+    passwordLoginCheckInterval = setInterval(checkPasswordLoginStatus, 2000); // 每2秒检查一次
+}
+
+// 检查账号密码登录状态
+async function checkPasswordLoginStatus() {
+    if (!passwordLoginSessionId) return;
+    
+    try {
+        const response = await fetch(`${apiBase}/password-login/check/${passwordLoginSessionId}`, {
+            headers: {
+                'Authorization': `Bearer ${authToken}`
+            }
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            console.log('账号密码登录状态检查:', data); // 调试日志
+            
+            switch (data.status) {
+                case 'processing':
+                    // 处理中，继续等待
+                    break;
+                case 'verification_required':
+                    // 需要人脸认证，显示验证链接
+                    showPasswordLoginQRCode(data.verification_url || data.qr_code_url);
+                    // 继续监控（人脸认证后需要继续等待登录完成）
+                    break;
+                case 'success':
+                    // 登录成功
+                    clearPasswordLoginCheck();
+                    handlePasswordLoginSuccess(data);
+                    break;
+                case 'failed':
+                    // 登录失败
+                    clearPasswordLoginCheck();
+                    handlePasswordLoginFailure(data);
+                    break;
+                case 'not_found':
+                case 'forbidden':
+                case 'error':
+                    // 错误情况
+                    clearPasswordLoginCheck();
+                    showToast(data.message || '登录检查失败', 'danger');
+                    resetPasswordLoginForm();
+                    break;
+            }
+        } else {
+            // 响应不OK时也尝试解析错误消息
+            try {
+                const errorData = await response.json();
+                clearPasswordLoginCheck();
+                showToast(errorData.message || '登录检查失败', 'danger');
+                resetPasswordLoginForm();
+            } catch (e) {
+                clearPasswordLoginCheck();
+                showToast('登录检查失败，请重试', 'danger');
+                resetPasswordLoginForm();
+            }
+        }
+    } catch (error) {
+        console.error('检查账号密码登录状态失败:', error);
+        clearPasswordLoginCheck();
+        showToast('网络错误，请重试', 'danger');
+        resetPasswordLoginForm();
+    }
+}
+
+// 显示账号密码登录验证链接（人脸认证）
+function showPasswordLoginQRCode(verificationUrl) {
+    // 使用现有的二维码登录模态框
+    let modal = document.getElementById('passwordLoginQRModal');
+    if (!modal) {
+        // 如果模态框不存在，创建一个
+        createPasswordLoginQRModal();
+        modal = document.getElementById('passwordLoginQRModal');
+    }
+    
+    // 更新模态框标题
+    const modalTitle = document.getElementById('passwordLoginQRModalLabel');
+    if (modalTitle) {
+        modalTitle.innerHTML = '<i class="bi bi-shield-exclamation text-warning me-2"></i>闲鱼验证';
+    }
+    
+    // 获取或创建模态框实例
+    let modalInstance = bootstrap.Modal.getInstance(modal);
+    if (!modalInstance) {
+        modalInstance = new bootstrap.Modal(modal);
+    }
+    modalInstance.show();
+    
+    // 隐藏加载容器
+    const qrContainer = document.getElementById('passwordLoginQRContainer');
+    if (qrContainer) {
+        qrContainer.style.display = 'none';
+    }
+    
+    // 隐藏二维码图片（不再使用）
+    const qrImg = document.getElementById('passwordLoginQRImg');
+    if (qrImg) {
+        qrImg.style.display = 'none';
+    }
+    
+    // 显示验证链接按钮
+    let linkButton = document.getElementById('passwordLoginVerificationLink');
+    if (!linkButton) {
+        // 如果按钮不存在，创建一个
+        const linkContainer = document.createElement('div');
+        linkContainer.id = 'passwordLoginLinkContainer';
+        linkContainer.className = 'mt-4';
+        linkContainer.innerHTML = `
+            <a id="passwordLoginVerificationLink" href="#" target="_blank" class="btn btn-warning btn-lg">
+                <i class="bi bi-shield-check me-2"></i>
+                跳转闲鱼人脸验证
+            </a>
+        `;
+        const modalBody = modal.querySelector('.modal-body');
+        if (modalBody) {
+            modalBody.appendChild(linkContainer);
+        }
+        linkButton = document.getElementById('passwordLoginVerificationLink');
+    }
+    
+    // 更新按钮链接和显示状态
+    if (linkButton) {
+        if (verificationUrl) {
+            linkButton.href = verificationUrl;
+            linkButton.style.display = 'inline-block';
+        } else {
+            linkButton.style.display = 'none';
+        }
+    }
+    
+    // 更新状态文本
+    const statusText = document.getElementById('passwordLoginQRStatusText');
+    if (statusText) {
+        if (verificationUrl) {
+            statusText.textContent = '需要闲鱼验证，请点击下方按钮跳转到验证页面';
+        } else {
+            statusText.textContent = '需要闲鱼验证，请等待验证链接...';
+        }
+    }
+}
+
+// 创建账号密码登录二维码模态框
+function createPasswordLoginQRModal() {
+    const modalHtml = `
+        <div class="modal fade" id="passwordLoginQRModal" tabindex="-1" aria-labelledby="passwordLoginQRModalLabel" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="passwordLoginQRModalLabel">
+                            <i class="bi bi-shield-exclamation text-warning me-2"></i>闲鱼验证
+                        </h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body text-center">
+                        <div class="alert alert-info mt-3">
+                            <i class="bi bi-info-circle me-2"></i>
+                            <small>请点击下方按钮跳转到验证页面，完成闲鱼人脸验证</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+}
+
+// 处理账号密码登录成功
+function handlePasswordLoginSuccess(data) {
+    // 关闭二维码模态框
+    const modal = bootstrap.Modal.getInstance(document.getElementById('passwordLoginQRModal'));
+    if (modal) {
+        modal.hide();
+    }
+    
+    showToast(`账号 ${data.account_id} 登录成功！`, 'success');
+    
+    // 隐藏表单
+    togglePasswordLogin();
+    
+    // 刷新账号列表
+    loadCookies();
+    
+    // 重置表单
+    resetPasswordLoginForm();
+}
+
+// 处理账号密码登录失败
+function handlePasswordLoginFailure(data) {
+    console.log('账号密码登录失败，错误数据:', data); // 调试日志
+    
+    // 关闭二维码模态框
+    const modal = bootstrap.Modal.getInstance(document.getElementById('passwordLoginQRModal'));
+    if (modal) {
+        modal.hide();
+    }
+    
+    // 优先使用 message，如果没有则使用 error 字段
+    const errorMessage = data.message || data.error || '登录失败，请检查账号密码是否正确';
+    console.log('显示错误消息:', errorMessage); // 调试日志
+    
+    showToast(errorMessage, 'danger');  // 使用 'danger' 而不是 'error'，因为 Bootstrap 使用 'danger' 作为错误类型
+    
+    // 重置表单
+    resetPasswordLoginForm();
+}
+
+// 清理账号密码登录检查
+function clearPasswordLoginCheck() {
+    if (passwordLoginCheckInterval) {
+        clearInterval(passwordLoginCheckInterval);
+        passwordLoginCheckInterval = null;
+    }
+}
+
+// 重置账号密码登录表单
+function resetPasswordLoginForm() {
+    passwordLoginSessionId = null;
+    clearPasswordLoginCheck();
+    
+    const submitBtn = document.querySelector('#passwordLoginFormElement button[type="submit"]');
+    if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = '<i class="bi bi-box-arrow-in-right me-1"></i>开始登录';
     }
 }
 
@@ -9852,6 +10190,212 @@ function scrollLogToBottom() {
     logContainer.scrollTop = logContainer.scrollHeight;
 }
 
+// 打开日志导出模态框
+function openLogExportModal() {
+    const modalElement = document.getElementById('exportLogModal');
+    if (!modalElement) {
+        console.warn('未找到导出日志模态框元素');
+        return;
+    }
+
+    resetLogFileModalState();
+    const modal = new bootstrap.Modal(modalElement);
+    modal.show();
+    loadLogFileList();
+}
+
+function resetLogFileModalState() {
+    const loading = document.getElementById('logFileLoading');
+    const list = document.getElementById('logFileList');
+    const empty = document.getElementById('logFileEmpty');
+    const error = document.getElementById('logFileError');
+
+    if (loading) loading.classList.remove('d-none');
+    if (list) list.innerHTML = '';
+    if (empty) empty.classList.add('d-none');
+    if (error) {
+        error.classList.add('d-none');
+        error.textContent = '';
+    }
+}
+
+async function loadLogFileList() {
+    const token = localStorage.getItem('auth_token');
+    const loading = document.getElementById('logFileLoading');
+    const list = document.getElementById('logFileList');
+    const empty = document.getElementById('logFileEmpty');
+    const error = document.getElementById('logFileError');
+
+    if (!loading || !list || !empty || !error) {
+        console.warn('日志文件列表元素缺失');
+        return;
+    }
+
+    loading.classList.remove('d-none');
+    list.innerHTML = '';
+    empty.classList.add('d-none');
+    error.classList.add('d-none');
+    error.textContent = '';
+
+    try {
+        const response = await fetch(`${apiBase}/admin/log-files`, {
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+
+        loading.classList.add('d-none');
+
+        if (!response.ok) {
+            const message = await response.text();
+            error.classList.remove('d-none');
+            error.textContent = `加载日志文件失败: ${message || response.status}`;
+            return;
+        }
+
+        const data = await response.json();
+        if (!data.success) {
+            error.classList.remove('d-none');
+            error.textContent = data.message || '加载日志文件失败';
+            return;
+        }
+
+        const files = data.files || [];
+        if (files.length === 0) {
+            empty.classList.remove('d-none');
+            return;
+        }
+
+        files.forEach(file => {
+            const item = document.createElement('div');
+            item.className = 'list-group-item d-flex justify-content-between align-items-start flex-wrap gap-3';
+
+            const info = document.createElement('div');
+            info.className = 'me-auto';
+
+            const title = document.createElement('div');
+            title.className = 'fw-semibold';
+            title.textContent = file.name || '未知文件';
+
+            const meta = document.createElement('div');
+            meta.className = 'small text-muted';
+            const sizeText = typeof file.size === 'number' ? formatFileSize(file.size) : '未知大小';
+            const timeText = file.modified_at ? formatLogTimestamp(file.modified_at) : '-';
+            meta.textContent = `大小: ${sizeText} · 更新时间: ${timeText}`;
+
+            info.appendChild(title);
+            info.appendChild(meta);
+
+            const actions = document.createElement('div');
+            actions.className = 'd-flex align-items-center gap-2';
+
+            const downloadBtn = document.createElement('button');
+            downloadBtn.type = 'button';
+            downloadBtn.className = 'btn btn-sm btn-outline-primary';
+            downloadBtn.innerHTML = '<i class="bi bi-download me-1"></i>下载';
+            downloadBtn.onclick = () => downloadLogFile(file.name, downloadBtn);
+
+            actions.appendChild(downloadBtn);
+
+            item.appendChild(info);
+            item.appendChild(actions);
+
+            list.appendChild(item);
+        });
+    } catch (err) {
+        console.error('加载日志文件失败:', err);
+        loading.classList.add('d-none');
+        error.classList.remove('d-none');
+        error.textContent = '加载日志文件失败，请稍后重试';
+    }
+}
+
+function refreshLogFileList() {
+    resetLogFileModalState();
+    loadLogFileList();
+}
+
+function formatFileSize(bytes) {
+    if (bytes === 0) return '0 B';
+    if (!Number.isFinite(bytes)) return '未知大小';
+
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+    const size = bytes / Math.pow(1024, index);
+    return `${size.toFixed(index === 0 ? 0 : 2)} ${units[index]}`;
+}
+
+function formatLogTimestamp(isoString) {
+    const date = new Date(isoString);
+    if (Number.isNaN(date.getTime())) {
+        return '-';
+    }
+    return date.toLocaleString('zh-CN', { hour12: false });
+}
+
+async function downloadLogFile(fileName, buttonEl) {
+    if (!fileName) {
+        showToast('日志文件名无效', 'warning');
+        return;
+    }
+
+    const token = localStorage.getItem('auth_token');
+    if (!token) {
+        showToast('请先登录后再导出日志', 'warning');
+        return;
+    }
+
+    let originalHtml = '';
+    if (buttonEl) {
+        originalHtml = buttonEl.innerHTML;
+        buttonEl.disabled = true;
+        buttonEl.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>下载中...';
+    }
+
+    try {
+        const response = await fetch(`${apiBase}/admin/logs/export?file=${encodeURIComponent(fileName)}`, {
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+
+        if (!response.ok) {
+            const message = await response.text();
+            showToast(`日志下载失败: ${message || response.status}`, 'danger');
+            return;
+        }
+
+        let downloadName = fileName;
+        const contentDisposition = response.headers.get('content-disposition');
+        if (contentDisposition) {
+            const match = contentDisposition.match(/filename="?([^"]+)"?/i);
+            if (match && match[1]) {
+                downloadName = decodeURIComponent(match[1]);
+            }
+        }
+
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const anchor = document.createElement('a');
+        anchor.href = url;
+        anchor.download = downloadName;
+        document.body.appendChild(anchor);
+        anchor.click();
+        document.body.removeChild(anchor);
+        window.URL.revokeObjectURL(url);
+
+        showToast('日志下载成功', 'success');
+    } catch (error) {
+        console.error('下载日志文件失败:', error);
+        showToast('下载日志文件失败，请稍后重试', 'danger');
+    } finally {
+        if (buttonEl) {
+            buttonEl.disabled = false;
+            buttonEl.innerHTML = originalHtml || '<i class="bi bi-download me-1"></i>下载';
+        }
+    }
+}
+
 // ================================
 // 风控日志管理功能
 // ================================
@@ -10160,7 +10704,77 @@ async function handleItemSearch(event) {
         }
 
         const token = localStorage.getItem('auth_token');
-        const response = await fetch('/items/search_multiple', {
+        
+        // 启动会话检查器（在搜索过程中检查是否有验证会话）
+        let sessionChecker = null;
+        let checkCount = 0;
+        const maxChecks = 30; // 最多检查30次（30秒）
+        let isSearchCompleted = false; // 标记搜索是否完成
+        
+        sessionChecker = setInterval(async () => {
+            // 如果搜索已完成，停止检查
+            if (isSearchCompleted) {
+                if (sessionChecker) {
+                    clearInterval(sessionChecker);
+                    sessionChecker = null;
+                }
+                return;
+            }
+            
+            try {
+                checkCount++;
+                const checkResponse = await fetch('/api/captcha/sessions');
+                const checkData = await checkResponse.json();
+                
+                if (checkData.sessions && checkData.sessions.length > 0) {
+                    for (const session of checkData.sessions) {
+                        if (!session.completed) {
+                            console.log(`🎨 检测到验证会话: ${session.session_id}`);
+                            if (sessionChecker) {
+                                clearInterval(sessionChecker);
+                                sessionChecker = null;
+                            }
+                            
+                            // 确保监控已启动
+                            if (typeof startCaptchaSessionMonitor === 'function') {
+                                startCaptchaSessionMonitor();
+                            }
+                            
+                            // 弹出验证窗口
+                            if (typeof showCaptchaVerificationModal === 'function') {
+                                showCaptchaVerificationModal(session.session_id);
+                                showToast('🎨 检测到滑块验证，请完成验证', 'warning');
+                                
+                                // 停止搜索时的会话检查器，因为已经弹窗了，由弹窗的监控接管
+                                if (sessionChecker) {
+                                    clearInterval(sessionChecker);
+                                    sessionChecker = null;
+                                    console.log('✅ 已弹窗，停止搜索时的会话检查器');
+                                }
+                            } else {
+                                // 如果函数未定义，使用备用方案
+                                console.error('showCaptchaVerificationModal 未定义，使用备用方案');
+                                window.location.href = `/api/captcha/control/${session.session_id}`;
+                            }
+                            return;
+                        }
+                    }
+                }
+                
+                // 如果检查次数超过限制，停止检查
+                if (checkCount >= maxChecks) {
+                    if (sessionChecker) {
+                        clearInterval(sessionChecker);
+                        sessionChecker = null;
+                    }
+                }
+            } catch (error) {
+                console.error('检查验证会话失败:', error);
+            }
+        }, 1000); // 每秒检查一次
+        
+        // 使用 Promise 包装，以便使用 finally
+        const fetchPromise = fetch('/items/search_multiple', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -10172,16 +10786,100 @@ async function handleItemSearch(event) {
             })
         });
 
+        // 请求完成后，停止会话检查器
+        fetchPromise.finally(() => {
+            isSearchCompleted = true;
+            if (sessionChecker) {
+                clearInterval(sessionChecker);
+                sessionChecker = null;
+                console.log('✅ 搜索完成，已停止会话检查器');
+            }
+        });
+
+        const response = await fetchPromise;
         console.log('API响应状态:', response.status);
 
         if (response.ok) {
             const data = await response.json();
             console.log('API返回的完整数据:', data);
 
+            // 检查是否需要滑块验证
+            if (data.need_captcha || data.status === 'need_verification') {
+                console.log('检测到需要滑块验证');
+                showSearchStatus(false);
+                
+                // 显示滑块验证模态框
+                const sessionId = data.session_id || 'default';
+                const modal = showCaptchaVerificationModal(sessionId);
+                
+                try {
+                    // 等待用户完成验证
+                    await checkCaptchaCompletion(modal, sessionId);
+                    
+                    // 验证成功，显示搜索状态并重新发起搜索请求
+                    showSearchStatus(true);
+                    document.getElementById('searchProgress').textContent = '验证成功，继续搜索商品...';
+                    
+                    // 重新发起搜索请求
+                    const retryResponse = await fetch('/items/search_multiple', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`
+                        },
+                        body: JSON.stringify({
+                            keyword: keyword,
+                            total_pages: totalPages
+                        })
+                    });
+                    
+                    if (retryResponse.ok) {
+                        const retryData = await retryResponse.json();
+                        
+                        // 再次检查是否需要验证（理论上不应该再需要）
+                        if (retryData.need_captcha || retryData.status === 'need_verification') {
+                            showSearchStatus(false);
+                            showToast('验证后仍需要滑块，请联系管理员', 'danger');
+                            return;
+                        }
+                        
+                        // 处理搜索结果
+                        searchResultsData = retryData.data || [];
+                        console.log('验证后搜索结果:', searchResultsData);
+                        console.log('searchResultsData长度:', searchResultsData.length);
+
+                        searchPageSize = pageSize;
+                        currentSearchPage = 1;
+                        totalSearchPages = Math.ceil(searchResultsData.length / searchPageSize);
+
+                        if (retryData.error) {
+                            showToast(`搜索完成，但遇到问题: ${retryData.error}`, 'warning');
+                        }
+
+                        showSearchStatus(false);
+                        displaySearchResults();
+                        updateSearchStats(retryData);
+                    } else {
+                        const retryError = await retryResponse.json();
+                        showSearchStatus(false);
+                        showToast(`验证后搜索失败: ${retryError.detail || '未知错误'}`, 'danger');
+                        showNoSearchResults();
+                    }
+                } catch (error) {
+                    console.error('滑块验证失败:', error);
+                    showSearchStatus(false);
+                    showToast('滑块验证失败或超时', 'danger');
+                    showNoSearchResults();
+                }
+                return;
+            }
+
+            // 正常搜索结果（无需验证）
             // 修复字段名：使用data.data而不是data.items
             searchResultsData = data.data || [];
             console.log('设置searchResultsData:', searchResultsData);
             console.log('searchResultsData长度:', searchResultsData.length);
+            console.log('完整响应数据:', data);
 
             searchPageSize = pageSize;
             currentSearchPage = 1;
@@ -10192,8 +10890,15 @@ async function handleItemSearch(event) {
             }
 
             showSearchStatus(false);
+            
+            // 确保显示搜索结果
+            if (searchResultsData.length > 0) {
             displaySearchResults();
             updateSearchStats(data);
+            } else {
+                console.warn('搜索结果为空，显示无结果提示');
+                showNoSearchResults();
+            }
         } else {
             const errorData = await response.json();
             showSearchStatus(false);
@@ -10595,7 +11300,8 @@ async function loadSystemVersion() {
         let currentSystemVersion = 'v1.0.0'; // 默认版本
 
         try {
-            const versionResponse = await fetch('/static/version.txt');
+            // 添加时间戳参数防止浏览器缓存
+            const versionResponse = await fetch(`/static/version.txt?t=${Date.now()}`);
             if (versionResponse.ok) {
                 currentSystemVersion = (await versionResponse.text()).trim();
             }
@@ -10740,6 +11446,267 @@ async function showUpdateInfo(newVersion) {
     // 显示模态框
     const modal = new bootstrap.Modal(document.getElementById('updateModal'));
     modal.show();
+}
+
+// =============================================================================
+// 滑块验证相关函数
+// =============================================================================
+
+// 会话监控相关变量
+let captchaSessionMonitor = null;
+let activeCaptchaModal = null;
+let monitoredSessions = new Set();
+
+// 开始监控验证会话
+function startCaptchaSessionMonitor() {
+    if (captchaSessionMonitor) {
+        console.log('⚠️ 会话监控已在运行中');
+        return; // 已经在监控中
+    }
+    
+    console.log('🔍 开始监控验证会话...');
+    
+    let checkCount = 0;
+    captchaSessionMonitor = setInterval(async () => {
+        try {
+            checkCount++;
+            const response = await fetch('/api/captcha/sessions');
+            const data = await response.json();
+            
+            // 每10次检查输出一次日志
+            if (checkCount % 10 === 0) {
+                console.log(`🔍 监控检查 #${checkCount}: 活跃会话数=${data.count || 0}`);
+            }
+            
+            if (data.sessions && data.sessions.length > 0) {
+                console.log('📋 当前活跃会话:', data.sessions);
+                
+                for (const session of data.sessions) {
+                    // 如果会话已完成或不存在，从监控列表中移除
+                    if (session.completed || !session.has_websocket) {
+                        if (monitoredSessions.has(session.session_id)) {
+                            console.log(`✅ 会话已完成或已关闭: ${session.session_id}`);
+                            monitoredSessions.delete(session.session_id);
+                        }
+                        continue;
+                    }
+                    
+                    // 如果发现新的会话（未完成且未被监控），立即弹出窗口
+                    if (!monitoredSessions.has(session.session_id)) {
+                        console.log(`✨ 检测到新的验证会话: ${session.session_id}`);
+                        monitoredSessions.add(session.session_id);
+                        
+                        // 自动弹出验证窗口
+                        showCaptchaVerificationModal(session.session_id);
+                        showToast('🎨 检测到滑块验证，请完成验证', 'warning');
+                    }
+                }
+            }
+            
+            // 如果没有活跃会话且没有监控中的会话，停止监控
+            if ((!data.sessions || data.sessions.length === 0) && monitoredSessions.size === 0) {
+                console.log('✅ 没有活跃会话且没有监控中的会话，停止全局监控');
+                stopCaptchaSessionMonitor();
+            }
+        } catch (error) {
+            console.error('监控验证会话失败:', error);
+        }
+    }, 1000); // 每秒检查一次
+    
+    console.log('✅ 会话监控已启动');
+}
+
+// 停止监控验证会话
+function stopCaptchaSessionMonitor() {
+    if (captchaSessionMonitor) {
+        clearInterval(captchaSessionMonitor);
+        captchaSessionMonitor = null;
+        monitoredSessions.clear();
+        console.log('⏹️ 停止监控验证会话');
+    }
+}
+
+// 手动测试会话监控（用于调试）
+async function testCaptchaSessionMonitor() {
+    try {
+        console.log('🧪 测试会话监控...');
+        const response = await fetch('/api/captcha/sessions');
+        const data = await response.json();
+        console.log('📊 API响应:', data);
+        return data;
+    } catch (error) {
+        console.error('❌ 测试失败:', error);
+        return null;
+    }
+}
+
+// 手动弹出验证窗口（用于调试）
+function testShowCaptchaModal(sessionId = 'default') {
+    console.log(`🧪 手动弹出验证窗口: ${sessionId}`);
+    showCaptchaVerificationModal(sessionId);
+}
+
+// 暴露到全局，方便调试和使用
+window.testCaptchaSessionMonitor = testCaptchaSessionMonitor;
+window.testShowCaptchaModal = testShowCaptchaModal;
+window.startCaptchaSessionMonitor = startCaptchaSessionMonitor;
+window.stopCaptchaSessionMonitor = stopCaptchaSessionMonitor;
+window.showCaptchaVerificationModal = showCaptchaVerificationModal;
+
+// 显示滑块验证模态框
+function showCaptchaVerificationModal(sessionId = 'default') {
+    // 如果已经有活跃的弹窗，不重复弹出
+    if (activeCaptchaModal) {
+        console.log('已有活跃的验证窗口，不重复弹出');
+        return activeCaptchaModal;
+    }
+    
+    const modal = new bootstrap.Modal(document.getElementById('captchaVerifyModal'), {
+        backdrop: 'static',
+        keyboard: false
+    });
+    const iframe = document.getElementById('captchaIframe');
+    const loadingIndicator = document.getElementById('captchaLoadingIndicator');
+    
+    // 获取服务器地址
+    const serverUrl = window.location.origin;
+    
+    // 重置 iframe
+    iframe.style.display = 'none';
+    loadingIndicator.style.display = 'block';
+    
+    // 设置 iframe 源（嵌入模式）
+    iframe.src = `${serverUrl}/api/captcha/control/${sessionId}?embed=1`;
+    
+    // iframe 加载完成后隐藏加载指示器
+    iframe.onload = function() {
+        loadingIndicator.style.display = 'none';
+        iframe.style.display = 'block';
+    };
+    
+    // 显示模态框
+    modal.show();
+    activeCaptchaModal = modal;
+    
+    // 自动启动验证完成监控
+    startCheckCaptchaCompletion(modal, sessionId);
+    
+    // 监听模态框关闭事件
+    document.getElementById('captchaVerifyModal').addEventListener('hidden.bs.modal', () => {
+        activeCaptchaModal = null;
+        // 从监控列表中移除
+        monitoredSessions.delete(sessionId);
+        
+        // 如果没有其他监控中的会话，停止全局监控
+        if (monitoredSessions.size === 0) {
+            stopCaptchaSessionMonitor();
+            console.log('✅ 弹窗关闭，已停止全局监控');
+        }
+    }, { once: true });
+    
+    // 返回 modal 实例用于后续控制
+    return modal;
+}
+
+// 启动验证完成监控（自动模式）
+function startCheckCaptchaCompletion(modal, sessionId) {
+    let checkInterval = null;
+    let isClosed = false;
+    
+    const closeModal = () => {
+        if (isClosed) return;
+        isClosed = true;
+        
+        if (checkInterval) {
+            clearInterval(checkInterval);
+            checkInterval = null;
+        }
+        
+        // 从监控列表中移除
+        monitoredSessions.delete(sessionId);
+        
+        // 如果没有其他监控中的会话，停止全局监控
+        if (monitoredSessions.size === 0) {
+            stopCaptchaSessionMonitor();
+            console.log('✅ 所有验证已完成，已停止全局监控');
+        }
+        
+        modal.hide();
+        activeCaptchaModal = null;
+        showToast('✅ 滑块验证成功！', 'success');
+        console.log(`✅ 验证完成: ${sessionId}`);
+    };
+    
+    checkInterval = setInterval(async () => {
+        try {
+            const response = await fetch(`/api/captcha/status/${sessionId}`);
+            const data = await response.json();
+            
+            console.log(`检查验证状态: ${sessionId}`, data);
+            
+            // 如果验证完成，或者会话不存在（已关闭），都视为完成
+            if (data.completed || (data.session_exists === false && data.success)) {
+                closeModal();
+                return;
+            }
+        } catch (error) {
+            console.error('检查验证状态失败:', error);
+            // 如果API调用失败，可能是会话已关闭，也视为完成
+            if (error.message && error.message.includes('404')) {
+                closeModal();
+            }
+        }
+    }, 1000); // 每秒检查一次
+    
+    // 5分钟超时
+    setTimeout(() => {
+        if (!isClosed && checkInterval) {
+            clearInterval(checkInterval);
+            checkInterval = null;
+            if (activeCaptchaModal) {
+                modal.hide();
+                activeCaptchaModal = null;
+                showToast('❌ 验证超时，请重试', 'danger');
+            }
+        }
+    }, 300000);
+    
+    // 模态框关闭时停止检查
+    document.getElementById('captchaVerifyModal').addEventListener('hidden.bs.modal', () => {
+        if (checkInterval) {
+            clearInterval(checkInterval);
+            checkInterval = null;
+        }
+        isClosed = true;
+    }, { once: true });
+}
+
+// 检查验证是否完成（Promise模式，兼容旧代码）
+async function checkCaptchaCompletion(modal, sessionId) {
+    return new Promise((resolve, reject) => {
+        const checkInterval = setInterval(async () => {
+            try {
+                const response = await fetch(`/api/captcha/status/${sessionId}`);
+                const data = await response.json();
+                
+                if (data.completed) {
+                    clearInterval(checkInterval);
+                    resolve(true);
+                }
+            } catch (error) {
+                console.error('检查验证状态失败:', error);
+            }
+        }, 1000);
+        
+        setTimeout(() => {
+            clearInterval(checkInterval);
+            reject(new Error('验证超时'));
+        }, 300000);
+        
+        document.getElementById('captchaVerifyModal').addEventListener('hidden.bs.modal', () => {
+            clearInterval(checkInterval);
+        }, { once: true });
+    });
 }
 
 

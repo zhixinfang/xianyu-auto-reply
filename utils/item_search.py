@@ -47,6 +47,580 @@ class XianyuSearcher:
         self.context = None
         self.page = None
         self.api_responses = []
+        self.user_id = "default"  # 默认用户ID
+
+    async def _handle_scratch_captcha_manual(self, page, max_retries=3, wait_for_completion=True):
+        """人工处理刮刮乐滑块（远程控制 + 截图备份）
+        
+        参数:
+            wait_for_completion: 是否等待用户完成验证
+                - True: 等待用户完成验证（默认，用于直接处理）
+                - False: 创建会话后立即返回（用于前端处理）
+        """
+        import random
+        
+        logger.warning("=" * 60)
+        logger.warning("🎨 检测到刮刮乐验证，需要人工处理！")
+        logger.warning("=" * 60)
+        
+        # 获取会话ID
+        session_id = getattr(self, 'user_id', 'default')
+        
+        # 【新方案】启用远程控制
+        use_remote_control = getattr(self, 'use_remote_control', True)
+        
+        if use_remote_control:
+            try:
+                from utils.captcha_remote_control import captcha_controller
+                
+                # 创建远程控制会话
+                logger.warning(f"🌐 启动远程控制会话: {session_id}")
+                session_info = await captcha_controller.create_session(session_id, page)
+                
+                # 获取控制页面URL
+                import socket
+                import os
+                
+                # 尝试多种方式获取IP
+                local_ip = "localhost"
+                
+                # 方法1：从环境变量获取（Docker/配置文件）
+                local_ip = os.getenv('SERVER_HOST') or os.getenv('PUBLIC_IP')
+                
+                if not local_ip:
+                    # 方法2：尝试获取外网IP
+                    try:
+                        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                        s.connect(("8.8.8.8", 80))
+                        local_ip = s.getsockname()[0]
+                        s.close()
+                        
+                        # 检查是否是Docker内网IP（172.x.x.x 或 10.x.x.x）
+                        if local_ip.startswith('172.') or local_ip.startswith('10.'):
+                            logger.warning(f"⚠️ 检测到Docker内网IP: {local_ip}")
+                            local_ip = None  # 重置，使用localhost
+                    except:
+                        pass
+                
+                if not local_ip:
+                    local_ip = "localhost"
+                    logger.warning("⚠️ 无法获取外网IP，使用 localhost")
+                    logger.warning("💡 如果在Docker中，请设置环境变量 SERVER_HOST 为公网IP")
+                
+                control_url = f"http://{local_ip}:8000/api/captcha/control/{session_id}"
+                
+                logger.warning("=" * 60)
+                logger.warning(f"🌐 远程控制已启动！")
+                logger.warning(f"📱 请访问以下网址进行验证：")
+                logger.warning(f"   {control_url}")
+                logger.warning("=" * 60)
+                logger.warning(f"💡 或直接访问: http://{local_ip}:8000/api/captcha/control")
+                logger.warning(f"   然后输入会话ID: {session_id}")
+                logger.warning("=" * 60)
+                
+                # 如果不等待完成，立即返回特殊值给调用者
+                if not wait_for_completion:
+                    logger.warning("⚠️ 不等待验证完成，立即返回给前端处理")
+                    return 'need_captcha'  # 返回特殊值，表示需要前端处理
+                
+                # 等待用户完成
+                logger.warning("⏳ 等待用户通过网页完成验证...")
+                
+                # 循环检查是否完成
+                max_wait_time = 180  # 3分钟
+                check_interval = 1  # 每秒检查一次
+                elapsed_time = 0
+                
+                while elapsed_time < max_wait_time:
+                    await asyncio.sleep(check_interval)
+                    elapsed_time += check_interval
+                    
+                    # 检查是否完成
+                    if captcha_controller.is_completed(session_id):
+                        logger.success("✅ 远程验证成功！")
+                        await captcha_controller.close_session(session_id)
+                        return True
+                    
+                    # 每10秒提示一次
+                    if elapsed_time % 10 == 0:
+                        logger.info(f"⏳ 仍在等待...已等待 {elapsed_time} 秒")
+                
+                logger.error(f"❌ 远程验证超时（{max_wait_time}秒）")
+                await captcha_controller.close_session(session_id)
+                return False
+                
+            except Exception as e:
+                logger.error(f"远程控制启动失败: {e}")
+                logger.warning("⚠️ 降级使用传统方式")
+        
+        logger.error("❌ 人工验证超时，已达到最大等待时间")
+        return False
+    
+    async def _handle_scratch_captcha_async(self, page, max_retries=15):
+        """异步处理刮刮乐类型滑块"""
+        import random
+        
+        # 保存原始page对象（用于鼠标操作）
+        original_page = page
+        
+        for attempt in range(1, max_retries + 1):
+            try:
+                logger.info(f"🎨 刮刮乐滑块处理尝试 {attempt}/{max_retries}")
+                
+                # 重置page为原始对象
+                page = original_page
+                
+                # 短暂等待（滑块已经存在，无需长时间等待）
+                if attempt == 1:
+                    await asyncio.sleep(0.3)
+                else:
+                    await asyncio.sleep(0.5)
+                
+                # 1. 快速检查刮刮乐容器（不阻塞，极短超时）
+                try:
+                    await page.wait_for_selector('#nocaptcha', timeout=500, state='attached')
+                    logger.debug("✅ 刮刮乐容器 #nocaptcha 已加载")
+                    await asyncio.sleep(0.2)  # 等待容器内部元素加载
+                except:
+                    # 容器未找到也继续，可能滑块还没出现
+                    logger.debug("刮刮乐容器未立即加载，继续查找按钮...")
+                
+                # 2. 查找滑块按钮（先尝试主页面，再尝试iframe）
+                button_selectors = [
+                    '#scratch-captcha-btn',
+                    '.button#scratch-captcha-btn',
+                    'div#scratch-captcha-btn',
+                    '.scratch-captcha-slider .button',
+                    '#nocaptcha .button',
+                    '#nocaptcha .scratch-captcha-slider .button',
+                    '.button'
+                ]
+                
+                slider_button = None
+                found_in_iframe = False
+                search_context = page  # 用于查找元素的上下文
+                
+                # 先在主页面查找（极速查找）
+                for selector in button_selectors:
+                    try:
+                        # 先尝试等待可见（极短超时）
+                        slider_button = await page.wait_for_selector(selector, timeout=800, state='visible')
+                        if slider_button:
+                            logger.info(f"✅ 在主页面找到刮刮乐滑块按钮（可见）: {selector}")
+                            search_context = page
+                            break
+                    except:
+                        # 如果等待可见失败，尝试只等待存在（attached）
+                        try:
+                            slider_button = await page.wait_for_selector(selector, timeout=300, state='attached')
+                            if slider_button:
+                                logger.warning(f"⚠️ 在主页面找到刮刮乐滑块按钮（不可见但存在）: {selector}")
+                                search_context = page
+                                break
+                        except:
+                            continue
+                
+                # 如果主页面没找到，尝试在iframe中查找（极速查找）
+                if not slider_button:
+                    try:
+                        frames = page.frames
+                        logger.debug(f"检查 {len(frames)} 个frame...")
+                        for frame in frames:
+                            if frame == page.main_frame:
+                                continue
+                            for selector in button_selectors:
+                                try:
+                                    slider_button = await frame.wait_for_selector(selector, timeout=500, state='visible')
+                                    if slider_button:
+                                        logger.info(f"✅ 在iframe中找到刮刮乐滑块按钮: {selector}")
+                                        found_in_iframe = True
+                                        search_context = frame  # iframe上下文用于查找
+                                        break
+                                except:
+                                    continue
+                            if slider_button:
+                                break
+                    except Exception as e:
+                        logger.debug(f"检查iframe时出错: {e}")
+                
+                # 最后尝试：使用JavaScript直接查找（在search_context中）
+                if not slider_button:
+                    try:
+                        logger.debug("尝试使用JavaScript直接查找滑块按钮...")
+                        js_found = await search_context.evaluate("""
+                            () => {
+                                const btn = document.getElementById('scratch-captcha-btn') || 
+                                           document.querySelector('#scratch-captcha-btn') ||
+                                           document.querySelector('.button#scratch-captcha-btn');
+                                if (btn) {
+                                    return {
+                                        found: true,
+                                        visible: btn.offsetParent !== null,
+                                        display: window.getComputedStyle(btn).display,
+                                        visibility: window.getComputedStyle(btn).visibility
+                                    };
+                                }
+                                return { found: false };
+                            }
+                        """)
+                        
+                        if js_found and js_found.get('found'):
+                            logger.warning(f"⚠️ JavaScript找到按钮但Playwright无法访问: visible={js_found.get('visible')}, display={js_found.get('display')}, visibility={js_found.get('visibility')}")
+                            # 尝试通过query_selector获取元素（强制操作）
+                            slider_button = await search_context.query_selector('#scratch-captcha-btn')
+                            if slider_button:
+                                logger.info("✅ query_selector找到按钮")
+                    except Exception as e:
+                        logger.debug(f"JavaScript查找失败: {e}")
+                
+                if not slider_button:
+                    logger.error("❌ 未找到刮刮乐滑块按钮（所有方法都已尝试）")
+                    await asyncio.sleep(random.uniform(0.5, 1))
+                    continue
+                
+                # 2. 获取滑块位置和大小
+                button_box = await slider_button.bounding_box()
+                if not button_box:
+                    # 尝试使用JavaScript强制获取位置
+                    try:
+                        logger.warning("⚠️ 尝试使用JavaScript获取按钮位置...")
+                        js_box = await search_context.evaluate("""
+                            () => {
+                                const btn = document.getElementById('scratch-captcha-btn');
+                                if (btn) {
+                                    const rect = btn.getBoundingClientRect();
+                                    return {
+                                        x: rect.x,
+                                        y: rect.y,
+                                        width: rect.width,
+                                        height: rect.height
+                                    };
+                                }
+                                return null;
+                            }
+                        """)
+                        if js_box:
+                            logger.info(f"✅ JavaScript获取到按钮位置: {js_box}")
+                            button_box = js_box
+                        else:
+                            logger.error("❌ JavaScript也无法获取滑块按钮位置")
+                            await asyncio.sleep(random.uniform(0.5, 1))
+                            continue
+                    except Exception as e:
+                        logger.error(f"❌ 无法获取滑块按钮位置: {e}")
+                        await asyncio.sleep(random.uniform(0.5, 1))
+                        continue
+                
+                # 3. 计算滑动距离（25-35%）
+                # 假设轨道宽度约为300px（可以根据实际调整）
+                estimated_track_width = 300
+                scratch_ratio = random.uniform(0.25, 0.35)
+                slide_distance = estimated_track_width * scratch_ratio
+                
+                logger.warning(f"🎨 刮刮乐模式：计划滑动{scratch_ratio*100:.1f}%距离 ({slide_distance:.2f}px)")
+                
+                # 4. 执行滑动
+                start_x = button_box['x'] + button_box['width'] / 2
+                start_y = button_box['y'] + button_box['height'] / 2
+                
+                # 移动到滑块（优化等待时间）
+                await page.mouse.move(start_x, start_y)
+                await asyncio.sleep(random.uniform(0.1, 0.2))
+                
+                # 按下鼠标
+                await page.mouse.down()
+                await asyncio.sleep(random.uniform(0.05, 0.1))
+                
+                # 模拟人类化滑动轨迹（加快速度）
+                steps = random.randint(10, 15)
+                for i in range(steps):
+                    progress = (i + 1) / steps
+                    current_distance = slide_distance * progress
+                    
+                    # 添加Y轴抖动
+                    y_jitter = random.uniform(-2, 2)
+                    
+                    await page.mouse.move(
+                        start_x + current_distance,
+                        start_y + y_jitter
+                    )
+                    await asyncio.sleep(random.uniform(0.005, 0.015))
+                
+                # 5. 在目标位置停顿观察（缩短时间）
+                pause_duration = random.uniform(0.2, 0.3)
+                logger.warning(f"🎨 在目标位置停顿{pause_duration:.2f}秒观察...")
+                await asyncio.sleep(pause_duration)
+                
+                # 6. 释放鼠标
+                await page.mouse.up()
+                await asyncio.sleep(random.uniform(0.3, 0.5))
+                
+                # 7. 检查是否成功（检查滑块frame是否消失）
+                try:
+                    # 等待验证结果
+                    await asyncio.sleep(0.8)
+                    
+                    # 检查主页面的滑块容器
+                    captcha_in_main = await page.query_selector('#nocaptcha')
+                    main_visible = False
+                    if captcha_in_main:
+                        try:
+                            main_visible = await captcha_in_main.is_visible()
+                        except:
+                            main_visible = False
+                    
+                    # 检查iframe中的滑块
+                    iframe_visible = False
+                    try:
+                        frames = page.frames
+                        for frame in frames:
+                            if frame != page.main_frame:
+                                captcha_in_iframe = await frame.query_selector('#nocaptcha')
+                                if captcha_in_iframe:
+                                    try:
+                                        if await captcha_in_iframe.is_visible():
+                                            iframe_visible = True
+                                            break
+                                    except:
+                                        pass
+                    except:
+                        pass
+                    
+                    # 判断成功：主页面和iframe都没有可见的滑块
+                    if not main_visible and not iframe_visible:
+                        logger.success(f"✅ 刮刮乐验证成功！滑块已消失（第{attempt}次尝试）")
+                        return True
+                    else:
+                        if main_visible:
+                            logger.warning(f"⚠️ 主页面滑块仍可见，继续重试...")
+                        if iframe_visible:
+                            logger.warning(f"⚠️ iframe滑块仍可见，继续重试...")
+                except Exception as e:
+                    logger.warning(f"⚠️ 检查验证结果时出错: {e}，继续重试...")
+                
+            except Exception as e:
+                logger.error(f"❌ 刮刮乐处理异常: {str(e)}")
+                import traceback
+                logger.error(traceback.format_exc())
+                await asyncio.sleep(random.uniform(0.5, 1))
+                continue
+        
+        logger.error(f"❌ 刮刮乐验证失败，已达到最大重试次数 {max_retries}")
+        return False
+    
+    async def handle_slider_verification(self, page, context=None, browser=None, playwright=None, max_retries=5):
+        """
+        通用的滑块验证处理方法
+        
+        参数:
+            page: Playwright 页面对象（必需）
+            context: Playwright 上下文对象（可选，如果不传则使用 self.context）
+            browser: Playwright 浏览器对象（可选，如果不传则使用 self.browser）
+            playwright: Playwright 实例（可选，如果不传则使用 self.playwright）
+            max_retries: 最大重试次数，默认5次
+            
+        返回:
+            bool: True表示成功（包括没有滑块或滑块验证成功），False表示失败
+        """
+        try:
+            # 等待页面加载滑块元素（优化等待时间）
+            await asyncio.sleep(1)
+            logger.info("🔍 开始检测滑块验证...")
+            
+            # 使用传入的对象或实例属性
+            context = context or self.context
+            browser = browser or self.browser
+            playwright = playwright or getattr(self, 'playwright', None)
+            
+            # 【调试】打印页面HTML内容，查找滑块相关关键词
+            try:
+                page_content = await page.content()
+                has_captcha_keyword = any(keyword in page_content.lower() for keyword in [
+                    'nocaptcha', 'scratch-captcha', 'captcha', 'slider', '滑块', '验证'
+                ])
+                if has_captcha_keyword:
+                    logger.warning("⚠️ 页面HTML中包含滑块相关关键词")
+                    # 保存页面内容用于调试
+                    if 'nocaptcha' in page_content or 'scratch-captcha' in page_content:
+                        logger.warning("🎯 检测到刮刮乐类型滑块特征词！")
+                else:
+                    logger.info("✅ 页面HTML中未发现滑块关键词")
+            except Exception as e:
+                logger.debug(f"检查页面内容时出错: {e}")
+            
+            # 检测滑块元素（支持多种类型的滑块）
+            slider_selectors = [
+                # 阿里云盾 nc 系列滑块
+                '#nc_1_n1z',
+                '.nc-container',
+                '.nc_scale',
+                '.nc-wrapper',
+                '[class*="nc_"]',
+                '[id*="nc_"]',
+                # 刮刮乐 (scratch-captcha) 类型滑块
+                '#nocaptcha',
+                '.scratch-captcha-container',
+                '.scratch-captcha-slider',
+                '#scratch-captcha-btn',
+                '[class*="scratch-captcha"]',
+                'div[id="nocaptcha"]',
+                'div.scratch-captcha-container',
+                # 其他常见滑块类型
+                '.captcha-slider',
+                '.slider-captcha',
+                '[class*="captcha"]',
+                '[id*="captcha"]'
+            ]
+            
+            has_slider = False
+            detected_selector = None
+            found_elements = []
+            
+            for selector in slider_selectors:
+                try:
+                    element = await page.query_selector(selector)
+                    if element:
+                        found_elements.append(selector)
+                        is_visible = await element.is_visible()
+                        logger.debug(f"找到元素 {selector}，可见性: {is_visible}")
+                        if is_visible:
+                            logger.info(f"✅ 检测到滑块验证元素: {selector}")
+                            has_slider = True
+                            detected_selector = selector
+                            break
+                except Exception as e:
+                    logger.debug(f"选择器 {selector} 检测出错: {e}")
+                    continue
+            
+            # 输出调试信息
+            if found_elements:
+                logger.warning(f"🔍 找到以下滑块元素（但可能不可见）: {', '.join(found_elements)}")
+                # 如果找到了元素但不可见，强制认为有滑块
+                if not has_slider and any('captcha' in sel.lower() or 'slider' in sel.lower() for sel in found_elements):
+                    logger.warning("⚠️ 检测到滑块元素但不可见，仍然尝试处理")
+                    has_slider = True
+                    detected_selector = found_elements[0]
+            else:
+                logger.debug("未找到任何滑块选择器匹配的元素")
+            
+            # 【额外检测】检查 iframe 中的滑块
+            if not has_slider:
+                try:
+                    frames = page.frames
+                    logger.debug(f"检测到 {len(frames)} 个 frame")
+                    for frame in frames:
+                        if frame != page.main_frame:
+                            try:
+                                iframe_content = await frame.content()
+                                # 更精确的刮刮乐检测：必须包含明确特征
+                                has_scratch_features = 'scratch-captcha' in iframe_content or \
+                                                      ('nocaptcha' in iframe_content and 'scratch' in iframe_content)
+                                if has_scratch_features:
+                                    logger.warning("🎯 在 iframe 中检测到刮刮乐滑块！")
+                                    has_slider = True
+                                    detected_selector = "iframe-scratch-captcha"
+                                    break
+                            except:
+                                continue
+                except Exception as e:
+                    logger.debug(f"检查 iframe 时出错: {e}")
+            
+            # 如果没有检测到滑块，直接返回成功
+            if not has_slider:
+                logger.info("✅ 未检测到滑块验证，继续执行")
+                return True
+            
+            # 检测到滑块，开始处理
+            logger.warning(f"⚠️ 检测到滑块验证（{detected_selector}），开始处理...")
+            
+            # 检测是否为刮刮乐类型（更精确的判断）
+            is_scratch_captcha = False
+            
+            # 明确的刮刮乐特征
+            if 'scratch' in detected_selector.lower():
+                is_scratch_captcha = True
+            # 如果选择器是 #nocaptcha 但不是 nc 系列的标准滑块，则进一步检查
+            elif detected_selector in ['#nocaptcha', 'iframe-scratch-captcha']:
+                try:
+                    page_html = await page.content()
+                    # 检查是否有刮刮乐的明确特征
+                    has_scratch_features = 'scratch-captcha' in page_html or \
+                                          ('Release the slider' in page_html) or \
+                                          ('fully appears' in page_html)
+                    is_scratch_captcha = has_scratch_features
+                except:
+                    is_scratch_captcha = False
+            
+            if is_scratch_captcha:
+                logger.warning("🎨 检测到刮刮乐类型滑块")
+                
+                # 人工处理模式 - 等待用户完成验证
+                logger.warning("⚠️ 刮刮乐需要人工处理，等待验证完成")
+                slider_success = await self._handle_scratch_captcha_manual(page, max_retries=3, wait_for_completion=True)
+            else:
+                actual_max_retries = max_retries
+                slider_success = None
+            
+            try:
+                # 刮刮乐已经处理过了，直接检查结果
+                if is_scratch_captcha:
+                    pass  # slider_success 已经在上面设置
+                else:
+                    # 普通滑块：使用 XianyuSliderStealth（同步API）
+                    from utils.xianyu_slider_stealth import XianyuSliderStealth
+                    
+                    # 创建滑块处理实例
+                    slider_handler = XianyuSliderStealth(
+                        user_id=getattr(self, 'user_id', 'default'),
+                        enable_learning=True,
+                        headless=True
+                    )
+                    
+                    # 将现有的浏览器对象传递给滑块处理器（复用现有浏览器）
+                    slider_handler.page = page
+                    slider_handler.context = context
+                    slider_handler.browser = browser
+                    slider_handler.playwright = playwright
+                    
+                    # 调用滑块处理方法
+                    logger.info(f"🎯 开始处理滑块验证（最多尝试 {actual_max_retries} 次）...")
+                    slider_success = slider_handler.solve_slider(max_retries=actual_max_retries)
+                    
+                    # 清除引用，防止 XianyuSliderStealth 尝试关闭我们的浏览器
+                    slider_handler.page = None
+                    slider_handler.context = None
+                    slider_handler.browser = None
+                    slider_handler.playwright = None
+                
+                if slider_success:
+                    logger.success("✅ 滑块验证成功！")
+                    return True
+                else:
+                    logger.error("❌ 滑块验证失败")
+                    return False
+                    
+            except Exception as e:
+                logger.error(f"❌ 滑块验证处理异常: {str(e)}")
+                import traceback
+                logger.error(traceback.format_exc())
+                
+                # 确保清除引用
+                try:
+                    if 'slider_handler' in locals():
+                        slider_handler.page = None
+                        slider_handler.context = None
+                        slider_handler.browser = None
+                        slider_handler.playwright = None
+                except:
+                    pass
+                
+                return False
+                
+        except Exception as e:
+            logger.error(f"❌ 滑块检测过程异常: {str(e)}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return False
 
     async def safe_get(self, data, *keys, default="暂无"):
         """安全获取嵌套字典值"""
@@ -109,13 +683,19 @@ class XianyuSearcher:
             return False
 
     async def init_browser(self):
-        """初始化浏览器"""
+        """初始化浏览器（使用持久化上下文，保留缓存和cookies）"""
         if not PLAYWRIGHT_AVAILABLE:
             raise Exception("Playwright 未安装，无法使用真实搜索功能")
 
         if not self.browser:
             playwright = await async_playwright().start()
-            logger.info("正在启动浏览器...")
+            
+            # 设置持久化数据目录（保存缓存、cookies等）
+            import tempfile
+            user_data_dir = os.path.join(tempfile.gettempdir(), 'xianyu_browser_cache')
+            os.makedirs(user_data_dir, exist_ok=True)
+            logger.info(f"使用持久化数据目录（保留缓存）: {user_data_dir}")
+            
             # 简化的浏览器启动参数，避免冲突
             browser_args = [
                 '--no-sandbox',
@@ -124,7 +704,10 @@ class XianyuSearcher:
                 '--no-first-run',
                 '--disable-extensions',
                 '--disable-default-apps',
-                '--no-default-browser-check'
+                '--no-default-browser-check',
+                # 中文语言设置
+                '--lang=zh-CN',
+                '--accept-lang=zh-CN,zh,en-US,en'
             ]
 
             # 只在确实是Docker环境时添加额外参数
@@ -135,37 +718,50 @@ class XianyuSearcher:
                     # '--single-process'  # 注释掉，避免崩溃
                 ])
 
-            logger.info("正在启动浏览器...")
-            self.browser = await playwright.chromium.launch(
+            logger.info("正在启动浏览器（中文模式，持久化缓存）...")
+            
+            # 使用 launch_persistent_context 实现跨会话的缓存持久化
+            # 这样通过一次滑块验证后，下次搜索可以复用缓存，避免再次出现滑块
+            self.context = await playwright.chromium.launch_persistent_context(
+                user_data_dir,  # 第一个参数是用户数据目录，用于持久化
                 headless=True,  # 无头模式，后台运行
-                args=browser_args
-            )
-
-            logger.info("浏览器启动成功，创建上下文...")
-            # 简化上下文创建，减少可能的问题
-            self.context = await self.browser.new_context(
+                args=browser_args,
                 user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                viewport={'width': 1280, 'height': 720}
+                viewport={'width': 1280, 'height': 720},
+                locale='zh-CN',  # 设置语言为中文
+                # 持久化上下文会自动保存和加载：
+                # - Cookies
+                # - 缓存
+                # - LocalStorage
+                # - SessionStorage
+                # - 其他浏览器状态
             )
+            
+            # launch_persistent_context 返回的是 context，不是 browser
+            # 需要通过 context.browser 获取 browser 对象
+            self.browser = self.context.browser
+
+            logger.info("浏览器启动成功（持久化上下文已创建）...")
 
             logger.info("创建页面...")
             self.page = await self.context.new_page()
 
-            logger.info("浏览器初始化完成")
+            logger.info("浏览器初始化完成（缓存将持久化保存）")
 
     async def close_browser(self):
-        """关闭浏览器"""
+        """关闭浏览器（持久化上下文会自动保存缓存和cookies）"""
         try:
             if self.page:
                 await self.page.close()
                 self.page = None
+            # 注意：使用 persistent_context 时，关闭 context 会自动保存所有数据
             if self.context:
                 await self.context.close()
                 self.context = None
-            if self.browser:
-                await self.browser.close()
-                self.browser = None
-            logger.debug("商品搜索器浏览器已关闭")
+            # persistent_context 的 browser 会在 context 关闭时自动关闭
+            # 不需要单独关闭 browser
+            self.browser = None
+            logger.debug("商品搜索器浏览器已关闭（缓存已保存）")
         except Exception as e:
             logger.warning(f"关闭商品搜索器浏览器时出错: {e}")
     
@@ -255,6 +851,8 @@ class XianyuSearcher:
                     # 刷新页面以应用cookies
                     await self.page.reload()
                     await asyncio.sleep(2)
+               
+                    
 
                 await self.page.wait_for_load_state("networkidle", timeout=10000)
 
@@ -265,19 +863,32 @@ class XianyuSearcher:
                 self.page.on("response", on_response)
 
                 await self.page.click('button[type="submit"]')
+                                  
                 await self.page.wait_for_load_state("networkidle", timeout=15000)
 
-                # 等待第一页API响应
+                # 等待第一页API响应（缩短等待时间）
                 logger.info("等待第一页API响应...")
-                await asyncio.sleep(5)
-
+                await asyncio.sleep(2)
+                
                 # 尝试处理弹窗
                 try:
                     await self.page.keyboard.press('Escape')
-                    await asyncio.sleep(1)
+                    await asyncio.sleep(0.5)
                 except:
                     pass
-
+                # 【核心】检测并处理滑块验证 → 使用公共方法
+                logger.info(f"检测是否有滑块验证...")
+                slider_result = await self.handle_slider_verification(
+                    page=self.page,
+                    context=self.context,
+                    browser=self.browser,
+                    playwright=getattr(self, 'playwright', None),
+                    max_retries=5
+                )
+                
+                if not slider_result:
+                    logger.error(f"❌ 滑块验证失败，搜索终止")
+                    return None
                 # 等待更多数据
                 await asyncio.sleep(3)
 
@@ -709,19 +1320,36 @@ class XianyuSearcher:
                 logger.info("🖱️ 准备点击搜索按钮...")
                 await self.page.click('button[type="submit"]')
                 logger.info("✅ 搜索按钮已点击")
+                    
                 await self.page.wait_for_load_state("networkidle", timeout=15000)
 
-                # 等待第一页API响应
+                # 等待第一页API响应（优化等待时间）
                 logger.info("等待第一页API响应...")
-                await asyncio.sleep(10)  # 增加等待时间
+                await asyncio.sleep(3)
 
                 # 尝试处理弹窗
                 try:
                     await self.page.keyboard.press('Escape')
-                    await asyncio.sleep(1)
+                    await asyncio.sleep(0.5)
                 except:
                     pass
-
+                # 【核心】检测并处理滑块验证 → 使用公共方法
+                logger.info(f"检测是否有滑块验证...")
+                slider_result = await self.handle_slider_verification(
+                    page=self.page,
+                    context=self.context,
+                    browser=self.browser,
+                    playwright=getattr(self, 'playwright', None),
+                    max_retries=5
+                )
+                
+                if not slider_result:
+                    logger.error(f"❌ 滑块验证失败，搜索终止")
+                    return {
+                        'items': [],
+                        'total': 0,
+                        'error': '滑块验证失败'
+                    }
                 # 等待更多数据
                 await asyncio.sleep(3)
 
@@ -955,7 +1583,7 @@ async def search_multiple_pages_xianyu(keyword: str, total_pages: int = 1) -> Di
     Returns:
         搜索结果
     """
-    max_retries = 2
+    max_retries = 0
     retry_delay = 5  # 秒，增加重试间隔
 
     for attempt in range(max_retries + 1):

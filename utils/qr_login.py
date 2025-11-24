@@ -413,7 +413,7 @@ class QRLoginManager:
             'status': session.status,
             'session_id': session_id
         }
-
+        logger.info(f"获取会话状态: {result}")
         # 如果需要验证，返回验证URL
         if session.status == 'verification_required' and session.verification_url:
             result['verification_url'] = session.verification_url

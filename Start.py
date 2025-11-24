@@ -1,8 +1,9 @@
 """项目启动入口：
 
-1. 创建 CookieManager，按配置文件 / 环境变量初始化账号任务
-2. 在后台线程启动 FastAPI (reply_server) 提供管理与自动回复接口
-3. 主协程保持运行
+1. 自动初始化必要的目录和数据库
+2. 创建 CookieManager，按配置文件 / 环境变量初始化账号任务
+3. 在后台线程启动 FastAPI (reply_server) 提供管理与自动回复接口
+4. 主协程保持运行
 """
 
 import os
@@ -10,10 +11,45 @@ import sys
 import shutil
 from pathlib import Path
 
-# ==================== 在导入任何模块之前先迁移数据库 ====================
+# ==================== 初始化目录和配置 ====================
+def _init_directories():
+    """初始化必要的目录结构"""
+    print("=" * 50)
+    print("闲鱼自动回复系统 - 启动中...")
+    print("=" * 50)
+    
+    # 创建必要的目录
+    directories = ['data', 'logs', 'backups']
+    for dir_name in directories:
+        dir_path = Path(dir_name)
+        if not dir_path.exists():
+            dir_path.mkdir(parents=True, exist_ok=True)
+            print(f"✓ 创建 {dir_name}/ 目录")
+        else:
+            print(f"✓ {dir_name}/ 目录已存在")
+    
+    return True
+
+def _init_database():
+    """初始化数据库（如果不存在）"""
+    db_path = Path("data/xianyu_data.db")
+    
+    if not db_path.exists():
+        print("✓ 首次启动，将自动创建数据库...")
+        # 数据库会在 db_manager 导入时自动创建
+        return True
+    else:
+        print(f"✓ 数据库已存在: {db_path}")
+        return False
+
+# 在导入任何模块之前先初始化
+_init_directories()
+_init_database()
+
+# ==================== 数据库文件迁移（兼容旧版本） ====================
 def _migrate_database_files_early():
     """在启动前检查并迁移数据库文件到data目录（使用print，因为logger还未初始化）"""
-    print("检查数据库文件位置...")
+    print("\n检查旧版本数据库文件...")
     
     # 确保data目录存在
     data_dir = Path("data")
@@ -143,13 +179,17 @@ def _start_api_server():
     # 在后台线程中创建独立事件循环并直接运行 server.serve()
     import uvicorn
     try:
-        config = uvicorn.Config("reply_server:app", host=host, port=port, log_level="info")
+        # 直接导入 app 对象，避免字符串引用在打包后无法工作
+        from reply_server import app
+        config = uvicorn.Config(app, host=host, port=port, log_level="info")
         server = uvicorn.Server(config)
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         loop.run_until_complete(server.serve())
     except Exception as e:
         logger.error(f"uvicorn服务器启动失败: {e}")
+        import traceback
+        logger.error(f"详细错误: {traceback.format_exc()}")
         try:
             # 确保线程内事件循环被正确关闭
             loop = asyncio.get_event_loop()
