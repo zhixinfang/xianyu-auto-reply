@@ -91,7 +91,7 @@ config = Config()
 # 导出常用配置项
 COOKIES_STR = config.get('COOKIES.value', '')
 COOKIES_LAST_UPDATE = config.get('COOKIES.last_update_time', '')
-WEBSOCKET_URL = config.get('WEBSOCKET_URL', '://wss-goofish.dingtalk.com/')
+WEBSOCKET_URL = config.get('WEBSOCKET_URL', 'wss://wss-goofish.dingtalk.com/')
 HEARTBEAT_INTERVAL = config.get('HEARTBEAT_INTERVAL', 15)
 HEARTBEAT_TIMEOUT = config.get('HEARTBEAT_TIMEOUT', 30)
 TOKEN_REFRESH_INTERVAL = config.get('TOKEN_REFRESH_INTERVAL', 72000)

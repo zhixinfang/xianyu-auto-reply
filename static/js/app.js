@@ -1307,6 +1307,9 @@ async function loadCookies() {
         </td>
         <td class="align-middle">
             <div class="btn-group" role="group">
+            <button class="btn btn-sm btn-outline-secondary" onclick="showFaceVerification('${cookie.id}')" title="人脸验证">
+                <i class="bi bi-shield-check"></i>
+            </button>
             <button class="btn btn-sm btn-outline-primary" onclick="editCookieInline('${cookie.id}', '${cookie.value}')" title="修改Cookie" ${!isEnabled ? 'disabled' : ''}>
                 <i class="bi bi-pencil"></i>
             </button>
@@ -1319,6 +1322,7 @@ async function loadCookies() {
             <button class="btn btn-sm btn-outline-info" onclick="copyCookie('${cookie.id}', '${cookie.value}')" title="复制Cookie">
                 <i class="bi bi-clipboard"></i>
             </button>
+            
             <button class="btn btn-sm btn-outline-danger" onclick="delCookie('${cookie.id}')" title="删除账号">
                 <i class="bi bi-trash"></i>
             </button>
@@ -7182,8 +7186,8 @@ async function checkPasswordLoginStatus() {
                     // 处理中，继续等待
                     break;
                 case 'verification_required':
-                    // 需要人脸认证，显示验证链接
-                    showPasswordLoginQRCode(data.verification_url || data.qr_code_url);
+                    // 需要人脸认证，显示验证截图或链接
+                    showPasswordLoginQRCode(data.screenshot_path || data.verification_url || data.qr_code_url, data.screenshot_path);
                     // 继续监控（人脸认证后需要继续等待登录完成）
                     break;
                 case 'success':
@@ -7226,8 +7230,8 @@ async function checkPasswordLoginStatus() {
     }
 }
 
-// 显示账号密码登录验证链接（人脸认证）
-function showPasswordLoginQRCode(verificationUrl) {
+// 显示账号密码登录验证（人脸认证）
+function showPasswordLoginQRCode(verificationUrl, screenshotPath) {
     // 使用现有的二维码登录模态框
     let modal = document.getElementById('passwordLoginQRModal');
     if (!modal) {
@@ -7255,49 +7259,53 @@ function showPasswordLoginQRCode(verificationUrl) {
         qrContainer.style.display = 'none';
     }
     
-    // 隐藏二维码图片（不再使用）
-    const qrImg = document.getElementById('passwordLoginQRImg');
-    if (qrImg) {
-        qrImg.style.display = 'none';
-    }
+    // 优先显示截图，如果没有截图则显示链接
+    const screenshotImg = document.getElementById('passwordLoginScreenshotImg');
+    const linkButton = document.getElementById('passwordLoginVerificationLink');
+    const statusText = document.getElementById('passwordLoginQRStatusText');
     
-    // 显示验证链接按钮
-    let linkButton = document.getElementById('passwordLoginVerificationLink');
-    if (!linkButton) {
-        // 如果按钮不存在，创建一个
-        const linkContainer = document.createElement('div');
-        linkContainer.id = 'passwordLoginLinkContainer';
-        linkContainer.className = 'mt-4';
-        linkContainer.innerHTML = `
-            <a id="passwordLoginVerificationLink" href="#" target="_blank" class="btn btn-warning btn-lg">
-                <i class="bi bi-shield-check me-2"></i>
-                跳转闲鱼人脸验证
-            </a>
-        `;
-        const modalBody = modal.querySelector('.modal-body');
-        if (modalBody) {
-            modalBody.appendChild(linkContainer);
+    if (screenshotPath) {
+        // 显示截图
+        if (screenshotImg) {
+            screenshotImg.src = `/${screenshotPath}?t=${new Date().getTime()}`;
+            screenshotImg.style.display = 'block';
         }
-        linkButton = document.getElementById('passwordLoginVerificationLink');
-    }
-    
-    // 更新按钮链接和显示状态
-    if (linkButton) {
-        if (verificationUrl) {
-            linkButton.href = verificationUrl;
-            linkButton.style.display = 'inline-block';
-        } else {
+        
+        // 隐藏链接按钮
+        if (linkButton) {
             linkButton.style.display = 'none';
         }
-    }
-    
-    // 更新状态文本
-    const statusText = document.getElementById('passwordLoginQRStatusText');
-    if (statusText) {
-        if (verificationUrl) {
+        
+        // 更新状态文本
+        if (statusText) {
+            statusText.textContent = '需要闲鱼人脸验证，请使用手机闲鱼APP扫描下方二维码完成验证';
+        }
+    } else if (verificationUrl) {
+        // 隐藏截图
+        if (screenshotImg) {
+            screenshotImg.style.display = 'none';
+        }
+        
+        // 显示链接按钮
+        if (linkButton) {
+            linkButton.href = verificationUrl;
+            linkButton.style.display = 'inline-block';
+        }
+        
+        // 更新状态文本
+        if (statusText) {
             statusText.textContent = '需要闲鱼验证，请点击下方按钮跳转到验证页面';
-        } else {
-            statusText.textContent = '需要闲鱼验证，请等待验证链接...';
+        }
+    } else {
+        // 都没有，显示等待
+        if (screenshotImg) {
+            screenshotImg.style.display = 'none';
+        }
+        if (linkButton) {
+            linkButton.style.display = 'none';
+        }
+        if (statusText) {
+            statusText.textContent = '需要闲鱼验证，请等待验证信息...';
         }
     }
 }
@@ -7315,9 +7323,28 @@ function createPasswordLoginQRModal() {
                         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                     </div>
                     <div class="modal-body text-center">
+                        <p id="passwordLoginQRStatusText" class="text-muted mb-3">
+                            需要闲鱼人脸验证，请等待验证信息...
+                        </p>
+                        
+                        <!-- 截图显示区域 -->
+                        <div id="passwordLoginScreenshotContainer" class="mb-3 d-flex justify-content-center">
+                            <img id="passwordLoginScreenshotImg" src="" alt="人脸验证二维码" 
+                                 class="img-fluid" style="display: none; max-width: 400px; height: auto; border: 2px solid #ddd; border-radius: 8px;">
+                        </div>
+                        
+                        <!-- 验证链接按钮（回退方案） -->
+                        <div id="passwordLoginLinkContainer" class="mt-4">
+                            <a id="passwordLoginVerificationLink" href="#" target="_blank" 
+                               class="btn btn-warning btn-lg" style="display: none;">
+                                <i class="bi bi-shield-check me-2"></i>
+                                跳转闲鱼人脸验证
+                            </a>
+                        </div>
+                        
                         <div class="alert alert-info mt-3">
                             <i class="bi bi-info-circle me-2"></i>
-                            <small>请点击下方按钮跳转到验证页面，完成闲鱼人脸验证</small>
+                            <small>验证完成后，系统将自动检测并继续登录流程</small>
                         </div>
                     </div>
                 </div>
@@ -11708,5 +11735,91 @@ async function checkCaptchaCompletion(modal, sessionId) {
         }, { once: true });
     });
 }
+
+// ========================= 人脸验证相关功能 =========================
+
+// 显示人脸验证截图
+async function showFaceVerification(accountId) {
+    try {
+        toggleLoading(true);
+        
+        // 获取该账号的验证截图
+        const response = await fetch(`${apiBase}/face-verification/screenshot/${accountId}`, {
+            headers: {
+                'Authorization': `Bearer ${authToken}`
+            }
+        });
+        
+        if (!response.ok) {
+            throw new Error('获取验证截图失败');
+        }
+        
+        const data = await response.json();
+        
+        toggleLoading(false);
+        
+        if (!data.success) {
+            showToast(data.message || '未找到验证截图', 'warning');
+            return;
+        }
+        
+        // 使用与密码登录相同的弹窗显示验证截图
+        showAccountFaceVerificationModal(accountId, data.screenshot);
+        
+    } catch (error) {
+        toggleLoading(false);
+        console.error('获取人脸验证截图失败:', error);
+        showToast('获取验证截图失败: ' + error.message, 'danger');
+    }
+}
+
+// 显示账号列表的人脸验证弹窗（使用与密码登录相同的样式）
+function showAccountFaceVerificationModal(accountId, screenshot) {
+    // 复用密码登录的弹窗
+    let modal = document.getElementById('passwordLoginQRModal');
+    if (!modal) {
+        createPasswordLoginQRModal();
+        modal = document.getElementById('passwordLoginQRModal');
+    }
+    
+    // 更新模态框标题
+    const modalTitle = document.getElementById('passwordLoginQRModalLabel');
+    if (modalTitle) {
+        modalTitle.innerHTML = `<i class="bi bi-shield-exclamation text-warning me-2"></i>人脸验证 - 账号 ${accountId}`;
+    }
+    
+    // 显示截图
+    const screenshotImg = document.getElementById('passwordLoginScreenshotImg');
+    const linkButton = document.getElementById('passwordLoginVerificationLink');
+    const statusText = document.getElementById('passwordLoginQRStatusText');
+    
+    if (screenshotImg) {
+        screenshotImg.src = `${screenshot.path}?t=${new Date().getTime()}`;
+        screenshotImg.style.display = 'block';
+    }
+    
+    // 隐藏链接按钮
+    if (linkButton) {
+        linkButton.style.display = 'none';
+    }
+    
+    // 更新状态文本
+    if (statusText) {
+        statusText.innerHTML = `需要闲鱼人脸验证，请使用手机闲鱼APP扫描下方二维码完成验证<br><small class="text-muted">创建时间: ${screenshot.created_time_str}</small>`;
+    }
+    
+    // 获取或创建模态框实例
+    let modalInstance = bootstrap.Modal.getInstance(modal);
+    if (!modalInstance) {
+        modalInstance = new bootstrap.Modal(modal);
+    }
+    
+    // 显示弹窗
+    modalInstance.show();
+    
+    // 注意：截图删除由后端在验证完成或失败时自动处理，前端不需要手动删除
+}
+
+// 注：人脸验证弹窗已复用密码登录的 passwordLoginQRModal，不再需要单独的弹窗
 
 

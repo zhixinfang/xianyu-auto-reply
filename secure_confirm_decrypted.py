@@ -78,7 +78,7 @@ class SecureConfirm:
         try:
             from db_manager import db_manager
             # 更新数据库中的cookies
-            db_manager.update_cookie_value(self.cookie_id, self.cookies_str)
+            db_manager.update_cookie_account_info(self.cookie_id, cookie_value=self.cookies_str)
             logger.debug(f"【{self.cookie_id}】已更新数据库中的Cookie")
         except Exception as e:
             logger.error(f"【{self.cookie_id}】更新数据库Cookie失败: {self._safe_str(e)}")

@@ -309,9 +309,9 @@ class AIReplyEngine:
             # 使用锁确保同一chat_id的消息串行处理
             with chat_lock:
                 # 获取最近时间窗口内的所有用户消息
-                # 如果 skip_wait=True（外部防抖），查询窗口为8秒（3秒防抖 + 5秒缓冲）
+                # 如果 skip_wait=True（外部防抖），查询窗口为6秒（1秒防抖 + 5秒缓冲）
                 # 如果 skip_wait=False（内部等待），查询窗口为25秒（10秒等待 + 10秒消息间隔 + 5秒缓冲）
-                query_seconds = 8 if skip_wait else 25
+                query_seconds = 6 if skip_wait else 25
                 recent_messages = self._get_recent_user_messages(chat_id, cookie_id, seconds=query_seconds)
                 logger.info(f"【{cookie_id}】最近{query_seconds}秒内的消息: {[msg['content'][:20] for msg in recent_messages]}")
                 
