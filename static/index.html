@@ -260,6 +260,12 @@
                     <br>
                     <small class="opacity-75">推荐方式</small>
                   </button>
+                  <button type="button" class="btn btn-outline-primary btn-lg flex-fill password-login-btn" onclick="togglePasswordLogin()" style="max-width: 300px;">
+                    <i class="bi bi-key me-2"></i>
+                    <span class="fw-bold">账号密码登录</span>
+                    <br>
+                    <small class="opacity-75">使用账号和密码登录</small>
+                  </button>
                   <button type="button" class="btn btn-outline-secondary btn-lg flex-fill manual-input-btn" onclick="toggleManualInput()" style="max-width: 300px;">
                     <i class="bi bi-keyboard me-2"></i>
                     <span class="fw-bold">手动输入</span>
@@ -268,6 +274,44 @@
                   </button>
                 </div>
               </div>
+            </div>
+
+            <!-- 账号密码登录表单（默认隐藏） -->
+            <div id="passwordLoginForm" style="display: none;">
+              <div class="alert alert-info">
+                <i class="bi bi-info-circle me-2"></i>
+                <strong>提示：</strong>使用账号密码登录，系统将自动获取Cookie。登录过程可能需要处理滑块验证，请耐心等待。
+              </div>
+              <form id="passwordLoginFormElement" class="row g-3">
+                <div class="col-md-4">
+                  <label for="passwordLoginAccountId" class="form-label">账号ID</label>
+                  <input type="text" class="form-control" id="passwordLoginAccountId" placeholder="唯一标识" required>
+                </div>
+                <div class="col-md-4">
+                  <label for="passwordLoginAccount" class="form-label">登录账号</label>
+                  <input type="text" class="form-control" id="passwordLoginAccount" placeholder="手机号或邮箱" required>
+                </div>
+                <div class="col-md-4">
+                  <label for="passwordLoginPassword" class="form-label">登录密码</label>
+                  <input type="password" class="form-control" id="passwordLoginPassword" placeholder="请输入密码" required>
+                </div>
+                <div class="col-12">
+                  <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="passwordLoginShowBrowser" value="1">
+                    <label class="form-check-label" for="passwordLoginShowBrowser">
+                      显示浏览器窗口（如果使用服务器，请勿打开该开关，会导致登录失败）
+                    </label>
+                  </div>
+                </div>
+                <div class="col-12">
+                  <button type="submit" class="btn btn-primary">
+                    <i class="bi bi-box-arrow-in-right me-1"></i>开始登录
+                  </button>
+                  <button type="button" class="btn btn-secondary ms-2" onclick="togglePasswordLogin()">
+                    <i class="bi bi-x-circle me-1"></i>取消
+                  </button>
+                </div>
+              </form>
             </div>
 
             <!-- 手动输入表单（默认隐藏） -->
@@ -1273,10 +1317,13 @@
       <div class="content-body">
         <!-- 日志控制面板 -->
         <div class="card mb-4">
-          <div class="card-header">
+          <div class="card-header d-flex justify-content-between align-items-center">
             <h5 class="mb-0">
               <i class="bi bi-sliders"></i> 日志控制
             </h5>
+            <button class="btn btn-sm btn-primary" onclick="openLogExportModal()">
+              <i class="bi bi-box-arrow-up-right me-1"></i>导出日志
+            </button>
           </div>
           <div class="card-body">
             <div class="row align-items-center">
@@ -1385,6 +1432,51 @@
               <i class="bi bi-file-text" style="font-size: 3rem; color: #ccc;"></i>
               <p class="mt-2 text-muted">暂无日志数据</p>
             </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 导出日志模态框 -->
+    <div class="modal fade" id="exportLogModal" tabindex="-1" aria-labelledby="exportLogModalLabel" aria-hidden="true">
+      <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="exportLogModalLabel">
+              <i class="bi bi-box-arrow-down me-2"></i>导出系统日志
+            </h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+              <div class="text-muted small">
+                选择要导出的日志文件，可用于排查问题或备份。
+              </div>
+              <button type="button" class="btn btn-sm btn-outline-secondary" onclick="refreshLogFileList()">
+                <i class="bi bi-arrow-clockwise me-1"></i>刷新列表
+              </button>
+            </div>
+
+            <div id="logFileLoading" class="text-center py-4">
+              <div class="spinner-border" role="status">
+                <span class="visually-hidden">加载中...</span>
+              </div>
+              <p class="mt-2 text-muted">正在加载日志文件列表...</p>
+            </div>
+
+            <div id="logFileError" class="alert alert-danger d-none" role="alert"></div>
+
+            <div id="logFileEmpty" class="text-center text-muted py-4 d-none">
+              <i class="bi bi-file-earmark-text mb-2" style="font-size: 2rem;"></i>
+              <p class="mb-0">暂无日志文件</p>
+            </div>
+
+            <div class="list-group" id="logFileList"></div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+              <i class="bi bi-x-circle me-1"></i>关闭
+            </button>
           </div>
         </div>
       </div>
@@ -3582,6 +3674,45 @@
       </div>
     </div>
   </div>
+
+  <!-- 滑块验证模态框 -->
+  <div class="modal fade" id="captchaVerifyModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
+    <div class="modal-dialog modal-xl modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header bg-warning">
+          <h5 class="modal-title">
+            <i class="bi bi-shield-exclamation me-2"></i>
+            需要滑块验证
+          </h5>
+        </div>
+        <div class="modal-body p-0">
+          <div class="alert alert-info m-3 mb-0">
+            <i class="bi bi-info-circle me-2"></i>
+            <strong>提示：</strong>检测到滑块验证，请完成滑块验证后继续搜索。验证成功后将自动关闭此窗口。
+          </div>
+          <iframe id="captchaIframe" 
+                  style="width: 100%; height: 600px; border: none;"
+                  sandbox="allow-same-origin allow-scripts allow-forms">
+          </iframe>
+          <div id="captchaLoadingIndicator" class="text-center py-5">
+            <div class="spinner-border text-primary mb-3" role="status">
+              <span class="visually-hidden">加载中...</span>
+            </div>
+            <p class="text-muted">正在加载滑块验证...</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 底部赞助商信息 -->
+  <footer class="text-center py-3 mt-5" style="background-color: #f8f9fa; border-top: 1px solid #dee2e6;">
+    <div class="container">
+      <p class="mb-0 text-muted">
+        <small>赞助商：划算云服务器 <a href="https://www.hsykj.com" target="_blank" class="text-decoration-none">www.hsykj.com</a></small>
+      </p>
+    </div>
+  </footer>
 
 </body>
 </html>

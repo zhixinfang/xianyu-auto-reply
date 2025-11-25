@@ -17,6 +17,7 @@ class CookieManager:
         self.keywords: Dict[str, List[Tuple[str, str]]] = {}
         self.cookie_status: Dict[str, bool] = {}  # 账号启用状态
         self.auto_confirm_settings: Dict[str, bool] = {}  # 自动确认发货设置
+        self._task_locks: Dict[str, asyncio.Lock] = {}  # 每个cookie_id的任务锁，防止重复创建
         self._load_from_db()
 
     def _load_from_db(self):
@@ -69,51 +70,115 @@ class CookieManager:
             logger.info(f"【{cookie_id}】Cookie值长度: {len(cookie_value)}")
             live = XianyuLive(cookie_value, cookie_id=cookie_id, user_id=user_id)
             logger.info(f"【{cookie_id}】XianyuLive实例创建成功，开始调用main()...")
+            
+            # 强制刷新日志，确保日志被写入
+            try:
+                import sys
+                sys.stdout.flush()
+            except:
+                pass
+            
             await live.main()
+            
+            # main() 正常退出（不应该发生，因为main()内部有无限循环）
+            logger.warning(f"【{cookie_id}】XianyuLive.main() 正常退出（这通常不应该发生）")
         except asyncio.CancelledError:
-            logger.info(f"XianyuLive 任务已取消: {cookie_id}")
+            logger.info(f"【{cookie_id}】XianyuLive 任务已取消")
+            # 强制刷新日志
+            try:
+                import sys
+                sys.stdout.flush()
+            except:
+                pass
         except Exception as e:
-            logger.error(f"XianyuLive 任务异常({cookie_id}): {e}")
+            logger.error(f"【{cookie_id}】XianyuLive 任务异常: {e}")
             import traceback
-            logger.error(f"详细错误信息: {traceback.format_exc()}")
+            logger.error(f"【{cookie_id}】详细错误信息:\n{traceback.format_exc()}")
+            # 强制刷新日志
+            try:
+                import sys
+                sys.stdout.flush()
+            except:
+                pass
+        finally:
+            logger.info(f"【{cookie_id}】_run_xianyu方法执行结束")
+            # 确保日志被刷新
+            try:
+                import sys
+                sys.stdout.flush()
+            except:
+                pass
 
     async def _add_cookie_async(self, cookie_id: str, cookie_value: str, user_id: int = None):
-        if cookie_id in self.tasks:
-            raise ValueError("Cookie ID already exists")
-        self.cookies[cookie_id] = cookie_value
-        # 保存到数据库，如果没有指定user_id，则保持原有绑定关系
-        db_manager.save_cookie(cookie_id, cookie_value, user_id)
+        # 获取或创建该cookie_id的锁
+        if cookie_id not in self._task_locks:
+            self._task_locks[cookie_id] = asyncio.Lock()
+        
+        async with self._task_locks[cookie_id]:
+            # 检查是否已存在任务
+            if cookie_id in self.tasks:
+                existing_task = self.tasks[cookie_id]
+                # 检查任务是否还在运行
+                if not existing_task.done():
+                    logger.warning(f"【{cookie_id}】任务已存在且正在运行，先停止旧任务...")
+                    existing_task.cancel()
+                    try:
+                        await existing_task
+                    except asyncio.CancelledError:
+                        pass
+                    except Exception as e:
+                        logger.error(f"等待旧任务停止时出错: {cookie_id}, {e}")
+                    # 从字典中移除
+                    self.tasks.pop(cookie_id, None)
+                    logger.info(f"【{cookie_id}】旧任务已停止")
+                else:
+                    # 任务已完成，直接移除
+                    self.tasks.pop(cookie_id, None)
+                    logger.info(f"【{cookie_id}】旧任务已完成，已移除")
+            
+            self.cookies[cookie_id] = cookie_value
+            # 保存到数据库，如果没有指定user_id，则保持原有绑定关系
+            db_manager.save_cookie(cookie_id, cookie_value, user_id)
 
-        # 获取实际保存的user_id（如果没有指定，数据库会返回实际的user_id）
-        actual_user_id = user_id
-        if actual_user_id is None:
-            # 从数据库获取Cookie对应的user_id
-            cookie_info = db_manager.get_cookie_details(cookie_id)
-            if cookie_info:
-                actual_user_id = cookie_info.get('user_id')
+            # 获取实际保存的user_id（如果没有指定，数据库会返回实际的user_id）
+            actual_user_id = user_id
+            if actual_user_id is None:
+                # 从数据库获取Cookie对应的user_id
+                cookie_info = db_manager.get_cookie_details(cookie_id)
+                if cookie_info:
+                    actual_user_id = cookie_info.get('user_id')
 
-        task = self.loop.create_task(self._run_xianyu(cookie_id, cookie_value, actual_user_id))
-        self.tasks[cookie_id] = task
-        logger.info(f"已启动账号任务: {cookie_id} (用户ID: {actual_user_id})")
+            task = self.loop.create_task(self._run_xianyu(cookie_id, cookie_value, actual_user_id))
+            self.tasks[cookie_id] = task
+            logger.info(f"已启动账号任务: {cookie_id} (用户ID: {actual_user_id})")
 
     async def _remove_cookie_async(self, cookie_id: str):
-        task = self.tasks.pop(cookie_id, None)
-        if task:
-            task.cancel()
-            try:
-                # 等待任务完全清理，确保资源释放
-                await task
-            except asyncio.CancelledError:
-                # 任务被取消是预期行为
-                pass
-            except Exception as e:
-                logger.error(f"等待任务清理时出错: {cookie_id}, {e}")
+        # 获取或创建该cookie_id的锁
+        if cookie_id not in self._task_locks:
+            self._task_locks[cookie_id] = asyncio.Lock()
         
-        self.cookies.pop(cookie_id, None)
-        self.keywords.pop(cookie_id, None)
-        # 从数据库删除
-        db_manager.delete_cookie(cookie_id)
-        logger.info(f"已移除账号: {cookie_id}")
+        async with self._task_locks[cookie_id]:
+            task = self.tasks.pop(cookie_id, None)
+            if task:
+                task.cancel()
+                try:
+                    # 等待任务完全清理，确保资源释放
+                    await asyncio.wait_for(task, timeout=10.0)
+                except asyncio.TimeoutError:
+                    logger.warning(f"【{cookie_id}】等待任务停止超时（10秒），强制继续")
+                except asyncio.CancelledError:
+                    # 任务被取消是预期行为
+                    pass
+                except Exception as e:
+                    logger.error(f"等待任务清理时出错: {cookie_id}, {e}")
+            
+            self.cookies.pop(cookie_id, None)
+            self.keywords.pop(cookie_id, None)
+            # 清理锁
+            self._task_locks.pop(cookie_id, None)
+            # 从数据库删除
+            db_manager.delete_cookie(cookie_id)
+            logger.info(f"已移除账号: {cookie_id}")
 
     # ------------------------ 对外线程安全接口 ------------------------
     def add_cookie(self, cookie_id: str, cookie_value: str, kw_list: Optional[List[Tuple[str, str]]] = None, user_id: int = None):
@@ -156,50 +221,60 @@ class CookieManager:
             save_to_db: 是否保存到数据库（默认True）。当API层已经更新数据库时应设为False，避免覆盖其他字段
         """
         async def _update():
-            # 获取原有的user_id和关键词
-            original_user_id = None
-            original_keywords = []
-            original_status = True
-
-            cookie_info = db_manager.get_cookie_details(cookie_id)
-            if cookie_info:
-                original_user_id = cookie_info.get('user_id')
-
-            # 保存原有的关键词和状态
-            if cookie_id in self.keywords:
-                original_keywords = self.keywords[cookie_id].copy()
-            if cookie_id in self.cookie_status:
-                original_status = self.cookie_status[cookie_id]
-
-            # 先移除任务（但不删除数据库记录）
-            task = self.tasks.pop(cookie_id, None)
-            if task:
-                task.cancel()
-                try:
-                    # 等待任务完全清理，确保资源释放
-                    await task
-                except asyncio.CancelledError:
-                    # 任务被取消是预期行为
-                    pass
-                except Exception as e:
-                    logger.error(f"等待任务清理时出错: {cookie_id}, {e}")
-
-            # 更新Cookie值
-            self.cookies[cookie_id] = new_value
+            # 获取或创建该cookie_id的锁
+            if cookie_id not in self._task_locks:
+                self._task_locks[cookie_id] = asyncio.Lock()
             
-            # 只有在需要时才保存到数据库（避免覆盖其他字段如pause_duration、remark等）
-            if save_to_db:
-                db_manager.save_cookie(cookie_id, new_value, original_user_id)
+            async with self._task_locks[cookie_id]:
+                # 获取原有的user_id和关键词
+                original_user_id = None
+                original_keywords = []
+                original_status = True
 
-            # 恢复关键词和状态
-            self.keywords[cookie_id] = original_keywords
-            self.cookie_status[cookie_id] = original_status
+                cookie_info = db_manager.get_cookie_details(cookie_id)
+                if cookie_info:
+                    original_user_id = cookie_info.get('user_id')
 
-            # 重新启动任务
-            task = self.loop.create_task(self._run_xianyu(cookie_id, new_value, original_user_id))
-            self.tasks[cookie_id] = task
+                # 保存原有的关键词和状态
+                if cookie_id in self.keywords:
+                    original_keywords = self.keywords[cookie_id].copy()
+                if cookie_id in self.cookie_status:
+                    original_status = self.cookie_status[cookie_id]
 
-            logger.info(f"已更新Cookie并重启任务: {cookie_id} (用户ID: {original_user_id}, 关键词: {len(original_keywords)}条)")
+                # 先移除任务（但不删除数据库记录）
+                task = self.tasks.pop(cookie_id, None)
+                if task:
+                    logger.info(f"【{cookie_id}】正在停止旧任务...")
+                    task.cancel()
+                    try:
+                        # 等待任务完全清理，确保资源释放
+                        await asyncio.wait_for(task, timeout=10.0)
+                    except asyncio.TimeoutError:
+                        logger.warning(f"【{cookie_id}】等待旧任务停止超时（10秒），强制继续")
+                    except asyncio.CancelledError:
+                        # 任务被取消是预期行为
+                        logger.debug(f"【{cookie_id}】旧任务已取消")
+                        pass
+                    except Exception as e:
+                        logger.error(f"等待任务清理时出错: {cookie_id}, {e}")
+                    logger.info(f"【{cookie_id}】旧任务已停止")
+
+                # 更新Cookie值
+                self.cookies[cookie_id] = new_value
+                
+                # 只有在需要时才保存到数据库（避免覆盖其他字段如pause_duration、remark等）
+                if save_to_db:
+                    db_manager.save_cookie(cookie_id, new_value, original_user_id)
+
+                # 恢复关键词和状态
+                self.keywords[cookie_id] = original_keywords
+                self.cookie_status[cookie_id] = original_status
+
+                # 重新启动任务
+                task = self.loop.create_task(self._run_xianyu(cookie_id, new_value, original_user_id))
+                self.tasks[cookie_id] = task
+
+                logger.info(f"已更新Cookie并重启任务: {cookie_id} (用户ID: {original_user_id}, 关键词: {len(original_keywords)}条)")
 
         try:
             current_loop = asyncio.get_running_loop()

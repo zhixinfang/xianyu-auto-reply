@@ -167,6 +167,20 @@ class ImageUploader:
     def _parse_upload_response(self, response_text: str) -> Optional[str]:
         """解析上传响应获取图片URL"""
         try:
+            # 检查是否返回了登录页面（Cookie失效的标志）
+            if '<!DOCTYPE html>' in response_text or '<html>' in response_text:
+                if '闲鱼' in response_text and ('login' in response_text.lower() or 'mini-login' in response_text):
+                    logger.error("❌ 图片上传失败：Cookie已失效，返回了登录页面！请重新登录获取有效的Cookie")
+                    logger.error("💡 解决方法：")
+                    logger.error("   1. 打开浏览器访问 https://www.goofish.com/")
+                    logger.error("   2. 登录您的闲鱼账号")
+                    logger.error("   3. 按F12打开开发者工具，在控制台输入: document.cookie")
+                    logger.error("   4. 复制完整的Cookie字符串，更新配置文件中的Cookie")
+                    return None
+                else:
+                    logger.error(f"收到HTML响应而非JSON，可能是Cookie失效: {response_text[:500]}")
+                    return None
+            
             # 尝试解析JSON响应
             response_data = json.loads(response_text)
             
@@ -202,7 +216,7 @@ class ImageUploader:
             
         except json.JSONDecodeError:
             # 如果不是JSON格式，尝试其他解析方式
-            logger.error(f"响应不是有效的JSON格式: {response_text}")
+            logger.error(f"响应不是有效的JSON格式，可能是Cookie失效: {response_text[:200]}...")
             return None
         except Exception as e:
             logger.error(f"解析上传响应异常: {e}")
