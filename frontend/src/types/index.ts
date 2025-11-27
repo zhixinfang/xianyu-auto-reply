@@ -54,14 +54,21 @@ export interface Keyword {
 
 // 商品相关类型
 export interface Item {
-  id: string
+  id: string | number
   cookie_id: string
   item_id: string
-  title: string
+  title?: string
+  item_title?: string
   desc?: string
-  price: string
-  has_sku: boolean
-  multi_delivery: boolean
+  item_description?: string
+  item_detail?: string
+  item_category?: string
+  price?: string
+  item_price?: string
+  has_sku?: boolean
+  is_multi_spec?: number | boolean
+  multi_delivery?: boolean
+  multi_quantity_delivery?: number | boolean
   created_at?: string
   updated_at?: string
 }
@@ -114,18 +121,20 @@ export interface Card {
   updated_at?: string
 }
 
-// 发货规则相关类型
+// 发货规则相关类型 - 匹配后端接口
 export interface DeliveryRule {
-  id: string
-  cookie_id: string
-  item_id?: string
-  keyword?: string
-  delivery_type: 'card' | 'text' | 'api'
-  delivery_content?: string
-  api_url?: string
-  api_method?: string
-  api_params?: string
+  id: number
+  keyword: string
+  card_id: number
+  delivery_count: number
   enabled: boolean
+  description?: string
+  delivery_times?: number
+  card_name?: string
+  card_type?: string
+  is_multi_spec?: boolean
+  spec_name?: string
+  spec_value?: string
   created_at?: string
   updated_at?: string
 }
@@ -145,18 +154,13 @@ export interface NotificationChannel {
   updated_at?: string
 }
 
-// 消息通知相关类型
+// 消息通知相关类型 - 匹配后端接口
+// 后端返回格式: { cookie_id: { channel_id: { enabled: boolean, channel_name: string } } }
 export interface MessageNotification {
-  id: string
-  cookie_id?: string
-  name: string
-  notification_type?: string
-  trigger_keyword?: string
-  channel_id?: string
-  channel_ids?: string[]
+  cookie_id: string
+  channel_id: number
+  channel_name?: string
   enabled: boolean
-  created_at?: string
-  updated_at?: string
 }
 
 // 系统设置相关类型

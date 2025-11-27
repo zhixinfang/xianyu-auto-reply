@@ -4,7 +4,9 @@ import { ShoppingCart, RefreshCw, Search, Trash2 } from 'lucide-react'
 import { getOrders, deleteOrder } from '@/api/orders'
 import { getAccounts } from '@/api/accounts'
 import { useUIStore } from '@/store/uiStore'
+import { useAuthStore } from '@/store/authStore'
 import { PageLoading } from '@/components/common/Loading'
+import { Select } from '@/components/common/Select'
 import type { Order, Account } from '@/types'
 
 const statusMap: Record<string, { label: string; class: string }> = {
@@ -18,6 +20,7 @@ const statusMap: Record<string, { label: string; class: string }> = {
 
 export function Orders() {
   const { addToast } = useUIStore()
+  const { isAuthenticated, token, _hasHydrated } = useAuthStore()
   const [loading, setLoading] = useState(true)
   const [orders, setOrders] = useState<Order[]>([])
   const [accounts, setAccounts] = useState<Account[]>([])
@@ -26,6 +29,7 @@ export function Orders() {
   const [searchKeyword, setSearchKeyword] = useState('')
 
   const loadOrders = async () => {
+    if (!_hasHydrated || !isAuthenticated || !token) return
     try {
       setLoading(true)
       const result = await getOrders(selectedAccount || undefined, selectedStatus || undefined)
@@ -40,6 +44,7 @@ export function Orders() {
   }
 
   const loadAccounts = async () => {
+    if (!_hasHydrated || !isAuthenticated || !token) return
     try {
       const data = await getAccounts()
       setAccounts(data)
@@ -49,13 +54,15 @@ export function Orders() {
   }
 
   useEffect(() => {
+    if (!_hasHydrated || !isAuthenticated || !token) return
     loadAccounts()
     loadOrders()
-  }, [])
+  }, [_hasHydrated, isAuthenticated, token])
 
   useEffect(() => {
+    if (!_hasHydrated || !isAuthenticated || !token) return
     loadOrders()
-  }, [selectedAccount, selectedStatus])
+  }, [_hasHydrated, isAuthenticated, token, selectedAccount, selectedStatus])
 
   const handleDelete = async (id: string) => {
     if (!confirm('确定要删除这个订单吗？')) return
@@ -102,48 +109,51 @@ export function Orders() {
         animate={{ opacity: 1, y: 0 }}
         className="vben-card"
       >
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div>
-            <label className="input-label">筛选账号</label>
-            <select
-              value={selectedAccount}
-              onChange={(e) => setSelectedAccount(e.target.value)}
-              className="input-ios"
-            >
-              <option value="">所有账号</option>
-              {accounts.map((account) => (
-                <option key={account.id} value={account.id}>
-                  {account.id}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="input-label">订单状态</label>
-            <select
-              value={selectedStatus}
-              onChange={(e) => setSelectedStatus(e.target.value)}
-              className="input-ios"
-            >
-              <option value="">所有状态</option>
-              <option value="processing">处理中</option>
-              <option value="processed">已处理</option>
-              <option value="shipped">已发货</option>
-              <option value="completed">已完成</option>
-              <option value="cancelled">已关闭</option>
-            </select>
-          </div>
-          <div>
-            <label className="input-label">搜索订单</label>
-            <div className="relative">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <input
-                type="text"
-                value={searchKeyword}
-                onChange={(e) => setSearchKeyword(e.target.value)}
-                placeholder="搜索订单ID或商品ID..."
-                className="input-ios pl-12"
+        <div className="vben-card-body">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="input-group">
+              <label className="input-label">筛选账号</label>
+              <Select
+                value={selectedAccount}
+                onChange={setSelectedAccount}
+                options={[
+                  { value: '', label: '所有账号' },
+                  ...accounts.map((account) => ({
+                    value: account.id,
+                    label: account.id,
+                  })),
+                ]}
+                placeholder="所有账号"
               />
+            </div>
+            <div className="input-group">
+              <label className="input-label">订单状态</label>
+              <Select
+                value={selectedStatus}
+                onChange={setSelectedStatus}
+                options={[
+                  { value: '', label: '所有状态' },
+                  { value: 'processing', label: '处理中' },
+                  { value: 'processed', label: '已处理' },
+                  { value: 'shipped', label: '已发货' },
+                  { value: 'completed', label: '已完成' },
+                  { value: 'cancelled', label: '已关闭' },
+                ]}
+                placeholder="所有状态"
+              />
+            </div>
+            <div className="input-group">
+              <label className="input-label">搜索订单</label>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <input
+                  type="text"
+                  value={searchKeyword}
+                  onChange={(e) => setSearchKeyword(e.target.value)}
+                  placeholder="搜索订单ID或商品ID..."
+                  className="input-ios pl-9"
+                />
+              </div>
             </div>
           </div>
         </div>

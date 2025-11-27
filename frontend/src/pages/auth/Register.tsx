@@ -141,13 +141,13 @@ export function Register() {
 
   if (!registrationEnabled) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8 text-center max-w-sm">
-          <div className="w-14 h-14 rounded-full bg-amber-100 mx-auto mb-4 flex items-center justify-center">
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex items-center justify-center p-4">
+        <div className="bg-white dark:bg-slate-800 rounded-lg shadow-sm border border-slate-200 dark:border-slate-700 p-8 text-center max-w-sm">
+          <div className="w-14 h-14 rounded-full bg-amber-100 dark:bg-amber-900/30 mx-auto mb-4 flex items-center justify-center">
             <span className="text-2xl">🚫</span>
           </div>
-          <h1 className="text-lg vben-card-title text-gray-900 mb-2">注册功能已关闭</h1>
-          <p className="text-sm text-gray-500 mb-6">管理员已关闭注册功能，如需账号请联系管理员</p>
+          <h1 className="text-lg vben-card-title text-slate-900 dark:text-slate-100 mb-2">注册功能已关闭</h1>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">管理员已关闭注册功能，如需账号请联系管理员</p>
           <Link to="/login" className="btn-ios-primary">
             返回登录
           </Link>
@@ -157,25 +157,25 @@ export function Register() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex items-center justify-center p-6 transition-colors">
       <div className="w-full max-w-md">
         {/* Mobile header */}
         <div className="text-center mb-6">
           <div className="w-12 h-12 rounded-xl bg-blue-600 text-white mx-auto mb-4 flex items-center justify-center">
             <MessageSquare className="w-6 h-6" />
           </div>
-          <h1 className="text-xl font-bold text-gray-900">用户注册</h1>
-          <p className="text-sm page-description">创建您的账号以开始使用</p>
+          <h1 className="text-xl font-bold text-slate-900 dark:text-slate-100">用户注册</h1>
+          <p className="text-sm text-slate-500 dark:text-slate-400">创建您的账号以开始使用</p>
         </div>
 
         {/* Register Card */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+        <div className="bg-white dark:bg-slate-800 rounded-lg shadow-sm border border-slate-200 dark:border-slate-700 p-6">
           <form onSubmit={handleSubmit} className="space-y-4">
             {/* Username */}
             <div className="input-group">
               <label className="input-label">用户名</label>
               <div className="relative">
-                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                 <input
                   type="text"
                   value={username}
@@ -190,7 +190,7 @@ export function Register() {
             <div className="input-group">
               <label className="input-label">邮箱地址</label>
               <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                 <input
                   type="email"
                   value={email}
@@ -205,7 +205,7 @@ export function Register() {
             <div className="input-group">
               <label className="input-label">密码</label>
               <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                 <input
                   type={showPassword ? 'text' : 'password'}
                   value={password}
@@ -216,7 +216,7 @@ export function Register() {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
                 >
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
@@ -227,7 +227,7 @@ export function Register() {
             <div className="input-group">
               <label className="input-label">确认密码</label>
               <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                 <input
                   type={showPassword ? 'text' : 'password'}
                   value={confirmPassword}
@@ -259,12 +259,12 @@ export function Register() {
                   src={captchaImage}
                   alt="验证码"
                   onClick={loadCaptcha}
-                  className="h-[38px] rounded border border-gray-300 cursor-pointer hover:opacity-80 transition-opacity"
+                  className="h-[38px] rounded border border-slate-300 dark:border-slate-600 cursor-pointer hover:opacity-80 transition-opacity"
                 />
               </div>
               <p className={cn(
                 'text-xs',
-                captchaVerified ? 'text-green-600' : 'text-gray-400'
+                captchaVerified ? 'text-green-600 dark:text-green-400' : 'text-slate-400'
               )}>
                 {captchaVerified ? '✓ 验证成功' : '点击图片更换验证码'}
               </p>
@@ -275,7 +275,7 @@ export function Register() {
               <label className="input-label">邮箱验证码</label>
               <div className="flex gap-2">
                 <div className="relative flex-1">
-                  <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                   <input
                     type="text"
                     value={verificationCode}
@@ -307,7 +307,7 @@ export function Register() {
           </form>
 
           {/* Login link */}
-          <p className="text-center mt-6 text-gray-500 text-sm">
+          <p className="text-center mt-6 text-slate-500 dark:text-slate-400 text-sm">
             已有账号？{' '}
             <Link to="/login" className="text-blue-600 dark:text-blue-400 font-medium hover:text-indigo-700">
               立即登录
@@ -316,7 +316,7 @@ export function Register() {
         </div>
 
         {/* Footer */}
-        <p className="text-center mt-6 text-gray-400 text-xs">
+        <p className="text-center mt-6 text-slate-400 text-xs">
           © {new Date().getFullYear()} 划算云服务器 · 
           <a href="https://www.hsykj.com" target="_blank" rel="noopener noreferrer" className="hover:text-blue-600 dark:text-blue-400 ml-1 transition-colors">
             www.hsykj.com

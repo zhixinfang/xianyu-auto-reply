@@ -108,11 +108,58 @@
   }
 
   .vben-card-title {
-    @apply text-base font-semibold text-slate-800 dark:text-slate-100;
+    @apply text-base font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-2;
   }
 
   .vben-card-body {
     @apply p-5;
+  }
+
+  /* ==================== 开关组件 ==================== */
+  .switch-ios {
+    @apply relative inline-flex items-center cursor-pointer;
+  }
+
+  .switch-ios input {
+    @apply sr-only;
+  }
+
+  .switch-ios .switch-slider {
+    @apply w-11 h-6 bg-slate-200 dark:bg-slate-600 rounded-full
+           transition-colors duration-200 ease-in-out
+           after:content-[''] after:absolute after:top-[2px] after:left-[2px]
+           after:bg-white after:border-slate-300 after:border after:rounded-full
+           after:h-5 after:w-5 after:transition-all after:duration-200;
+  }
+
+  .switch-ios input:checked + .switch-slider {
+    @apply bg-blue-500;
+  }
+
+  .switch-ios input:checked + .switch-slider::after {
+    transform: translateX(100%);
+    border-color: white;
+  }
+
+  .switch-ios input:focus + .switch-slider {
+    @apply ring-2 ring-blue-300 dark:ring-blue-800 ring-offset-2 dark:ring-offset-slate-800;
+  }
+
+  /* ==================== 勾选框组件 ==================== */
+  .checkbox-ios {
+    @apply w-4 h-4 rounded border-slate-300 dark:border-slate-600 
+           text-blue-500 bg-white dark:bg-slate-700
+           focus:ring-2 focus:ring-blue-500 focus:ring-offset-0
+           transition-colors cursor-pointer;
+  }
+
+  .checkbox-ios:checked {
+    @apply bg-blue-500 border-blue-500;
+  }
+
+  /* 勾选框标签组合 */
+  .checkbox-label {
+    @apply flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300 cursor-pointer;
   }
 
   /* 兼容旧类名 */
@@ -196,6 +243,20 @@
 
   .input-ios-error {
     @apply input-ios border-red-500 focus:border-red-500 focus:ring-red-500;
+  }
+
+  /* 自定义下拉框样式 */
+  select.input-ios {
+    @apply appearance-none cursor-pointer
+           bg-[url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%2364748b%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E')]
+           bg-[length:1.25rem_1.25rem]
+           bg-[right_0.5rem_center]
+           bg-no-repeat
+           pr-10;
+  }
+
+  .dark select.input-ios {
+    background-image: url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%2394a3b8%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E');
   }
 
   /* 输入框组 */

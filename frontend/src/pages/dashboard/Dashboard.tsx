@@ -5,6 +5,7 @@ import { getAccountDetails } from '@/api/accounts'
 import { getKeywords } from '@/api/keywords'
 import { getOrders } from '@/api/orders'
 import { useUIStore } from '@/store/uiStore'
+import { useAuthStore } from '@/store/authStore'
 import { PageLoading } from '@/components/common/Loading'
 import type { AccountDetail } from '@/types'
 
@@ -17,6 +18,7 @@ interface DashboardStats {
 
 export function Dashboard() {
   const { addToast } = useUIStore()
+  const { isAuthenticated, token, _hasHydrated } = useAuthStore()
   const [loading, setLoading] = useState(true)
   const [stats, setStats] = useState<DashboardStats>({
     totalAccounts: 0,
@@ -27,6 +29,7 @@ export function Dashboard() {
   const [accounts, setAccounts] = useState<AccountDetail[]>([])
 
   const loadDashboard = async () => {
+    if (!_hasHydrated || !isAuthenticated || !token) return
     try {
       setLoading(true)
 
@@ -87,8 +90,9 @@ export function Dashboard() {
   }
 
   useEffect(() => {
+    if (!_hasHydrated || !isAuthenticated || !token) return
     loadDashboard()
-  }, [])
+  }, [_hasHydrated, isAuthenticated, token])
 
   if (loading) {
     return <PageLoading />

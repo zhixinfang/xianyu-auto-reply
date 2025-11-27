@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import React, { useEffect, useState, useRef } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useAuthStore } from '@/store/authStore'
 import { MainLayout } from '@/components/layout/MainLayout'
@@ -25,24 +25,34 @@ import { verifyToken } from '@/api/auth'
 
 // Protected route wrapper
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, setAuth, clearAuth } = useAuthStore()
+  const { isAuthenticated, setAuth, clearAuth, token: storeToken, _hasHydrated } = useAuthStore()
   const [isChecking, setIsChecking] = useState(true)
   const [isValid, setIsValid] = useState(false)
+  const hasCheckedRef = useRef(false)
 
   useEffect(() => {
+    // 等待 zustand persist 完成 hydration
+    if (!_hasHydrated) return
+    
+    // 防止重复检查
+    if (hasCheckedRef.current) return
+    
     const checkAuth = async () => {
-      const token = localStorage.getItem('auth_token')
+      // 优先使用 store 中的 token，其次是 localStorage
+      const token = storeToken || localStorage.getItem('auth_token')
       
       if (!token) {
         setIsChecking(false)
         setIsValid(false)
+        hasCheckedRef.current = true
         return
       }
 
-      // 如果已经认证，直接通过
-      if (isAuthenticated) {
+      // 如果 store 中已经认证且有用户信息，直接通过
+      if (isAuthenticated && storeToken) {
         setIsChecking(false)
         setIsValid(true)
+        hasCheckedRef.current = true
         return
       }
 
@@ -65,14 +75,15 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
         setIsValid(false)
       } finally {
         setIsChecking(false)
+        hasCheckedRef.current = true
       }
     }
 
     checkAuth()
-  }, [isAuthenticated, setAuth, clearAuth])
+  }, [_hasHydrated, isAuthenticated, storeToken, setAuth, clearAuth])
 
-  // 显示加载状态
-  if (isChecking) {
+  // 等待 hydration 或检查完成
+  if (!_hasHydrated || isChecking) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-900">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>

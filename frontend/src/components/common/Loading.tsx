@@ -21,17 +21,17 @@ export function Loading({ size = 'md', fullScreen = false, text }: LoadingProps)
         animate={{ rotate: 360 }}
         transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
       >
-        <Loader2 className={cn('text-primary-500', sizes[size])} />
+        <Loader2 className={cn('text-blue-500', sizes[size])} />
       </motion.div>
       {text && (
-        <p className="text-sm text-gray-500 font-medium">{text}</p>
+        <p className="text-sm text-slate-500 dark:text-slate-400 font-medium">{text}</p>
       )}
     </div>
   )
 
   if (fullScreen) {
     return (
-      <div className="fixed inset-0 bg-white/80 backdrop-blur-sm z-50 flex items-center justify-center">
+      <div className="fixed inset-0 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm z-50 flex items-center justify-center">
         {content}
       </div>
     )

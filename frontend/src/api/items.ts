@@ -2,9 +2,12 @@ import { get, post, put, del } from '@/utils/request'
 import type { Item, ItemReply, ApiResponse } from '@/types'
 
 // 获取商品列表
-export const getItems = (cookieId?: string): Promise<{ success: boolean; data: Item[] }> => {
-  const params = cookieId ? `?cookie_id=${cookieId}` : ''
-  return get(`/items${params}`)
+export const getItems = async (cookieId?: string): Promise<{ success: boolean; data: Item[] }> => {
+  const url = cookieId ? `/items/cookie/${cookieId}` : '/items'
+  const result = await get<{ items?: Item[] } | Item[]>(url)
+  // 后端返回 { items: [...] } 或直接返回数组
+  const items = Array.isArray(result) ? result : (result.items || [])
+  return { success: true, data: items }
 }
 
 // 删除商品

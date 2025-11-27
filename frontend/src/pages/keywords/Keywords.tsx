@@ -6,10 +6,13 @@ import { getKeywords, deleteKeyword, addKeyword, updateKeyword, exportKeywords, 
 import { getAccounts } from '@/api/accounts'
 import { useUIStore } from '@/store/uiStore'
 import { PageLoading } from '@/components/common/Loading'
+import { useAuthStore } from '@/store/authStore'
+import { Select } from '@/components/common/Select'
 import type { Keyword, Account } from '@/types'
 
 export function Keywords() {
   const { addToast } = useUIStore()
+  const { isAuthenticated, token, _hasHydrated } = useAuthStore()
   const [loading, setLoading] = useState(true)
   const [keywords, setKeywords] = useState<Keyword[]>([])
   const [accounts, setAccounts] = useState<Account[]>([])
@@ -25,6 +28,9 @@ export function Keywords() {
   const importInputRef = useRef<HTMLInputElement | null>(null)
 
   const loadKeywords = async () => {
+    if (!_hasHydrated || !isAuthenticated || !token) {
+      return
+    }
     if (!selectedAccount) {
       setKeywords([])
       setLoading(false)
@@ -42,6 +48,9 @@ export function Keywords() {
   }
 
   const loadAccounts = async () => {
+    if (!_hasHydrated || !isAuthenticated || !token) {
+      return
+    }
     try {
       const data = await getAccounts()
       setAccounts(data)
@@ -54,14 +63,16 @@ export function Keywords() {
   }
 
   useEffect(() => {
+    if (!_hasHydrated || !isAuthenticated || !token) return
     loadAccounts()
-  }, [])
+  }, [_hasHydrated, isAuthenticated, token])
 
   useEffect(() => {
+    if (!_hasHydrated || !isAuthenticated || !token) return
     if (selectedAccount) {
       loadKeywords()
     }
-  }, [selectedAccount])
+  }, [_hasHydrated, isAuthenticated, token, selectedAccount])
 
   const openAddModal = () => {
     if (!selectedAccount) {
@@ -258,23 +269,23 @@ export function Keywords() {
         animate={{ opacity: 1, y: 0 }}
         className="vben-card"
       >
-        <div className="max-w-md">
-          <label className="input-label">选择账号</label>
-          <select
-            value={selectedAccount}
-            onChange={(e) => setSelectedAccount(e.target.value)}
-            className="input-ios"
-          >
-            {accounts.length === 0 ? (
-              <option value="">暂无账号</option>
-            ) : (
-              accounts.map((account) => (
-                <option key={account.id} value={account.id}>
-                  {account.id}
-                </option>
-              ))
-            )}
-          </select>
+        <div className="vben-card-body">
+          <div className="max-w-md">
+            <label className="input-label">选择账号</label>
+            <Select
+              value={selectedAccount}
+              onChange={setSelectedAccount}
+              options={
+                accounts.length === 0
+                  ? [{ value: '', label: '暂无账号' }]
+                  : accounts.map((account) => ({
+                      value: account.id,
+                      label: account.id,
+                    }))
+              }
+              placeholder="选择账号"
+            />
+          </div>
         </div>
       </motion.div>
 
@@ -328,12 +339,12 @@ export function Keywords() {
                 keywords.map((keyword) => (
                   <tr key={keyword.id}>
                     <td className="font-medium">
-                      <code className="bg-primary-50 text-blue-600 dark:text-blue-400 px-2 py-1 rounded">
+                      <code className="bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 px-2 py-1 rounded">
                         {keyword.keyword}
                       </code>
                     </td>
                     <td className="max-w-[300px]">
-                      <p className="truncate text-gray-600" title={keyword.reply}>
+                      <p className="truncate text-slate-600 dark:text-slate-300" title={keyword.reply}>
                         {keyword.reply}
                       </p>
                     </td>
@@ -348,14 +359,14 @@ export function Keywords() {
                       <div className="">
                         <button
                           onClick={() => openEditModal(keyword)}
-                          className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
+                          className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
                           title="编辑"
                         >
                           <Edit2 className="w-4 h-4 text-blue-500 dark:text-blue-400" />
                         </button>
                         <button
                           onClick={() => handleDelete(keyword.id)}
-                          className="p-2 rounded-lg hover:bg-red-50 transition-colors"
+                          className="p-2 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors"
                           title="删除"
                         >
                           <Trash2 className="w-4 h-4 text-red-500" />
@@ -386,7 +397,7 @@ export function Keywords() {
                     type="text"
                     value={selectedAccount}
                     disabled
-                    className="input-ios bg-gray-100 cursor-not-allowed"
+                    className="input-ios bg-slate-100 dark:bg-slate-700 cursor-not-allowed"
                   />
                 </div>
                 <div>
@@ -408,17 +419,24 @@ export function Keywords() {
                     placeholder="请输入自动回复内容"
                   />
                 </div>
-                <div className="flex items-center justify-between">
-                  <label className=" text-sm text-gray-700">
-                    <input
-                      type="checkbox"
-                      checked={fuzzyMatch}
-                      onChange={(e) => setFuzzyMatch(e.target.checked)}
-                      className="h-4 w-4 rounded border-gray-300 text-blue-500 dark:text-blue-400 focus:ring-primary-500"
+                <div className="flex items-center justify-between pt-2">
+                  <div>
+                    <span className="text-sm font-medium text-slate-700 dark:text-slate-200">使用模糊匹配</span>
+                    <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">开启后，将在消息中模糊匹配该关键词</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setFuzzyMatch(!fuzzyMatch)}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                      fuzzyMatch ? 'bg-blue-600' : 'bg-slate-300 dark:bg-slate-600'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                        fuzzyMatch ? 'translate-x-6' : 'translate-x-1'
+                      }`}
                     />
-                    使用模糊匹配
-                  </label>
-                  <p className="text-xs text-gray-400">开启后，将在消息中模糊匹配该关键词</p>
+                  </button>
                 </div>
               </div>
               <div className="modal-footer">

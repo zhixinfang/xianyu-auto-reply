@@ -5,12 +5,15 @@ import { getCards, deleteCard, addCard, importCards } from '@/api/cards'
 import { getAccounts } from '@/api/accounts'
 import { useUIStore } from '@/store/uiStore'
 import { PageLoading } from '@/components/common/Loading'
+import { useAuthStore } from '@/store/authStore'
+import { Select } from '@/components/common/Select'
 import type { Card, Account } from '@/types'
 
 type ModalType = 'add' | 'import' | null
 
 export function Cards() {
   const { addToast } = useUIStore()
+  const { isAuthenticated, token, _hasHydrated } = useAuthStore()
   const [loading, setLoading] = useState(true)
   const [cards, setCards] = useState<Card[]>([])
   const [accounts, setAccounts] = useState<Account[]>([])
@@ -28,6 +31,9 @@ export function Cards() {
   const [importLoading, setImportLoading] = useState(false)
 
   const loadCards = async () => {
+    if (!_hasHydrated || !isAuthenticated || !token) {
+      return
+    }
     try {
       setLoading(true)
       const result = await getCards(selectedAccount || undefined)
@@ -42,6 +48,9 @@ export function Cards() {
   }
 
   const loadAccounts = async () => {
+    if (!_hasHydrated || !isAuthenticated || !token) {
+      return
+    }
     try {
       const data = await getAccounts()
       setAccounts(data)
@@ -51,13 +60,15 @@ export function Cards() {
   }
 
   useEffect(() => {
+    if (!_hasHydrated || !isAuthenticated || !token) return
     loadAccounts()
     loadCards()
-  }, [])
+  }, [_hasHydrated, isAuthenticated, token])
 
   useEffect(() => {
+    if (!_hasHydrated || !isAuthenticated || !token) return
     loadCards()
-  }, [selectedAccount])
+  }, [_hasHydrated, isAuthenticated, token, selectedAccount])
 
   const handleDelete = async (id: string) => {
     if (!confirm('确定要删除这张卡券吗？')) return
@@ -182,18 +193,18 @@ export function Cards() {
           <div className="max-w-md">
             <div className="input-group">
               <label className="input-label">筛选账号</label>
-              <select
+              <Select
                 value={selectedAccount}
-                onChange={(e) => setSelectedAccount(e.target.value)}
-                className="input-ios"
-              >
-                <option value="">所有账号</option>
-                {accounts.map((account) => (
-                  <option key={account.id} value={account.id}>
-                    {account.id}
-                  </option>
-                ))}
-              </select>
+                onChange={setSelectedAccount}
+                options={[
+                  { value: '', label: '所有账号' },
+                  ...accounts.map((account) => ({
+                    value: account.id,
+                    label: account.id,
+                  })),
+                ]}
+                placeholder="所有账号"
+              />
             </div>
           </div>
         </div>

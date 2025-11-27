@@ -1,24 +1,73 @@
 import { get, post, put, del } from '@/utils/request'
 import type { Account, AccountDetail, ApiResponse } from '@/types'
 
-// 获取账号列表
-export const getAccounts = (): Promise<Account[]> => {
-  return get('/cookies')
+// 获取账号列表（返回账号ID数组）
+export const getAccounts = async (): Promise<Account[]> => {
+  const ids: string[] = await get('/cookies')
+  // 后端返回的是账号ID数组，转换为Account对象数组
+  return ids.map(id => ({ 
+    id, 
+    cookie: '', 
+    enabled: true,
+    use_ai_reply: false,
+    use_default_reply: false,
+    auto_confirm: false
+  }))
 }
 
 // 获取账号详情列表
-export const getAccountDetails = (): Promise<AccountDetail[]> => {
-  return get('/cookies/details')
+export const getAccountDetails = async (): Promise<AccountDetail[]> => {
+  interface BackendAccountDetail {
+    id: string
+    value: string
+    enabled: boolean
+    auto_confirm: boolean
+    remark?: string
+    pause_duration?: number
+  }
+  const data = await get<BackendAccountDetail[]>('/cookies/details')
+  // 后端返回 value 字段，前端使用 cookie 字段
+  return data.map((item) => ({
+    id: item.id,
+    cookie: item.value,
+    enabled: item.enabled,
+    auto_confirm: item.auto_confirm,
+    note: item.remark,
+    pause_duration: item.pause_duration,
+    use_ai_reply: false,
+    use_default_reply: false,
+  }))
 }
 
 // 添加账号
 export const addAccount = (data: { id: string; cookie: string }): Promise<ApiResponse> => {
-  return post('/cookies', data)
+  // 后端需要 id 和 value 字段
+  return post('/cookies', { id: data.id, value: data.cookie })
 }
 
-// 更新账号
-export const updateAccount = (id: string, data: Partial<Account>): Promise<ApiResponse> => {
-  return put(`/cookies/${id}`, data)
+// 更新账号 Cookie 值
+export const updateAccountCookie = (id: string, value: string): Promise<ApiResponse> => {
+  return put(`/cookies/${id}`, { id, value })
+}
+
+// 更新账号启用/禁用状态
+export const updateAccountStatus = (id: string, enabled: boolean): Promise<ApiResponse> => {
+  return put(`/cookies/${id}/status`, { enabled })
+}
+
+// 更新账号备注
+export const updateAccountRemark = (id: string, remark: string): Promise<ApiResponse> => {
+  return put(`/cookies/${id}/remark`, { remark })
+}
+
+// 更新账号自动确认设置
+export const updateAccountAutoConfirm = (id: string, autoConfirm: boolean): Promise<ApiResponse> => {
+  return put(`/cookies/${id}/auto-confirm`, { auto_confirm: autoConfirm })
+}
+
+// 更新账号暂停时间
+export const updateAccountPauseDuration = (id: string, pauseDuration: number): Promise<ApiResponse> => {
+  return put(`/cookies/${id}/pause-duration`, { pause_duration: pauseDuration })
 }
 
 // 删除账号

@@ -110,144 +110,133 @@ export function DataManagement() {
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div>
+      <div className="page-header">
         <h1 className="page-title">数据管理</h1>
         <p className="page-description">导入导出和清理系统数据</p>
       </div>
 
-      {/* Export Section */}
-      <div
-        
-        
-        className="vben-card"
-      >
-        <div className="vben-card-header">
-          <h2 className="vben-card-title ">
-            <Download className="w-4 h-4" />
-            数据导出
-          </h2>
-        </div>
-        <div className="p-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {dataTypes.map((type) => (
-              <div
-                key={type.id}
-                className="border border-slate-200 dark:border-slate-700 rounded-xl p-4 hover:border-primary-300 
-                         hover:bg-primary-50/30 transition-colors"
-              >
-                <div className="flex items-start justify-between">
+      {/* 双列布局 */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* 左列 - 数据导出 */}
+        <div className="vben-card">
+          <div className="vben-card-header">
+            <h2 className="vben-card-title">
+              <Download className="w-4 h-4 text-blue-500" />
+              数据导出
+            </h2>
+          </div>
+          <div className="vben-card-body">
+            <div className="space-y-3">
+              {dataTypes.map((type) => (
+                <div
+                  key={type.id}
+                  className="flex items-center justify-between p-3 rounded-lg border border-slate-200 dark:border-slate-700 
+                           hover:border-blue-300 dark:hover:border-blue-600 hover:bg-blue-50/50 dark:hover:bg-blue-900/20 transition-colors"
+                >
                   <div>
-                    <h3 className="font-medium text-slate-900 dark:text-slate-100">{type.name}</h3>
-                    <p className="text-sm page-description">{type.desc}</p>
+                    <h3 className="font-medium text-slate-900 dark:text-slate-100 text-sm">{type.name}</h3>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">{type.desc}</p>
                   </div>
                   <button
                     onClick={() => handleExport(type.id)}
                     disabled={exporting !== null}
-                    className="btn-ios-secondary py-2 px-3 text-sm"
+                    className="btn-ios-secondary py-1.5 px-3 text-xs"
                   >
-                    {exporting === type.id ? <ButtonLoading /> : <Download className="w-4 h-4" />}
+                    {exporting === type.id ? <ButtonLoading /> : <Download className="w-3.5 h-3.5" />}
                   </button>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* Import Section */}
-      <div
-        
-        
-        
-        className="vben-card"
-      >
-        <div className="bg-emerald-500 px-6 py-4 text-white">
-          <h2 className="vben-card-title ">
-            <Upload className="w-4 h-4" />
-            数据导入
-          </h2>
-        </div>
-        <div className="p-6">
-          <div
-            onClick={handleImportClick}
-            className="border-2 border-dashed border-gray-300 rounded-xl p-8 text-center
-                      hover:border-primary-400 transition-colors cursor-pointer"
-          >
-            {importing ? (
-              <>
-                <Loader2 className="w-12 h-12 text-blue-500 dark:text-blue-400 mx-auto mb-4 animate-spin" />
-                <p className="text-slate-600 dark:text-slate-400 mb-2">正在导入数据...</p>
-              </>
-            ) : (
-              <>
-                <Database className="w-12 h-12 text-slate-400 dark:text-slate-500 mx-auto mb-4" />
-                <p className="text-slate-600 dark:text-slate-400 mb-2">点击选择文件上传</p>
-                <p className="text-sm text-slate-400 dark:text-slate-500">支持 JSON 格式的导出数据文件</p>
-              </>
-            )}
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".json"
-              onChange={handleFileChange}
-              className="hidden"
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* Cleanup Section */}
-      <div
-        
-        
-        
-        className="vben-card"
-      >
-        <div className="bg-red-500 px-6 py-4 text-white">
-          <h2 className="vben-card-title ">
-            <Trash2 className="w-4 h-4" />
-            数据清理
-          </h2>
-        </div>
-        <div className="p-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {cleanupTypes.map((type) => (
+        {/* 右列 */}
+        <div className="space-y-4">
+          {/* 数据导入 */}
+          <div className="vben-card">
+            <div className="vben-card-header">
+              <h2 className="vben-card-title">
+                <Upload className="w-4 h-4 text-emerald-500" />
+                数据导入
+              </h2>
+            </div>
+            <div className="p-5">
               <div
-                key={type.id}
-                className={`border rounded-xl p-4 ${
-                  type.danger 
-                    ? 'border-red-200 bg-red-50/50' 
-                    : 'border-slate-200 dark:border-slate-700 hover:border-amber-300 hover:bg-amber-50/30'
-                } transition-colors`}
+                onClick={handleImportClick}
+                className="border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-lg p-6 text-center
+                          hover:border-emerald-400 dark:hover:border-emerald-500 hover:bg-emerald-50/50 dark:hover:bg-emerald-900/20 
+                          transition-colors cursor-pointer"
               >
-                <div className="flex items-start justify-between">
-                  <div className="flex items-start gap-3">
-                    {type.danger && (
-                      <AlertTriangle className="w-4 h-4 text-red-500 mt-0.5 flex-shrink-0" />
-                    )}
-                    <div>
-                      <h3 className={`font-medium ${type.danger ? 'text-red-700' : 'text-slate-900 dark:text-slate-100'}`}>
-                        {type.name}
-                      </h3>
-                      <p className={`text-sm mt-1 ${type.danger ? 'text-red-600' : 'text-slate-500 dark:text-slate-400'}`}>
-                        {type.desc}
-                      </p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => handleCleanup(type.id, type.danger)}
-                    disabled={cleaning !== null}
-                    className={`py-2 px-3 text-sm rounded-lg font-medium transition-colors ${
-                      type.danger
-                        ? 'bg-red-500 text-white hover:bg-red-600'
-                        : 'btn-ios-secondary'
+                {importing ? (
+                  <>
+                    <Loader2 className="w-10 h-10 text-emerald-500 mx-auto mb-3 animate-spin" />
+                    <p className="text-slate-600 dark:text-slate-400 text-sm">正在导入数据...</p>
+                  </>
+                ) : (
+                  <>
+                    <Database className="w-10 h-10 text-slate-400 dark:text-slate-500 mx-auto mb-3" />
+                    <p className="text-slate-600 dark:text-slate-300 text-sm mb-1">点击选择文件上传</p>
+                    <p className="text-xs text-slate-400 dark:text-slate-500">支持 JSON 格式的导出数据文件</p>
+                  </>
+                )}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".json"
+                  onChange={handleFileChange}
+                  className="hidden"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* 数据清理 */}
+          <div className="vben-card">
+            <div className="vben-card-header">
+              <h2 className="vben-card-title">
+                <Trash2 className="w-4 h-4 text-amber-500" />
+                数据清理
+              </h2>
+            </div>
+            <div className="vben-card-body">
+              <div className="space-y-3">
+                {cleanupTypes.map((type) => (
+                  <div
+                    key={type.id}
+                    className={`flex items-center justify-between p-3 rounded-lg border transition-colors ${
+                      type.danger 
+                        ? 'border-red-200 dark:border-red-800 bg-red-50/50 dark:bg-red-900/20' 
+                        : 'border-slate-200 dark:border-slate-700 hover:border-amber-300 dark:hover:border-amber-600 hover:bg-amber-50/50 dark:hover:bg-amber-900/20'
                     }`}
                   >
-                    {cleaning === type.id ? <ButtonLoading /> : '执行'}
-                  </button>
-                </div>
+                    <div className="flex items-start gap-2">
+                      {type.danger && (
+                        <AlertTriangle className="w-4 h-4 text-red-500 mt-0.5 flex-shrink-0" />
+                      )}
+                      <div>
+                        <h3 className={`font-medium text-sm ${type.danger ? 'text-red-700 dark:text-red-400' : 'text-slate-900 dark:text-slate-100'}`}>
+                          {type.name}
+                        </h3>
+                        <p className={`text-xs mt-0.5 ${type.danger ? 'text-red-600 dark:text-red-400' : 'text-slate-500 dark:text-slate-400'}`}>
+                          {type.desc}
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => handleCleanup(type.id, type.danger)}
+                      disabled={cleaning !== null}
+                      className={`py-1.5 px-3 text-xs rounded-md font-medium transition-colors ${
+                        type.danger
+                          ? 'bg-red-500 text-white hover:bg-red-600'
+                          : 'btn-ios-secondary'
+                      }`}
+                    >
+                      {cleaning === type.id ? <ButtonLoading /> : '执行'}
+                    </button>
+                  </div>
+                ))}
               </div>
-            ))}
+            </div>
           </div>
         </div>
       </div>

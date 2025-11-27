@@ -3,31 +3,35 @@ import type { FormEvent } from 'react'
 import { motion } from 'framer-motion'
 import { Truck, RefreshCw, Plus, Edit2, Trash2, Power, PowerOff, X, Loader2 } from 'lucide-react'
 import { getDeliveryRules, deleteDeliveryRule, updateDeliveryRule, addDeliveryRule } from '@/api/delivery'
-import { getAccounts } from '@/api/accounts'
+import { getCards } from '@/api/cards'
 import { useUIStore } from '@/store/uiStore'
+import { useAuthStore } from '@/store/authStore'
 import { PageLoading } from '@/components/common/Loading'
-import type { DeliveryRule, Account } from '@/types'
+import { Select } from '@/components/common/Select'
+import type { DeliveryRule, Card } from '@/types'
 
 export function Delivery() {
   const { addToast } = useUIStore()
+  const { isAuthenticated, token, _hasHydrated } = useAuthStore()
   const [loading, setLoading] = useState(true)
   const [rules, setRules] = useState<DeliveryRule[]>([])
-  const [accounts, setAccounts] = useState<Account[]>([])
-  const [selectedAccount, setSelectedAccount] = useState('')
+  const [cards, setCards] = useState<Card[]>([])
   
   // 弹窗状态
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingRule, setEditingRule] = useState<DeliveryRule | null>(null)
-  const [formItemId, setFormItemId] = useState('')
-  const [formDeliveryType, setFormDeliveryType] = useState<'card' | 'text' | 'api'>('card')
-  const [formContent, setFormContent] = useState('')
+  const [formKeyword, setFormKeyword] = useState('')
+  const [formCardId, setFormCardId] = useState('')
+  const [formDeliveryCount, setFormDeliveryCount] = useState(1)
+  const [formDescription, setFormDescription] = useState('')
   const [formEnabled, setFormEnabled] = useState(true)
   const [saving, setSaving] = useState(false)
 
   const loadRules = async () => {
+    if (!_hasHydrated || !isAuthenticated || !token) return
     try {
       setLoading(true)
-      const result = await getDeliveryRules(selectedAccount || undefined)
+      const result = await getDeliveryRules()
       if (result.success) {
         setRules(result.data || [])
       }
@@ -38,27 +42,27 @@ export function Delivery() {
     }
   }
 
-  const loadAccounts = async () => {
+  const loadCards = async () => {
+    if (!_hasHydrated || !isAuthenticated || !token) return
     try {
-      const data = await getAccounts()
-      setAccounts(data)
+      const result = await getCards()
+      if (result.success) {
+        setCards(result.data || [])
+      }
     } catch {
       // ignore
     }
   }
 
   useEffect(() => {
-    loadAccounts()
+    if (!_hasHydrated || !isAuthenticated || !token) return
+    loadCards()
     loadRules()
-  }, [])
-
-  useEffect(() => {
-    loadRules()
-  }, [selectedAccount])
+  }, [_hasHydrated, isAuthenticated, token])
 
   const handleToggleEnabled = async (rule: DeliveryRule) => {
     try {
-      await updateDeliveryRule(rule.id, { enabled: !rule.enabled })
+      await updateDeliveryRule(String(rule.id), { enabled: !rule.enabled })
       addToast({ type: 'success', message: rule.enabled ? '规则已禁用' : '规则已启用' })
       loadRules()
     } catch {
@@ -66,10 +70,10 @@ export function Delivery() {
     }
   }
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = async (id: number) => {
     if (!confirm('确定要删除这条规则吗？')) return
     try {
-      await deleteDeliveryRule(id)
+      await deleteDeliveryRule(String(id))
       addToast({ type: 'success', message: '删除成功' })
       loadRules()
     } catch {
@@ -78,23 +82,21 @@ export function Delivery() {
   }
 
   const openAddModal = () => {
-    if (!selectedAccount) {
-      addToast({ type: 'warning', message: '请先选择账号' })
-      return
-    }
     setEditingRule(null)
-    setFormItemId('')
-    setFormDeliveryType('card')
-    setFormContent('')
+    setFormKeyword('')
+    setFormCardId('')
+    setFormDeliveryCount(1)
+    setFormDescription('')
     setFormEnabled(true)
     setIsModalOpen(true)
   }
 
   const openEditModal = (rule: DeliveryRule) => {
     setEditingRule(rule)
-    setFormItemId(rule.item_id || '')
-    setFormDeliveryType((rule.delivery_type as 'card' | 'text' | 'api') || 'card')
-    setFormContent(rule.delivery_content || '')
+    setFormKeyword(rule.keyword)
+    setFormCardId(String(rule.card_id))
+    setFormDeliveryCount(rule.delivery_count)
+    setFormDescription(rule.description || '')
     setFormEnabled(rule.enabled)
     setIsModalOpen(true)
   }
@@ -106,23 +108,27 @@ export function Delivery() {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
-    if (!selectedAccount && !editingRule) {
-      addToast({ type: 'warning', message: '请先选择账号' })
+    if (!formKeyword.trim()) {
+      addToast({ type: 'warning', message: '请输入触发关键词' })
+      return
+    }
+    if (!formCardId) {
+      addToast({ type: 'warning', message: '请选择卡券' })
       return
     }
 
     setSaving(true)
     try {
       const data = {
-        cookie_id: editingRule?.cookie_id || selectedAccount,
-        item_id: formItemId || undefined,
-        delivery_type: formDeliveryType,
-        delivery_content: formContent,
+        keyword: formKeyword.trim(),
+        card_id: Number(formCardId),
+        delivery_count: formDeliveryCount,
+        description: formDescription || undefined,
         enabled: formEnabled,
       }
 
       if (editingRule) {
-        await updateDeliveryRule(editingRule.id, data)
+        await updateDeliveryRule(String(editingRule.id), data)
         addToast({ type: 'success', message: '规则已更新' })
       } else {
         await addDeliveryRule(data)
@@ -162,29 +168,6 @@ export function Delivery() {
         </div>
       </div>
 
-      {/* Filter */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="vben-card"
-      >
-        <div className="max-w-md">
-          <label className="input-label">筛选账号</label>
-          <select
-            value={selectedAccount}
-            onChange={(e) => setSelectedAccount(e.target.value)}
-            className="input-ios"
-          >
-            <option value="">所有账号</option>
-            {accounts.map((account) => (
-              <option key={account.id} value={account.id}>
-                {account.id}
-              </option>
-            ))}
-          </select>
-        </div>
-      </motion.div>
-
       {/* Rules List */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
@@ -204,10 +187,10 @@ export function Delivery() {
           <table className="table-ios">
             <thead>
               <tr>
-                <th>账号ID</th>
-                <th>商品ID</th>
-                <th>发货类型</th>
-                <th>发货内容</th>
+                <th>触发关键词</th>
+                <th>关联卡券</th>
+                <th>发货数量</th>
+                <th>已发次数</th>
                 <th>状态</th>
                 <th>操作</th>
               </tr>
@@ -225,20 +208,10 @@ export function Delivery() {
               ) : (
                 rules.map((rule) => (
                   <tr key={rule.id}>
-                    <td className="font-medium text-blue-600 dark:text-blue-400">{rule.cookie_id}</td>
-                    <td className="text-sm">{rule.item_id || '所有商品'}</td>
-                    <td>
-                      {rule.delivery_type === 'card' ? (
-                        <span className="badge-info">卡密发货</span>
-                      ) : rule.delivery_type === 'text' ? (
-                        <span className="badge-warning">固定文本</span>
-                      ) : (
-                        <span className="badge-gray">其他</span>
-                      )}
-                    </td>
-                    <td className="max-w-[200px] truncate text-gray-500">
-                      {rule.delivery_content || '-'}
-                    </td>
+                    <td className="font-medium text-blue-600 dark:text-blue-400">{rule.keyword}</td>
+                    <td className="text-sm">{rule.card_name || `卡券ID: ${rule.card_id}`}</td>
+                    <td className="text-center">{rule.delivery_count}</td>
+                    <td className="text-center text-slate-500">{rule.delivery_times || 0}</td>
                     <td>
                       {rule.enabled ? (
                         <span className="badge-success">启用</span>
@@ -298,62 +271,67 @@ export function Delivery() {
             <form onSubmit={handleSubmit}>
               <div className="modal-body space-y-4">
                 <div>
-                  <label className="input-label">所属账号</label>
+                  <label className="input-label">触发关键词 *</label>
                   <input
                     type="text"
-                    value={editingRule?.cookie_id || selectedAccount || '请先选择账号'}
-                    disabled
-                    className="input-ios bg-gray-100 cursor-not-allowed"
+                    value={formKeyword}
+                    onChange={(e) => setFormKeyword(e.target.value)}
+                    className="input-ios"
+                    placeholder="输入触发自动发货的关键词"
+                    required
+                  />
+                </div>
+                <div className="input-group">
+                  <label className="input-label">关联卡券 *</label>
+                  <Select
+                    value={formCardId}
+                    onChange={setFormCardId}
+                    options={[
+                      { value: '', label: '请选择卡券' },
+                      ...cards.map((card) => ({
+                        value: String(card.id),
+                        label: card.keyword || card.card_content?.substring(0, 20) || `卡券 ${card.id}`,
+                      })),
+                    ]}
+                    placeholder="请选择卡券"
                   />
                 </div>
                 <div>
-                  <label className="input-label">商品ID（可选）</label>
+                  <label className="input-label">发货数量</label>
                   <input
-                    type="text"
-                    value={formItemId}
-                    onChange={(e) => setFormItemId(e.target.value)}
+                    type="number"
+                    value={formDeliveryCount}
+                    onChange={(e) => setFormDeliveryCount(Number(e.target.value) || 1)}
                     className="input-ios"
-                    placeholder="留空表示适用于所有商品"
+                    min={1}
+                    placeholder="每次发货的卡密数量"
                   />
                 </div>
                 <div>
-                  <label className="input-label">发货类型</label>
-                  <select
-                    value={formDeliveryType}
-                    onChange={(e) => setFormDeliveryType(e.target.value as 'card' | 'text' | 'api')}
-                    className="input-ios"
-                  >
-                    <option value="card">卡密发货</option>
-                    <option value="text">固定文本</option>
-                    <option value="api">API接口</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="input-label">
-                    {formDeliveryType === 'card' ? '卡密说明' : formDeliveryType === 'api' ? 'API地址' : '发货内容'}
-                  </label>
+                  <label className="input-label">描述（可选）</label>
                   <textarea
-                    value={formContent}
-                    onChange={(e) => setFormContent(e.target.value)}
-                    className="input-ios h-24 resize-none"
-                    placeholder={
-                      formDeliveryType === 'card'
-                        ? '卡密将从卡券库中自动获取'
-                        : formDeliveryType === 'api'
-                        ? '请输入API接口地址'
-                        : '请输入固定发货文本'
-                    }
+                    value={formDescription}
+                    onChange={(e) => setFormDescription(e.target.value)}
+                    className="input-ios h-20 resize-none"
+                    placeholder="规则描述，方便识别"
                   />
                 </div>
-                <label className=" text-sm text-gray-700">
-                  <input
-                    type="checkbox"
-                    checked={formEnabled}
-                    onChange={(e) => setFormEnabled(e.target.checked)}
-                    className="h-4 w-4 rounded border-gray-300 text-blue-500 dark:text-blue-400"
-                  />
-                  启用此规则
-                </label>
+                <div className="flex items-center justify-between pt-2">
+                  <span className="text-sm font-medium text-slate-700 dark:text-slate-200">启用此规则</span>
+                  <button
+                    type="button"
+                    onClick={() => setFormEnabled(!formEnabled)}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                      formEnabled ? 'bg-blue-600' : 'bg-slate-300 dark:bg-slate-600'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                        formEnabled ? 'translate-x-6' : 'translate-x-1'
+                      }`}
+                    />
+                  </button>
+                </div>
               </div>
               <div className="modal-footer">
                 <button type="button" onClick={closeModal} className="btn-ios-secondary" disabled={saving}>

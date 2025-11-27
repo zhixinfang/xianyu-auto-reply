@@ -74,8 +74,9 @@ export function Sidebar() {
         className={({ isActive }) =>
           cn(
             'flex items-center gap-3 px-3 py-2.5 rounded-md text-sm transition-all duration-150',
-            'text-slate-400 hover:text-white hover:bg-white/10',
-            isActive && 'bg-blue-600 text-white shadow-sm'
+            isActive 
+              ? 'bg-blue-600 text-white dark:text-white hover:text-white hover:bg-blue-700 shadow-sm'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/10'
           )
         }
       >
@@ -106,24 +107,25 @@ export function Sidebar() {
         }}
         className={cn(
           'fixed top-0 left-0 h-screen w-56 z-50',
-          'bg-[#001529] text-white',
+          'bg-white dark:bg-[#001529]',
           'flex flex-col',
           'transition-transform duration-200 ease-out',
+          'border-r border-slate-200 dark:border-slate-700',
           'lg:translate-x-0',
           !sidebarMobileOpen && '-translate-x-full lg:translate-x-0'
         )}
       >
         {/* Header */}
-        <div className="h-14 flex items-center justify-between px-4 border-b border-white/5">
+        <div className="h-14 flex items-center justify-between px-4 border-b border-slate-200 dark:border-slate-700">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-lg bg-blue-500 flex items-center justify-center">
               <MessageSquare className="w-4 h-4 text-white" />
             </div>
-            <span className="font-semibold text-sm text-white">闲鱼管理系统</span>
+            <span className="font-semibold text-sm text-slate-900 dark:text-white">闲鱼管理系统</span>
           </div>
           <button
             onClick={closeMobileSidebar}
-            className="lg:hidden p-1.5 hover:bg-white/10 rounded transition-colors text-slate-400 hover:text-white"
+            className="lg:hidden p-1.5 hover:bg-slate-100 dark:hover:bg-white/10 rounded transition-colors text-slate-400 hover:text-slate-900 dark:hover:text-white"
           >
             <X className="w-4 h-4" />
           </button>
@@ -139,7 +141,7 @@ export function Sidebar() {
           {user?.is_admin && (
             <>
               <div className="pt-4 pb-2 px-3">
-                <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <p className="text-xs font-medium text-slate-400 dark:text-gray-500 uppercase tracking-wider">
                   管理员
                 </p>
               </div>

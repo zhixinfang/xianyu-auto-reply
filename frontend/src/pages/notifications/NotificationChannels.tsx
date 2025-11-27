@@ -4,7 +4,9 @@ import { motion } from 'framer-motion'
 import { Bell, RefreshCw, Plus, Edit2, Trash2, Send, Power, PowerOff, X, Loader2 } from 'lucide-react'
 import { getNotificationChannels, deleteNotificationChannel, updateNotificationChannel, testNotificationChannel, addNotificationChannel } from '@/api/notifications'
 import { useUIStore } from '@/store/uiStore'
+import { useAuthStore } from '@/store/authStore'
 import { PageLoading } from '@/components/common/Loading'
+import { Select } from '@/components/common/Select'
 import type { NotificationChannel } from '@/types'
 
 const channelTypeLabels: Record<string, string> = {
@@ -18,6 +20,7 @@ const channelTypeLabels: Record<string, string> = {
 
 export function NotificationChannels() {
   const { addToast } = useUIStore()
+  const { isAuthenticated, token, _hasHydrated } = useAuthStore()
   const [loading, setLoading] = useState(true)
   const [channels, setChannels] = useState<NotificationChannel[]>([])
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -29,6 +32,7 @@ export function NotificationChannels() {
   const [saving, setSaving] = useState(false)
 
   const loadChannels = async () => {
+    if (!_hasHydrated || !isAuthenticated || !token) return
     try {
       setLoading(true)
       const result = await getNotificationChannels()
@@ -43,8 +47,9 @@ export function NotificationChannels() {
   }
 
   useEffect(() => {
+    if (!_hasHydrated || !isAuthenticated || !token) return
     loadChannels()
-  }, [])
+  }, [_hasHydrated, isAuthenticated, token])
 
   const handleToggleEnabled = async (channel: NotificationChannel) => {
     try {
@@ -280,20 +285,20 @@ export function NotificationChannels() {
                     placeholder="如：我的邮箱通知"
                   />
                 </div>
-                <div>
+                <div className="input-group">
                   <label className="input-label">渠道类型</label>
-                  <select
+                  <Select
                     value={formType}
-                    onChange={(e) => setFormType(e.target.value as typeof formType)}
-                    className="input-ios"
-                  >
-                    <option value="email">邮件</option>
-                    <option value="wechat">微信</option>
-                    <option value="dingtalk">钉钉</option>
-                    <option value="feishu">飞书</option>
-                    <option value="webhook">Webhook</option>
-                    <option value="telegram">Telegram</option>
-                  </select>
+                    onChange={(value) => setFormType(value as typeof formType)}
+                    options={[
+                      { value: 'email', label: '邮件' },
+                      { value: 'wechat', label: '微信' },
+                      { value: 'dingtalk', label: '钉钉' },
+                      { value: 'feishu', label: '飞书' },
+                      { value: 'webhook', label: 'Webhook' },
+                      { value: 'telegram', label: 'Telegram' },
+                    ]}
+                  />
                 </div>
                 <div>
                   <label className="input-label">配置 (JSON)</label>
@@ -307,15 +312,22 @@ export function NotificationChannels() {
                     根据渠道类型填写对应的配置，如webhook_url、token等
                   </p>
                 </div>
-                <label className=" text-sm text-gray-700">
-                  <input
-                    type="checkbox"
-                    checked={formEnabled}
-                    onChange={(e) => setFormEnabled(e.target.checked)}
-                    className="h-4 w-4 rounded border-gray-300 text-blue-500 dark:text-blue-400"
-                  />
-                  启用此渠道
-                </label>
+                <div className="flex items-center justify-between pt-2">
+                  <span className="text-sm font-medium text-slate-700 dark:text-slate-200">启用此渠道</span>
+                  <button
+                    type="button"
+                    onClick={() => setFormEnabled(!formEnabled)}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                      formEnabled ? 'bg-blue-600' : 'bg-slate-300 dark:bg-slate-600'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                        formEnabled ? 'translate-x-6' : 'translate-x-1'
+                      }`}
+                    />
+                  </button>
+                </div>
               </div>
               <div className="modal-footer">
                 <button type="button" onClick={closeModal} className="btn-ios-secondary" disabled={saving}>

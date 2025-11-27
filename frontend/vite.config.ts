@@ -61,7 +61,27 @@ export default defineConfig({
         target: 'http://localhost:8080',
         changeOrigin: true,
       },
-      '/admin': {
+      '/admin/users': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+      },
+      '/admin/logs': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+      },
+      '/admin/risk-control-logs': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+      },
+      '/admin/backup': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+      },
+      '/admin/data': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+      },
+      '/admin/cookies': {
         target: 'http://localhost:8080',
         changeOrigin: true,
       },

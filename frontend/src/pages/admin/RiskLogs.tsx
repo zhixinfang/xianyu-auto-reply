@@ -1,20 +1,23 @@
 import { useState, useEffect } from 'react'
-
 import { ShieldAlert, RefreshCw, Trash2 } from 'lucide-react'
 import { getRiskLogs, clearRiskLogs, type RiskLog } from '@/api/admin'
 import { getAccounts } from '@/api/accounts'
 import { useUIStore } from '@/store/uiStore'
+import { useAuthStore } from '@/store/authStore'
 import { PageLoading } from '@/components/common/Loading'
+import { Select } from '@/components/common/Select'
 import type { Account } from '@/types'
 
 export function RiskLogs() {
   const { addToast } = useUIStore()
+  const { isAuthenticated, token, _hasHydrated } = useAuthStore()
   const [loading, setLoading] = useState(true)
   const [logs, setLogs] = useState<RiskLog[]>([])
   const [accounts, setAccounts] = useState<Account[]>([])
   const [selectedAccount, setSelectedAccount] = useState('')
 
   const loadLogs = async () => {
+    if (!_hasHydrated || !isAuthenticated || !token) return
     try {
       setLoading(true)
       const result = await getRiskLogs({ cookie_id: selectedAccount || undefined })
@@ -29,6 +32,7 @@ export function RiskLogs() {
   }
 
   const loadAccounts = async () => {
+    if (!_hasHydrated || !isAuthenticated || !token) return
     try {
       const data = await getAccounts()
       setAccounts(data)
@@ -38,13 +42,15 @@ export function RiskLogs() {
   }
 
   useEffect(() => {
+    if (!_hasHydrated || !isAuthenticated || !token) return
     loadAccounts()
     loadLogs()
-  }, [])
+  }, [_hasHydrated, isAuthenticated, token])
 
   useEffect(() => {
+    if (!_hasHydrated || !isAuthenticated || !token) return
     loadLogs()
-  }, [selectedAccount])
+  }, [_hasHydrated, isAuthenticated, token, selectedAccount])
 
   const handleClear = async () => {
     if (!confirm('确定要清空所有风控日志吗？此操作不可恢复！')) return
@@ -82,39 +88,33 @@ export function RiskLogs() {
       </div>
 
       {/* Filter */}
-      <div
-        
-        
-        className="vben-card"
-      >
-        <div className="max-w-md">
-          <label className="input-label">筛选账号</label>
-          <select
-            value={selectedAccount}
-            onChange={(e) => setSelectedAccount(e.target.value)}
-            className="input-ios"
-          >
-            <option value="">所有账号</option>
-            {accounts.map((account) => (
-              <option key={account.id} value={account.id}>
-                {account.id}
-              </option>
-            ))}
-          </select>
+      <div className="vben-card">
+        <div className="vben-card-body">
+          <div className="max-w-md">
+            <div className="input-group">
+              <label className="input-label">筛选账号</label>
+              <Select
+                value={selectedAccount}
+                onChange={setSelectedAccount}
+                options={[
+                  { value: '', label: '所有账号' },
+                  ...accounts.map((account) => ({
+                    value: account.id,
+                    label: account.id,
+                  })),
+                ]}
+                placeholder="所有账号"
+              />
+            </div>
+          </div>
         </div>
       </div>
 
       {/* Logs List */}
-      <div
-        
-        
-        
-        className="vben-card"
-      >
-        <div className="bg-red-500 px-6 py-4 text-white 
-                      flex items-center justify-between">
-          <h2 className="vben-card-title ">
-            <ShieldAlert className="w-4 h-4" />
+      <div className="vben-card">
+        <div className="vben-card-header">
+          <h2 className="vben-card-title">
+            <ShieldAlert className="w-4 h-4 text-amber-500" />
             风控日志
           </h2>
           <span className="badge-primary">{logs.length} 条记录</span>
@@ -146,7 +146,14 @@ export function RiskLogs() {
                     <td>
                       <span className="badge-danger">{log.risk_type}</span>
                     </td>
-                    <td className="max-w-[300px] truncate text-slate-500 dark:text-slate-400">{log.message}</td>
+                    <td className="max-w-[300px] text-slate-500 dark:text-slate-400">
+                      <span 
+                        className="block truncate cursor-help" 
+                        title={log.message}
+                      >
+                        {log.message}
+                      </span>
+                    </td>
                     <td className="text-slate-500 dark:text-slate-400 text-sm">
                       {new Date(log.created_at).toLocaleString()}
                     </td>

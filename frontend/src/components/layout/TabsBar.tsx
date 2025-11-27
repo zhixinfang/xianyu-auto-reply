@@ -23,7 +23,7 @@ const routeTitles: Record<string, string> = {
   '/dashboard': '仪表盘',
   '/accounts': '账号管理',
   '/items': '商品管理',
-  '/keywords': '关键词管理',
+  '/keywords': '自动回复',
   '/item-replies': '指定商品回复',
   '/orders': '订单管理',
   '/cards': '卡券管理',

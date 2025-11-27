@@ -1,25 +1,19 @@
 import { useState, useEffect } from 'react'
-import type { FormEvent } from 'react'
-
-import { Users as UsersIcon, RefreshCw, Plus, Edit2, Trash2, Shield, ShieldOff, X, Loader2 } from 'lucide-react'
-import { getUsers, deleteUser, updateUser, addUser } from '@/api/admin'
+import { Users as UsersIcon, RefreshCw, Plus, Trash2 } from 'lucide-react'
+import { getUsers, deleteUser } from '@/api/admin'
 import { useUIStore } from '@/store/uiStore'
+import { useAuthStore } from '@/store/authStore'
 import { PageLoading } from '@/components/common/Loading'
 import type { User } from '@/types'
 
 export function Users() {
   const { addToast } = useUIStore()
+  const { isAuthenticated, token, _hasHydrated } = useAuthStore()
   const [loading, setLoading] = useState(true)
   const [users, setUsers] = useState<User[]>([])
-  const [isModalOpen, setIsModalOpen] = useState(false)
-  const [editingUser, setEditingUser] = useState<User | null>(null)
-  const [formUsername, setFormUsername] = useState('')
-  const [formPassword, setFormPassword] = useState('')
-  const [formEmail, setFormEmail] = useState('')
-  const [formIsAdmin, setFormIsAdmin] = useState(false)
-  const [saving, setSaving] = useState(false)
 
   const loadUsers = async () => {
+    if (!_hasHydrated || !isAuthenticated || !token) return
     try {
       setLoading(true)
       const result = await getUsers()
@@ -34,17 +28,13 @@ export function Users() {
   }
 
   useEffect(() => {
+    if (!_hasHydrated || !isAuthenticated || !token) return
     loadUsers()
-  }, [])
+  }, [_hasHydrated, isAuthenticated, token])
 
-  const handleToggleAdmin = async (user: User) => {
-    try {
-      await updateUser(user.user_id, { is_admin: !user.is_admin })
-      addToast({ type: 'success', message: user.is_admin ? '已取消管理员权限' : '已设为管理员' })
-      loadUsers()
-    } catch {
-      addToast({ type: 'error', message: '操作失败' })
-    }
+  // TODO: 后端暂未实现 PUT /admin/users/{user_id} 接口
+  const handleNotImplemented = (action: string) => {
+    addToast({ type: 'warning', message: `${action}功能后端暂未实现` })
   }
 
   const handleDelete = async (userId: number) => {
@@ -55,70 +45,6 @@ export function Users() {
       loadUsers()
     } catch {
       addToast({ type: 'error', message: '删除失败' })
-    }
-  }
-
-  const openAddModal = () => {
-    setEditingUser(null)
-    setFormUsername('')
-    setFormPassword('')
-    setFormEmail('')
-    setFormIsAdmin(false)
-    setIsModalOpen(true)
-  }
-
-  const openEditModal = (user: User) => {
-    setEditingUser(user)
-    setFormUsername(user.username)
-    setFormPassword('')
-    setFormEmail(user.email || '')
-    setFormIsAdmin(user.is_admin)
-    setIsModalOpen(true)
-  }
-
-  const closeModal = () => {
-    setIsModalOpen(false)
-    setEditingUser(null)
-  }
-
-  const handleSubmit = async (e: FormEvent) => {
-    e.preventDefault()
-    if (!formUsername.trim()) {
-      addToast({ type: 'warning', message: '请输入用户名' })
-      return
-    }
-    if (!editingUser && !formPassword) {
-      addToast({ type: 'warning', message: '请输入密码' })
-      return
-    }
-
-    setSaving(true)
-    try {
-      if (editingUser) {
-        const data: Partial<User> & { password?: string } = {
-          username: formUsername.trim(),
-          email: formEmail.trim() || undefined,
-          is_admin: formIsAdmin,
-        }
-        if (formPassword) data.password = formPassword
-        await updateUser(editingUser.user_id, data)
-        addToast({ type: 'success', message: '用户已更新' })
-      } else {
-        await addUser({
-          username: formUsername.trim(),
-          password: formPassword,
-          email: formEmail.trim() || undefined,
-          is_admin: formIsAdmin,
-        })
-        addToast({ type: 'success', message: '用户已添加' })
-      }
-
-      closeModal()
-      loadUsers()
-    } catch {
-      addToast({ type: 'error', message: '保存失败' })
-    } finally {
-      setSaving(false)
     }
   }
 
@@ -135,11 +61,12 @@ export function Users() {
           <p className="page-description">管理系统用户账号</p>
         </div>
         <div className="flex gap-3">
-          <button onClick={openAddModal} className="btn-ios-primary ">
+          {/* TODO: 后端暂未实现 POST /admin/users 接口 */}
+          <button onClick={() => handleNotImplemented('添加用户')} className="btn-ios-primary">
             <Plus className="w-4 h-4" />
             添加用户
           </button>
-          <button onClick={loadUsers} className="btn-ios-secondary ">
+          <button onClick={loadUsers} className="btn-ios-secondary">
             <RefreshCw className="w-4 h-4" />
             刷新
           </button>
@@ -147,14 +74,9 @@ export function Users() {
       </div>
 
       {/* Users List */}
-      <div
-        
-        
-        className="vben-card"
-      >
-        <div className="vben-card-header 
-                      flex items-center justify-between">
-          <h2 className="vben-card-title ">
+      <div className="vben-card">
+        <div className="vben-card-header flex items-center justify-between">
+          <h2 className="vben-card-title">
             <UsersIcon className="w-4 h-4" />
             用户列表
           </h2>
@@ -195,28 +117,10 @@ export function Users() {
                       )}
                     </td>
                     <td>
-                      <div className="">
-                        <button
-                          onClick={() => handleToggleAdmin(user)}
-                          className="p-2 rounded-lg hover:bg-slate-100 dark:bg-slate-700 transition-colors"
-                          title={user.is_admin ? '取消管理员' : '设为管理员'}
-                        >
-                          {user.is_admin ? (
-                            <ShieldOff className="w-4 h-4 text-amber-500" />
-                          ) : (
-                            <Shield className="w-4 h-4 text-emerald-500" />
-                          )}
-                        </button>
-                        <button
-                          onClick={() => openEditModal(user)}
-                          className="p-2 rounded-lg hover:bg-slate-100 dark:bg-slate-700 transition-colors"
-                          title="编辑"
-                        >
-                          <Edit2 className="w-4 h-4 text-blue-500 dark:text-blue-400" />
-                        </button>
+                      <div className="flex gap-1">
                         <button
                           onClick={() => handleDelete(user.user_id)}
-                          className="p-2 rounded-lg hover:bg-red-50 transition-colors"
+                          className="p-2 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
                           title="删除"
                         >
                           <Trash2 className="w-4 h-4 text-red-500" />
@@ -231,81 +135,14 @@ export function Users() {
         </div>
       </div>
 
-      {/* 添加/编辑用户弹窗 */}
-      {isModalOpen && (
-        <div className="modal-overlay">
-          <div className="modal-content max-w-md">
-            <div className="modal-header flex items-center justify-between">
-              <h2 className="text-lg font-semibold">
-                {editingUser ? '编辑用户' : '添加用户'}
-              </h2>
-              <button onClick={closeModal} className="p-1 hover:bg-slate-100 dark:bg-slate-700 rounded-lg">
-                <X className="w-4 h-4 text-slate-500 dark:text-slate-400" />
-              </button>
-            </div>
-            <form onSubmit={handleSubmit}>
-              <div className="modal-body space-y-4">
-                <div>
-                  <label className="input-label">用户名</label>
-                  <input
-                    type="text"
-                    value={formUsername}
-                    onChange={(e) => setFormUsername(e.target.value)}
-                    className="input-ios"
-                    placeholder="请输入用户名"
-                  />
-                </div>
-                <div>
-                  <label className="input-label">
-                    密码{editingUser && '（留空则不修改）'}
-                  </label>
-                  <input
-                    type="password"
-                    value={formPassword}
-                    onChange={(e) => setFormPassword(e.target.value)}
-                    className="input-ios"
-                    placeholder={editingUser ? '留空则不修改密码' : '请输入密码'}
-                  />
-                </div>
-                <div>
-                  <label className="input-label">邮箱（可选）</label>
-                  <input
-                    type="email"
-                    value={formEmail}
-                    onChange={(e) => setFormEmail(e.target.value)}
-                    className="input-ios"
-                    placeholder="请输入邮箱"
-                  />
-                </div>
-                <label className=" text-sm text-slate-700 dark:text-slate-300">
-                  <input
-                    type="checkbox"
-                    checked={formIsAdmin}
-                    onChange={(e) => setFormIsAdmin(e.target.checked)}
-                    className="h-4 w-4 rounded border-gray-300 text-blue-500 dark:text-blue-400"
-                  />
-                  设为管理员
-                </label>
-              </div>
-              <div className="modal-footer">
-                <button type="button" onClick={closeModal} className="btn-ios-secondary" disabled={saving}>
-                  取消
-                </button>
-                <button type="submit" className="btn-ios-primary" disabled={saving}>
-                  {saving ? (
-                    <span className="">
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      保存中...
-                    </span>
-                  ) : (
-                    '保存'
-                  )}
-                </button>
-              </div>
-            </form>
-          </div>
+      {/* 提示信息 */}
+      <div className="vben-card">
+        <div className="vben-card-body">
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            提示：用户可通过注册页面自行注册账号。管理员可在此页面删除用户。
+          </p>
         </div>
-      )}
+      </div>
     </div>
   )
 }

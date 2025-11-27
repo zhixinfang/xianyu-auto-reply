@@ -5,11 +5,14 @@ import { MessageCircle, RefreshCw, Plus, Edit2, Trash2, X, Loader2 } from 'lucid
 import { getItemReplies, deleteItemReply, addItemReply, updateItemReply } from '@/api/items'
 import { getAccounts } from '@/api/accounts'
 import { useUIStore } from '@/store/uiStore'
+import { useAuthStore } from '@/store/authStore'
 import { PageLoading } from '@/components/common/Loading'
+import { Select } from '@/components/common/Select'
 import type { ItemReply, Account } from '@/types'
 
 export function ItemReplies() {
   const { addToast } = useUIStore()
+  const { isAuthenticated, token, _hasHydrated } = useAuthStore()
   const [loading, setLoading] = useState(true)
   const [replies, setReplies] = useState<ItemReply[]>([])
   const [accounts, setAccounts] = useState<Account[]>([])
@@ -22,6 +25,7 @@ export function ItemReplies() {
   const [saving, setSaving] = useState(false)
 
   const loadReplies = async () => {
+    if (!_hasHydrated || !isAuthenticated || !token) return
     try {
       setLoading(true)
       const result = await getItemReplies(selectedAccount || undefined)
@@ -36,6 +40,7 @@ export function ItemReplies() {
   }
 
   const loadAccounts = async () => {
+    if (!_hasHydrated || !isAuthenticated || !token) return
     try {
       const data = await getAccounts()
       setAccounts(data)
@@ -45,18 +50,20 @@ export function ItemReplies() {
   }
 
   useEffect(() => {
+    if (!_hasHydrated || !isAuthenticated || !token) return
     loadAccounts()
     loadReplies()
-  }, [])
+  }, [_hasHydrated, isAuthenticated, token])
 
   useEffect(() => {
+    if (!_hasHydrated || !isAuthenticated || !token) return
     loadReplies()
-  }, [selectedAccount])
+  }, [_hasHydrated, isAuthenticated, token, selectedAccount])
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = async (reply: ItemReply) => {
     if (!confirm('确定要删除这条商品回复吗？')) return
     try {
-      await deleteItemReply(id)
+      await deleteItemReply(reply.cookie_id, reply.item_id)
       addToast({ type: 'success', message: '删除成功' })
       loadReplies()
     } catch {
@@ -110,10 +117,10 @@ export function ItemReplies() {
       }
 
       if (editingReply) {
-        await updateItemReply(editingReply.id, data)
+        await updateItemReply(editingReply.cookie_id, editingReply.item_id, data)
         addToast({ type: 'success', message: '回复已更新' })
       } else {
-        await addItemReply(data)
+        await addItemReply(selectedAccount, formItemId.trim(), data)
         addToast({ type: 'success', message: '回复已添加' })
       }
 
@@ -156,20 +163,22 @@ export function ItemReplies() {
         animate={{ opacity: 1, y: 0 }}
         className="vben-card"
       >
-        <div className="max-w-md">
-          <label className="input-label">筛选账号</label>
-          <select
-            value={selectedAccount}
-            onChange={(e) => setSelectedAccount(e.target.value)}
-            className="input-ios"
-          >
-            <option value="">所有账号</option>
-            {accounts.map((account) => (
-              <option key={account.id} value={account.id}>
-                {account.id}
-              </option>
-            ))}
-          </select>
+        <div className="vben-card-body">
+          <div className="max-w-xs">
+            <label className="input-label">筛选账号</label>
+            <Select
+              value={selectedAccount}
+              onChange={setSelectedAccount}
+              options={[
+                { value: '', label: '所有账号' },
+                ...accounts.map((account) => ({
+                  value: account.id,
+                  label: account.id,
+                })),
+              ]}
+              placeholder="选择账号"
+            />
+          </div>
         </div>
       </motion.div>
 
@@ -230,7 +239,7 @@ export function ItemReplies() {
                           <Edit2 className="w-4 h-4 text-blue-500 dark:text-blue-400" />
                         </button>
                         <button
-                          onClick={() => handleDelete(reply.id)}
+                          onClick={() => handleDelete(reply)}
                           className="p-2 rounded-lg hover:bg-red-50 transition-colors"
                           title="删除"
                         >

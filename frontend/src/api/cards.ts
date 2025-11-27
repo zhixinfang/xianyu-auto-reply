@@ -2,9 +2,12 @@ import { get, post, del } from '@/utils/request'
 import type { ApiResponse, Card } from '@/types'
 
 // 获取卡券列表
-export const getCards = (accountId?: string): Promise<{ success: boolean; data?: Card[] }> => {
+export const getCards = async (accountId?: string): Promise<{ success: boolean; data?: Card[] }> => {
   const url = accountId ? `/cards?cookie_id=${accountId}` : '/cards'
-  return get(url)
+  const result = await get<Card[] | { cards?: Card[] }>(url)
+  // 后端可能返回数组或 { cards: [...] } 格式
+  const data = Array.isArray(result) ? result : (result.cards || [])
+  return { success: true, data }
 }
 
 // 获取账号的卡券列表

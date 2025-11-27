@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import type { FormEvent } from 'react'
-import { Plus, RefreshCw, QrCode, Key, Edit2, Trash2, Power, PowerOff, X, Loader2 } from 'lucide-react'
-import { getAccountDetails, deleteAccount, updateAccount, addAccount, generateQRLogin, checkQRLoginStatus, passwordLogin } from '@/api/accounts'
+import { Plus, RefreshCw, QrCode, Key, Edit2, Trash2, Power, PowerOff, X, Loader2, Copy } from 'lucide-react'
+import { getAccountDetails, deleteAccount, updateAccountCookie, updateAccountStatus, updateAccountRemark, addAccount, generateQRLogin, checkQRLoginStatus, passwordLogin } from '@/api/accounts'
 import { useUIStore } from '@/store/uiStore'
+import { useAuthStore } from '@/store/authStore'
 import { PageLoading } from '@/components/common/Loading'
 import type { AccountDetail } from '@/types'
 
@@ -10,6 +11,7 @@ type ModalType = 'qrcode' | 'password' | 'manual' | 'edit' | null
 
 export function Accounts() {
   const { addToast } = useUIStore()
+  const { isAuthenticated, token, _hasHydrated } = useAuthStore()
   const [loading, setLoading] = useState(true)
   const [accounts, setAccounts] = useState<AccountDetail[]>([])
   const [activeModal, setActiveModal] = useState<ModalType>(null)
@@ -34,12 +36,11 @@ export function Accounts() {
   // 编辑账号状态
   const [editingAccount, setEditingAccount] = useState<AccountDetail | null>(null)
   const [editNote, setEditNote] = useState('')
-  const [editUseAI, setEditUseAI] = useState(false)
-  const [editUseDefault, setEditUseDefault] = useState(false)
   const [editCookie, setEditCookie] = useState('')
   const [editSaving, setEditSaving] = useState(false)
 
   const loadAccounts = async () => {
+    if (!_hasHydrated || !isAuthenticated || !token) return
     try {
       setLoading(true)
       const data = await getAccountDetails()
@@ -52,8 +53,9 @@ export function Accounts() {
   }
 
   useEffect(() => {
+    if (!_hasHydrated || !isAuthenticated || !token) return
     loadAccounts()
-  }, [])
+  }, [_hasHydrated, isAuthenticated, token])
 
   // 清理扫码检查定时器
   const clearQrCheck = useCallback(() => {
@@ -111,14 +113,22 @@ export function Accounts() {
           case 'scanned':
             setQrStatus('scanned')
             break
+          case 'processing':
+            // 正在处理中，显示已扫描状态
+            setQrStatus('scanned')
+            break
           case 'success':
+          case 'already_processed':
+            // 登录成功或已处理完成
             setQrStatus('success')
             clearQrCheck()
             addToast({
               type: 'success',
               message: result.account_info?.is_new_account
                 ? `新账号 ${result.account_info.account_id} 添加成功`
-                : `账号 ${result.account_info?.account_id} 登录成功`,
+                : result.account_info?.account_id 
+                  ? `账号 ${result.account_info.account_id} 登录成功`
+                  : '账号登录成功',
             })
             setTimeout(() => {
               closeModal()
@@ -227,7 +237,7 @@ export function Accounts() {
 
   const handleToggleEnabled = async (account: AccountDetail) => {
     try {
-      await updateAccount(account.id, { enabled: !account.enabled })
+      await updateAccountStatus(account.id, !account.enabled)
       addToast({ type: 'success', message: account.enabled ? '账号已禁用' : '账号已启用' })
       loadAccounts()
     } catch {
@@ -250,8 +260,6 @@ export function Accounts() {
   const openEditModal = (account: AccountDetail) => {
     setEditingAccount(account)
     setEditNote(account.note || '')
-    setEditUseAI(account.use_ai_reply || false)
-    setEditUseDefault(account.use_default_reply || false)
     setEditCookie(account.cookie || '')
     setActiveModal('edit')
   }
@@ -262,12 +270,20 @@ export function Accounts() {
 
     setEditSaving(true)
     try {
-      await updateAccount(editingAccount.id, {
-        note: editNote.trim() || undefined,
-        use_ai_reply: editUseAI,
-        use_default_reply: editUseDefault,
-        cookie: editCookie.trim() || undefined,
-      })
+      // 分别调用不同的 API 更新不同字段
+      const promises: Promise<unknown>[] = []
+      
+      // 更新备注
+      if (editNote.trim() !== (editingAccount.note || '')) {
+        promises.push(updateAccountRemark(editingAccount.id, editNote.trim()))
+      }
+      
+      // 更新 Cookie 值
+      if (editCookie.trim() && editCookie.trim() !== editingAccount.cookie) {
+        promises.push(updateAccountCookie(editingAccount.id, editCookie.trim()))
+      }
+      
+      await Promise.all(promises)
       addToast({ type: 'success', message: '账号信息已更新' })
       closeModal()
       loadAccounts()
@@ -314,45 +330,45 @@ export function Accounts() {
             {/* 扫码登录 */}
             <button
               onClick={startQRCodeLogin}
-              className="flex items-center gap-3 p-4 rounded-md border border-indigo-200 
-                         bg-blue-50 hover:bg-blue-100 transition-colors text-left"
+              className="flex items-center gap-3 p-4 rounded-md border border-blue-200 dark:border-blue-800 
+                         bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors text-left"
             >
               <div className="w-10 h-10 rounded-lg bg-blue-600 flex items-center justify-center flex-shrink-0">
                 <QrCode className="w-4 h-4 text-white" />
               </div>
               <div>
-                <p className="font-medium text-gray-900 text-sm">扫码登录</p>
-                <p className="text-xs text-gray-500">推荐方式</p>
+                <p className="font-medium text-slate-900 dark:text-slate-100 text-sm">扫码登录</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400">推荐方式</p>
               </div>
             </button>
 
             {/* 账号密码登录 */}
             <button
               onClick={() => setActiveModal('password')}
-              className="flex items-center gap-3 p-4 rounded-md border border-gray-200 
-                         hover:border-indigo-200 hover:bg-blue-50 transition-colors text-left"
+              className="flex items-center gap-3 p-4 rounded-md border border-slate-200 dark:border-slate-700 
+                         hover:border-blue-300 dark:hover:border-blue-700 hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-colors text-left"
             >
-              <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0">
-                <Key className="w-4 h-4 text-gray-600" />
+              <div className="w-10 h-10 rounded-lg bg-slate-100 dark:bg-slate-700 flex items-center justify-center flex-shrink-0">
+                <Key className="w-4 h-4 text-slate-600 dark:text-slate-300" />
               </div>
               <div>
-                <p className="font-medium text-gray-900 text-sm">账号密码</p>
-                <p className="text-xs text-gray-500">使用账号和密码</p>
+                <p className="font-medium text-slate-900 dark:text-slate-100 text-sm">账号密码</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400">使用账号和密码</p>
               </div>
             </button>
 
             {/* 手动输入 */}
             <button
               onClick={() => setActiveModal('manual')}
-              className="flex items-center gap-3 p-4 rounded-md border border-gray-200 
-                         hover:border-indigo-200 hover:bg-blue-50 transition-colors text-left"
+              className="flex items-center gap-3 p-4 rounded-md border border-slate-200 dark:border-slate-700 
+                         hover:border-blue-300 dark:hover:border-blue-700 hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-colors text-left"
             >
-              <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0">
-                <Edit2 className="w-4 h-4 text-gray-600" />
+              <div className="w-10 h-10 rounded-lg bg-slate-100 dark:bg-slate-700 flex items-center justify-center flex-shrink-0">
+                <Edit2 className="w-4 h-4 text-slate-600 dark:text-slate-300" />
               </div>
               <div>
-                <p className="font-medium text-gray-900 text-sm">手动输入</p>
-                <p className="text-xs text-gray-500">手动输入Cookie</p>
+                <p className="font-medium text-slate-900 dark:text-slate-100 text-sm">手动输入</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400">手动输入Cookie</p>
               </div>
             </button>
           </div>
@@ -383,7 +399,7 @@ export function Accounts() {
                 <tr>
                   <td colSpan={7}>
                     <div className="empty-state py-8">
-                      <p className="text-gray-500">暂无账号，请添加新账号</p>
+                      <p className="text-slate-500 dark:text-slate-400">暂无账号，请添加新账号</p>
                     </div>
                   </td>
                 </tr>
@@ -392,9 +408,23 @@ export function Accounts() {
                   <tr key={account.id}>
                     <td className="font-medium text-blue-600 dark:text-blue-400">{account.id}</td>
                     <td>
-                      <code className="text-xs bg-gray-100 px-1.5 py-0.5 rounded max-w-[120px] truncate block">
-                        {account.cookie?.substring(0, 25)}...
-                      </code>
+                      <div className="flex items-center gap-2">
+                        <code className="text-xs font-mono bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded text-slate-600 dark:text-slate-300 max-w-[180px] truncate block">
+                          {account.cookie ? account.cookie.substring(0, 30) + '...' : '无'}
+                        </code>
+                        {account.cookie && (
+                          <button
+                            onClick={() => {
+                              navigator.clipboard.writeText(account.cookie || '')
+                              addToast({ type: 'success', message: 'Cookie已复制' })
+                            }}
+                            className="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 rounded transition-colors"
+                            title="复制Cookie"
+                          >
+                            <Copy className="w-3.5 h-3.5 text-slate-400 hover:text-blue-500" />
+                          </button>
+                        )}
+                      </div>
                     </td>
                     <td>
                       <span className={`inline-flex items-center gap-1.5 ${account.enabled !== false ? 'text-green-600' : 'text-gray-400'}`}>
@@ -416,31 +446,33 @@ export function Accounts() {
                       {account.note || '-'}
                     </td>
                     <td>
-                      <div className="table-actions">
+                      <div className="flex items-center gap-1">
                         <button
                           onClick={() => handleToggleEnabled(account)}
-                          className="table-action-btn"
+                          className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
                           title={account.enabled !== false ? '禁用' : '启用'}
                         >
                           {account.enabled !== false ? (
-                            <PowerOff className="w-4 h-4 text-amber-500" />
+                            <><PowerOff className="w-3.5 h-3.5 text-amber-500" /><span className="text-amber-600 dark:text-amber-400">禁用</span></>
                           ) : (
-                            <Power className="w-4 h-4 text-green-500" />
+                            <><Power className="w-3.5 h-3.5 text-green-500" /><span className="text-green-600 dark:text-green-400">启用</span></>
                           )}
                         </button>
                         <button
                           onClick={() => openEditModal(account)}
-                          className="table-action-btn"
+                          className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
                           title="编辑"
                         >
-                          <Edit2 className="w-4 h-4 text-blue-500" />
+                          <Edit2 className="w-3.5 h-3.5 text-blue-500" />
+                          <span className="text-blue-600 dark:text-blue-400">编辑</span>
                         </button>
                         <button
                           onClick={() => handleDelete(account.id)}
-                          className="table-action-btn hover:!bg-red-50"
+                          className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors"
                           title="删除"
                         >
-                          <Trash2 className="w-4 h-4 text-red-500" />
+                          <Trash2 className="w-3.5 h-3.5 text-red-500" />
+                          <span className="text-red-600 dark:text-red-400">删除</span>
                         </button>
                       </div>
                     </td>
@@ -466,14 +498,14 @@ export function Accounts() {
               {qrStatus === 'loading' && (
                 <div className="flex flex-col items-center gap-3">
                   <Loader2 className="w-10 h-10 text-blue-600 dark:text-blue-400 animate-spin" />
-                  <p className="text-sm text-gray-500">正在生成二维码...</p>
+                  <p className="text-sm text-slate-500 dark:text-slate-400">正在生成二维码...</p>
                 </div>
               )}
               {qrStatus === 'ready' && (
                 <div className="flex flex-col items-center gap-3">
                   <img src={qrCodeUrl} alt="登录二维码" className="w-44 h-44 rounded-lg border" />
-                  <p className="text-sm text-gray-600">请使用闲鱼APP扫描二维码</p>
-                  <p className="text-xs text-gray-400">二维码有效期约5分钟</p>
+                  <p className="text-sm text-slate-600 dark:text-slate-300">请使用闲鱼APP扫描二维码</p>
+                  <p className="text-xs text-slate-400 dark:text-slate-500">二维码有效期约5分钟</p>
                 </div>
               )}
               {qrStatus === 'scanned' && (
@@ -495,7 +527,7 @@ export function Accounts() {
               )}
               {qrStatus === 'expired' && (
                 <div className="flex flex-col items-center gap-3">
-                  <p className="text-sm text-gray-500">二维码已过期</p>
+                  <p className="text-sm text-slate-500 dark:text-slate-400">二维码已过期</p>
                   <button onClick={refreshQRCode} className="btn-ios-primary btn-sm">
                     刷新二维码
                   </button>
@@ -547,12 +579,12 @@ export function Accounts() {
                     placeholder="请输入密码"
                   />
                 </div>
-                <label className=" text-sm text-gray-600">
+                <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
                   <input
                     type="checkbox"
                     checked={pwdShowBrowser}
                     onChange={(e) => setPwdShowBrowser(e.target.checked)}
-                    className="h-4 w-4 rounded border-gray-300 text-blue-600 dark:text-blue-400"
+                    className="h-4 w-4 rounded border-slate-300 dark:border-slate-600 text-blue-600"
                   />
                   显示浏览器（调试用）
                 </label>
@@ -654,7 +686,7 @@ export function Accounts() {
                     type="text"
                     value={editingAccount.id}
                     disabled
-                    className="input-ios"
+                    className="input-ios bg-slate-100 dark:bg-slate-700"
                   />
                 </div>
                 <div className="input-group">
@@ -672,30 +704,17 @@ export function Accounts() {
                   <textarea
                     value={editCookie}
                     onChange={(e) => setEditCookie(e.target.value)}
-                    className="input-ios h-20 resize-none font-mono text-xs"
+                    className="input-ios h-28 resize-none font-mono text-xs"
                     placeholder="更新Cookie值"
                   />
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                    当前Cookie长度: {editCookie.length} 字符
+                  </p>
                 </div>
-                <div className="space-y-2">
-                  <label className=" text-sm text-gray-700">
-                    <input
-                      type="checkbox"
-                      checked={editUseAI}
-                      onChange={(e) => setEditUseAI(e.target.checked)}
-                      className="h-4 w-4 rounded border-gray-300 text-blue-600 dark:text-blue-400"
-                    />
-                    启用AI回复
-                  </label>
-                  <label className=" text-sm text-gray-700">
-                    <input
-                      type="checkbox"
-                      checked={editUseDefault}
-                      onChange={(e) => setEditUseDefault(e.target.checked)}
-                      className="h-4 w-4 rounded border-gray-300 text-blue-600 dark:text-blue-400"
-                    />
-                    启用默认回复
-                  </label>
-                </div>
+                {/* AI回复和默认回复设置请在"自动回复"页面配置 */}
+                <p className="text-xs text-slate-500 dark:text-slate-400 pt-2">
+                  提示：AI回复和默认回复设置请在"自动回复"页面配置
+                </p>
               </div>
               <div className="modal-footer">
                 <button type="button" onClick={closeModal} className="btn-ios-secondary" disabled={editSaving}>

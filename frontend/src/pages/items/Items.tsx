@@ -1,23 +1,29 @@
 import { useState, useEffect } from 'react'
-import { Package, RefreshCw, Search, Trash2, Download, CheckSquare, Square, Loader2 } from 'lucide-react'
+import { Package, RefreshCw, Search, Trash2, Download, CheckSquare, Square, Loader2, ExternalLink } from 'lucide-react'
 import { getItems, deleteItem, fetchItemsFromAccount, batchDeleteItems } from '@/api/items'
 import { getAccounts } from '@/api/accounts'
 import { useUIStore } from '@/store/uiStore'
 import { PageLoading } from '@/components/common/Loading'
+import { useAuthStore } from '@/store/authStore'
+import { Select } from '@/components/common/Select'
 import type { Item, Account } from '@/types'
 
 export function Items() {
   const { addToast } = useUIStore()
+  const { isAuthenticated, token, _hasHydrated } = useAuthStore()
   const [loading, setLoading] = useState(true)
   const [items, setItems] = useState<Item[]>([])
   const [accounts, setAccounts] = useState<Account[]>([])
   const [selectedAccount, setSelectedAccount] = useState('')
   const [searchKeyword, setSearchKeyword] = useState('')
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [selectedIds, setSelectedIds] = useState<Set<string | number>>(new Set())
   const [fetching, setFetching] = useState(false)
   const [fetchProgress, setFetchProgress] = useState({ current: 0, total: 0 })
 
   const loadItems = async () => {
+    if (!_hasHydrated || !isAuthenticated || !token) {
+      return
+    }
     try {
       setLoading(true)
       const result = await getItems(selectedAccount || undefined)
@@ -73,6 +79,9 @@ export function Items() {
   }
 
   const loadAccounts = async () => {
+    if (!_hasHydrated || !isAuthenticated || !token) {
+      return
+    }
     try {
       const data = await getAccounts()
       setAccounts(data)
@@ -82,18 +91,20 @@ export function Items() {
   }
 
   useEffect(() => {
+    if (!_hasHydrated || !isAuthenticated || !token) return
     loadAccounts()
     loadItems()
-  }, [])
+  }, [_hasHydrated, isAuthenticated, token])
 
   useEffect(() => {
+    if (!_hasHydrated || !isAuthenticated || !token) return
     loadItems()
-  }, [selectedAccount])
+  }, [_hasHydrated, isAuthenticated, token, selectedAccount])
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = async (item: Item) => {
     if (!confirm('确定要删除这个商品吗？')) return
     try {
-      await deleteItem(id)
+      await deleteItem(item.cookie_id, item.item_id)
       addToast({ type: 'success', message: '删除成功' })
       loadItems()
     } catch {
@@ -102,7 +113,7 @@ export function Items() {
   }
 
   // 批量选择相关
-  const toggleSelect = (id: string) => {
+  const toggleSelect = (id: string | number) => {
     setSelectedIds((prev) => {
       const next = new Set(prev)
       if (next.has(id)) {
@@ -129,7 +140,11 @@ export function Items() {
     }
     if (!confirm(`确定要删除选中的 ${selectedIds.size} 个商品吗？`)) return
     try {
-      await batchDeleteItems(Array.from(selectedIds))
+      // 将选中的 ID 转换为 { cookie_id, item_id } 格式
+      const itemsToDelete = items
+        .filter((item) => selectedIds.has(item.id))
+        .map((item) => ({ cookie_id: item.cookie_id, item_id: item.item_id }))
+      await batchDeleteItems(itemsToDelete)
       addToast({ type: 'success', message: `成功删除 ${selectedIds.size} 个商品` })
       setSelectedIds(new Set())
       loadItems()
@@ -141,9 +156,11 @@ export function Items() {
   const filteredItems = items.filter((item) => {
     if (!searchKeyword) return true
     const keyword = searchKeyword.toLowerCase()
+    const title = item.item_title || item.title || ''
+    const desc = item.item_detail || item.desc || ''
     return (
-      item.title?.toLowerCase().includes(keyword) ||
-      item.desc?.toLowerCase().includes(keyword) ||
+      title.toLowerCase().includes(keyword) ||
+      desc.toLowerCase().includes(keyword) ||
       item.item_id?.includes(keyword)
     )
   })
@@ -170,7 +187,7 @@ export function Items() {
           <button 
             onClick={handleFetchItems} 
             disabled={fetching}
-            className="btn-ios-success"
+            className="btn-ios-primary"
           >
             {fetching ? (
               <>
@@ -197,18 +214,18 @@ export function Items() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="input-group">
               <label className="input-label">筛选账号</label>
-              <select
+              <Select
                 value={selectedAccount}
-                onChange={(e) => setSelectedAccount(e.target.value)}
-                className="input-ios"
-              >
-                <option value="">所有账号</option>
-                {accounts.map((account) => (
-                  <option key={account.id} value={account.id}>
-                    {account.id}
-                  </option>
-                ))}
-              </select>
+                onChange={setSelectedAccount}
+                options={[
+                  { value: '', label: '所有账号' },
+                  ...accounts.map((account) => ({
+                    value: account.id,
+                    label: account.id,
+                  })),
+                ]}
+                placeholder="所有账号"
+              />
             </div>
             <div className="input-group">
               <label className="input-label">搜索商品</label>
@@ -288,22 +305,47 @@ export function Items() {
                       </button>
                     </td>
                     <td className="font-medium text-blue-600 dark:text-blue-400">{item.cookie_id}</td>
-                    <td className="text-xs text-gray-500">{item.item_id}</td>
-                    <td className="max-w-[180px] truncate" title={item.title}>
-                      {item.title}
+                    <td className="text-xs text-gray-500">
+                      <a 
+                        href={`https://www.goofish.com/item?id=${item.item_id}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="hover:text-blue-500 flex items-center gap-1"
+                      >
+                        {item.item_id}
+                        <ExternalLink className="w-3 h-3" />
+                      </a>
                     </td>
-                    <td className="text-amber-600 font-medium">¥{item.price}</td>
+                    <td className="max-w-[280px]">
+                      <div 
+                        className="font-medium line-clamp-2 cursor-help" 
+                        title={item.item_title || item.title || '-'}
+                      >
+                        {item.item_title || item.title || '-'}
+                      </div>
+                      {(item.item_detail || item.desc) && (
+                        <div 
+                          className="text-xs text-gray-400 line-clamp-1 mt-0.5 cursor-help" 
+                          title={item.item_detail || item.desc}
+                        >
+                          {item.item_detail || item.desc}
+                        </div>
+                      )}
+                    </td>
+                    <td className="text-amber-600 font-medium">
+                      {item.item_price || (item.price ? `¥${item.price}` : '-')}
+                    </td>
                     <td>
-                      <span className={item.has_sku ? 'badge-success' : 'badge-gray'}>
-                        {item.has_sku ? '是' : '否'}
+                      <span className={(item.is_multi_spec || item.has_sku) ? 'badge-success' : 'badge-gray'}>
+                        {(item.is_multi_spec || item.has_sku) ? '是' : '否'}
                       </span>
                     </td>
-                    <td className="text-gray-500">
+                    <td className="text-gray-500 text-xs">
                       {item.updated_at ? new Date(item.updated_at).toLocaleString() : '-'}
                     </td>
                     <td>
                       <button
-                        onClick={() => handleDelete(item.id)}
+                        onClick={() => handleDelete(item)}
                         className="table-action-btn hover:!bg-red-50"
                         title="删除"
                       >

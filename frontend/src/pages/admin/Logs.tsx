@@ -2,16 +2,19 @@ import { useState, useEffect } from 'react'
 import { FileText, RefreshCw, Trash2, AlertCircle, AlertTriangle, Info } from 'lucide-react'
 import { getSystemLogs, clearSystemLogs, type SystemLog } from '@/api/admin'
 import { useUIStore } from '@/store/uiStore'
+import { useAuthStore } from '@/store/authStore'
 import { PageLoading } from '@/components/common/Loading'
 import { cn } from '@/utils/cn'
 
 export function Logs() {
   const { addToast } = useUIStore()
+  const { isAuthenticated, token, _hasHydrated } = useAuthStore()
   const [loading, setLoading] = useState(true)
   const [logs, setLogs] = useState<SystemLog[]>([])
   const [levelFilter, setLevelFilter] = useState('')
 
   const loadLogs = async () => {
+    if (!_hasHydrated || !isAuthenticated || !token) return
     try {
       setLoading(true)
       const result = await getSystemLogs({ level: levelFilter || undefined })
@@ -26,8 +29,11 @@ export function Logs() {
   }
 
   useEffect(() => {
+    if (!_hasHydrated) return
+    if (!isAuthenticated || !token) return
     loadLogs()
-  }, [levelFilter])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [_hasHydrated, isAuthenticated, token, levelFilter])
 
   const handleClear = async () => {
     if (!confirm('确定要清空所有系统日志吗？此操作不可恢复！')) return

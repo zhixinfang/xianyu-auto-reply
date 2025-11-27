@@ -11,11 +11,14 @@ export function MainLayout() {
       
       {/* Main content area */}
       <div className="lg:ml-56 min-h-screen flex flex-col">
-        {/* Top navbar */}
-        <TopNavbar />
-        
-        {/* Tabs bar */}
-        <TabsBar />
+        {/* Fixed header area */}
+        <div className="sticky top-0 z-30 bg-slate-50 dark:bg-slate-900">
+          {/* Top navbar */}
+          <TopNavbar />
+          
+          {/* Tabs bar */}
+          <TabsBar />
+        </div>
         
         {/* Page content */}
         <main className="flex-1 p-4 lg:p-6">
