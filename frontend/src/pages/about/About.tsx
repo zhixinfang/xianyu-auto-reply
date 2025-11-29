@@ -1,8 +1,32 @@
-import { useState } from 'react'
-import { MessageSquare, Github, Heart, Code, MessageCircle, Users, UserCheck, Bot, Truck, Bell, BarChart3, X } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { MessageSquare, Github, Heart, Code, MessageCircle, Users, UserCheck, Bot, Truck, Bell, BarChart3, X, Globe } from 'lucide-react'
 
 export function About() {
   const [previewImage, setPreviewImage] = useState<string | null>(null)
+  const [version, setVersion] = useState('v1.0.4')
+  const [totalUsers, setTotalUsers] = useState(0)
+
+  useEffect(() => {
+    // 获取版本信息
+    fetch('/static/version.txt')
+      .then(res => res.ok ? res.text() : null)
+      .then(text => {
+        if (text && text.trim().startsWith('v')) {
+          setVersion(text.trim())
+        }
+      })
+      .catch(() => {})
+
+    // 获取使用人数
+    fetch('/project-stats')
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (data?.total_users) {
+          setTotalUsers(data.total_users)
+        }
+      })
+      .catch(() => {})
+  }, [])
 
   return (
     <div className="max-w-5xl mx-auto space-y-4">
@@ -19,6 +43,19 @@ export function About() {
         <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
           智能管理您的闲鱼店铺，提升客服效率
         </p>
+        {/* 版本和使用人数 */}
+        <div className="flex items-center justify-center gap-3 mt-3">
+          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-gradient-to-r from-emerald-500/10 to-teal-500/10 text-emerald-600 dark:from-emerald-500/20 dark:to-teal-500/20 dark:text-emerald-400 border border-emerald-200/50 dark:border-emerald-500/30">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+            <span>{version}</span>
+          </div>
+          {totalUsers > 0 && (
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-gradient-to-r from-blue-500/10 to-cyan-500/10 text-blue-600 dark:from-blue-500/20 dark:to-cyan-500/20 dark:text-blue-400 border border-blue-200/50 dark:border-blue-500/30">
+              <Globe className="w-3.5 h-3.5" />
+              <span>{totalUsers.toLocaleString()} 人使用</span>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Contact Groups */}

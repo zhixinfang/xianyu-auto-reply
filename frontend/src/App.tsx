@@ -26,37 +26,33 @@ import { verifyToken } from '@/api/auth'
 // Protected route wrapper
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, setAuth, clearAuth, token: storeToken, _hasHydrated } = useAuthStore()
-  const [isChecking, setIsChecking] = useState(true)
-  const [isValid, setIsValid] = useState(false)
-  const hasCheckedRef = useRef(false)
+  const [authState, setAuthState] = useState<'checking' | 'authenticated' | 'unauthenticated'>('checking')
+  const checkingRef = useRef(false)
 
   useEffect(() => {
     // 等待 zustand persist 完成 hydration
-    if (!_hasHydrated) return
+    if (!_hasHydrated) {
+      return
+    }
     
-    // 防止重复检查
-    if (hasCheckedRef.current) return
+    // 防止并发检查
+    if (checkingRef.current) {
+      return
+    }
     
     const checkAuth = async () => {
+      checkingRef.current = true
+      
       // 优先使用 store 中的 token，其次是 localStorage
       const token = storeToken || localStorage.getItem('auth_token')
       
       if (!token) {
-        setIsChecking(false)
-        setIsValid(false)
-        hasCheckedRef.current = true
+        setAuthState('unauthenticated')
+        checkingRef.current = false
         return
       }
 
-      // 如果 store 中已经认证且有用户信息，直接通过
-      if (isAuthenticated && storeToken) {
-        setIsChecking(false)
-        setIsValid(true)
-        hasCheckedRef.current = true
-        return
-      }
-
-      // 验证 token 有效性
+      // 验证 token 有效性（不再单纯相信本地 isAuthenticated 状态）
       try {
         const result = await verifyToken()
         if (result.authenticated && result.user_id) {
@@ -65,17 +61,16 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
             username: result.username || '',
             is_admin: result.is_admin || false,
           })
-          setIsValid(true)
+          setAuthState('authenticated')
         } else {
           clearAuth()
-          setIsValid(false)
+          setAuthState('unauthenticated')
         }
       } catch {
         clearAuth()
-        setIsValid(false)
+        setAuthState('unauthenticated')
       } finally {
-        setIsChecking(false)
-        hasCheckedRef.current = true
+        checkingRef.current = false
       }
     }
 
@@ -83,7 +78,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   }, [_hasHydrated, isAuthenticated, storeToken, setAuth, clearAuth])
 
   // 等待 hydration 或检查完成
-  if (!_hasHydrated || isChecking) {
+  if (!_hasHydrated || authState === 'checking') {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-900">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
@@ -91,7 +86,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
     )
   }
 
-  if (!isValid && !isAuthenticated) {
+  if (authState === 'unauthenticated') {
     return <Navigate to="/login" replace />
   }
 

@@ -32,14 +32,24 @@ export function NotificationChannels() {
   const [saving, setSaving] = useState(false)
 
   const loadChannels = async () => {
-    if (!_hasHydrated || !isAuthenticated || !token) return
+    if (!_hasHydrated || !isAuthenticated || !token) {
+      setLoading(false)
+      return
+    }
     try {
       setLoading(true)
       const result = await getNotificationChannels()
       if (result.success) {
         setChannels(result.data || [])
       }
-    } catch {
+    } catch (err) {
+      // 401 错误由 axios 拦截器处理，不需要重复提示
+      if (err && typeof err === 'object' && 'response' in err) {
+        const axiosErr = err as { response?: { status?: number } }
+        if (axiosErr.response?.status === 401) {
+          return
+        }
+      }
       addToast({ type: 'error', message: '加载通知渠道失败' })
     } finally {
       setLoading(false)
@@ -47,13 +57,24 @@ export function NotificationChannels() {
   }
 
   useEffect(() => {
-    if (!_hasHydrated || !isAuthenticated || !token) return
+    // 只有在完全就绪时才加载数据
+    if (!_hasHydrated) return
+    if (!isAuthenticated || !token) {
+      setLoading(false)
+      return
+    }
     loadChannels()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [_hasHydrated, isAuthenticated, token])
 
   const handleToggleEnabled = async (channel: NotificationChannel) => {
     try {
-      await updateNotificationChannel(channel.id, { enabled: !channel.enabled })
+      // 后端更新接口要求同时提供 name 和 config
+      await updateNotificationChannel(channel.id, {
+        name: channel.name,
+        config: channel.config,
+        enabled: !channel.enabled,
+      })
       addToast({ type: 'success', message: channel.enabled ? '渠道已禁用' : '渠道已启用' })
       loadChannels()
     } catch {

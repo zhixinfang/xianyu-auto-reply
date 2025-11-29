@@ -1,20 +1,31 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import type { FormEvent } from 'react'
-import { Plus, RefreshCw, QrCode, Key, Edit2, Trash2, Power, PowerOff, X, Loader2, Copy } from 'lucide-react'
-import { getAccountDetails, deleteAccount, updateAccountCookie, updateAccountStatus, updateAccountRemark, addAccount, generateQRLogin, checkQRLoginStatus, passwordLogin } from '@/api/accounts'
+import { Plus, RefreshCw, QrCode, Key, Edit2, Trash2, Power, PowerOff, X, Loader2, Clock, CheckCircle, MessageSquare, Bot } from 'lucide-react'
+import { getAccountDetails, deleteAccount, updateAccountCookie, updateAccountStatus, updateAccountRemark, addAccount, generateQRLogin, checkQRLoginStatus, passwordLogin, updateAccountAutoConfirm, updateAccountPauseDuration, getAllAIReplySettings, updateAIReplySettings, type AIReplySettings } from '@/api/accounts'
+import { getKeywords, getDefaultReply, updateDefaultReply } from '@/api/keywords'
 import { useUIStore } from '@/store/uiStore'
 import { useAuthStore } from '@/store/authStore'
 import { PageLoading } from '@/components/common/Loading'
 import type { AccountDetail } from '@/types'
 
-type ModalType = 'qrcode' | 'password' | 'manual' | 'edit' | null
+type ModalType = 'qrcode' | 'password' | 'manual' | 'edit' | 'default-reply' | null
+
+interface AccountWithKeywordCount extends AccountDetail {
+  keywordCount?: number
+  aiEnabled?: boolean
+}
 
 export function Accounts() {
   const { addToast } = useUIStore()
   const { isAuthenticated, token, _hasHydrated } = useAuthStore()
   const [loading, setLoading] = useState(true)
-  const [accounts, setAccounts] = useState<AccountDetail[]>([])
+  const [accounts, setAccounts] = useState<AccountWithKeywordCount[]>([])
   const [activeModal, setActiveModal] = useState<ModalType>(null)
+
+  // 默认回复管理状态
+  const [defaultReplyAccount, setDefaultReplyAccount] = useState<AccountWithKeywordCount | null>(null)
+  const [defaultReplyContent, setDefaultReplyContent] = useState('')
+  const [defaultReplySaving, setDefaultReplySaving] = useState(false)
 
   // 扫码登录状态
   const [qrCodeUrl, setQrCodeUrl] = useState('')
@@ -37,6 +48,8 @@ export function Accounts() {
   const [editingAccount, setEditingAccount] = useState<AccountDetail | null>(null)
   const [editNote, setEditNote] = useState('')
   const [editCookie, setEditCookie] = useState('')
+  const [editAutoConfirm, setEditAutoConfirm] = useState(false)
+  const [editPauseDuration, setEditPauseDuration] = useState(0)
   const [editSaving, setEditSaving] = useState(false)
 
   const loadAccounts = async () => {
@@ -44,7 +57,36 @@ export function Accounts() {
     try {
       setLoading(true)
       const data = await getAccountDetails()
-      setAccounts(data)
+      
+      // 获取所有账号的AI回复设置
+      let aiSettings: Record<string, AIReplySettings> = {}
+      try {
+        aiSettings = await getAllAIReplySettings()
+      } catch {
+        // ignore
+      }
+      
+      // 为每个账号获取关键词数量
+      const accountsWithKeywords = await Promise.all(
+        data.map(async (account) => {
+          try {
+            const keywords = await getKeywords(account.id)
+            return { 
+              ...account, 
+              keywordCount: keywords.length,
+              aiEnabled: aiSettings[account.id]?.enabled || false
+            }
+          } catch {
+            return { 
+              ...account, 
+              keywordCount: 0,
+              aiEnabled: aiSettings[account.id]?.enabled || false
+            }
+          }
+        })
+      )
+      
+      setAccounts(accountsWithKeywords)
     } catch {
       addToast({ type: 'error', message: '加载账号列表失败' })
     } finally {
@@ -261,6 +303,8 @@ export function Accounts() {
     setEditingAccount(account)
     setEditNote(account.note || '')
     setEditCookie(account.cookie || '')
+    setEditAutoConfirm(account.auto_confirm || false)
+    setEditPauseDuration(account.pause_duration || 0)
     setActiveModal('edit')
   }
 
@@ -282,6 +326,16 @@ export function Accounts() {
       if (editCookie.trim() && editCookie.trim() !== editingAccount.cookie) {
         promises.push(updateAccountCookie(editingAccount.id, editCookie.trim()))
       }
+
+      // 更新自动确认发货
+      if (editAutoConfirm !== (editingAccount.auto_confirm || false)) {
+        promises.push(updateAccountAutoConfirm(editingAccount.id, editAutoConfirm))
+      }
+
+      // 更新暂停时间
+      if (editPauseDuration !== (editingAccount.pause_duration || 0)) {
+        promises.push(updateAccountPauseDuration(editingAccount.id, editPauseDuration))
+      }
       
       await Promise.all(promises)
       addToast({ type: 'success', message: '账号信息已更新' })
@@ -291,6 +345,50 @@ export function Accounts() {
       addToast({ type: 'error', message: '保存失败' })
     } finally {
       setEditSaving(false)
+    }
+  }
+
+  // ==================== 默认回复管理 ====================
+  const openDefaultReplyModal = async (account: AccountWithKeywordCount) => {
+    setDefaultReplyAccount(account)
+    setDefaultReplyContent('')
+    setActiveModal('default-reply')
+    
+    // 加载当前默认回复
+    try {
+      const result = await getDefaultReply(account.id)
+      setDefaultReplyContent(result.default_reply || '')
+    } catch {
+      // ignore
+    }
+  }
+
+  const handleSaveDefaultReply = async () => {
+    if (!defaultReplyAccount) return
+    
+    try {
+      setDefaultReplySaving(true)
+      await updateDefaultReply(defaultReplyAccount.id, defaultReplyContent)
+      addToast({ type: 'success', message: '默认回复已保存' })
+      closeModal()
+    } catch {
+      addToast({ type: 'error', message: '保存失败' })
+    } finally {
+      setDefaultReplySaving(false)
+    }
+  }
+
+  // ==================== AI回复开关 ====================
+  const handleToggleAI = async (account: AccountWithKeywordCount) => {
+    const newEnabled = !account.aiEnabled
+    try {
+      await updateAIReplySettings(account.id, { enabled: newEnabled })
+      setAccounts(prev => prev.map(a => 
+        a.id === account.id ? { ...a, aiEnabled: newEnabled } : a
+      ))
+      addToast({ type: 'success', message: `AI回复已${newEnabled ? '开启' : '关闭'}` })
+    } catch {
+      addToast({ type: 'error', message: '操作失败' })
     }
   }
 
@@ -386,18 +484,18 @@ export function Accounts() {
             <thead>
               <tr>
                 <th>账号ID</th>
-                <th>Cookie</th>
+                <th>关键词</th>
                 <th>状态</th>
                 <th>AI回复</th>
-                <th>默认回复</th>
-                <th>备注</th>
+                <th>自动确认</th>
+                <th>暂停时间</th>
                 <th>操作</th>
               </tr>
             </thead>
             <tbody>
               {accounts.length === 0 ? (
                 <tr>
-                  <td colSpan={7}>
+                  <td colSpan={8}>
                     <div className="empty-state py-8">
                       <p className="text-slate-500 dark:text-slate-400">暂无账号，请添加新账号</p>
                     </div>
@@ -408,23 +506,11 @@ export function Accounts() {
                   <tr key={account.id}>
                     <td className="font-medium text-blue-600 dark:text-blue-400">{account.id}</td>
                     <td>
-                      <div className="flex items-center gap-2">
-                        <code className="text-xs font-mono bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded text-slate-600 dark:text-slate-300 max-w-[180px] truncate block">
-                          {account.cookie ? account.cookie.substring(0, 30) + '...' : '无'}
-                        </code>
-                        {account.cookie && (
-                          <button
-                            onClick={() => {
-                              navigator.clipboard.writeText(account.cookie || '')
-                              addToast({ type: 'success', message: 'Cookie已复制' })
-                            }}
-                            className="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 rounded transition-colors"
-                            title="复制Cookie"
-                          >
-                            <Copy className="w-3.5 h-3.5 text-slate-400 hover:text-blue-500" />
-                          </button>
-                        )}
-                      </div>
+                      <span className="inline-flex items-center gap-1.5 text-sm">
+                        <MessageSquare className="w-3.5 h-3.5 text-blue-500" />
+                        <span className="font-medium">{account.keywordCount || 0}</span>
+                        <span className="text-slate-400">个</span>
+                      </span>
                     </td>
                     <td>
                       <span className={`inline-flex items-center gap-1.5 ${account.enabled !== false ? 'text-green-600' : 'text-gray-400'}`}>
@@ -433,20 +519,40 @@ export function Accounts() {
                       </span>
                     </td>
                     <td>
-                      <span className={account.use_ai_reply ? 'badge-success' : 'badge-gray'}>
-                        {account.use_ai_reply ? '开启' : '关闭'}
+                      <button
+                        onClick={() => handleToggleAI(account)}
+                        className={`inline-flex items-center gap-1.5 px-2 py-1 rounded text-xs font-medium transition-colors ${
+                          account.aiEnabled 
+                            ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300 hover:bg-purple-200 dark:hover:bg-purple-900/50' 
+                            : 'bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600'
+                        }`}
+                        title={account.aiEnabled ? '点击关闭AI回复' : '点击开启AI回复'}
+                      >
+                        <Bot className="w-3.5 h-3.5" />
+                        {account.aiEnabled ? '已开启' : '已关闭'}
+                      </button>
+                    </td>
+                    <td>
+                      <span className={account.auto_confirm ? 'badge-success' : 'badge-gray'}>
+                        {account.auto_confirm ? '开启' : '关闭'}
                       </span>
                     </td>
                     <td>
-                      <span className={account.use_default_reply ? 'badge-success' : 'badge-gray'}>
-                        {account.use_default_reply ? '开启' : '关闭'}
+                      <span className="text-slate-600 dark:text-slate-300 text-sm">
+                        <Clock className="w-3.5 h-3.5 inline mr-1" />
+                        {account.pause_duration || 0} 分钟
                       </span>
                     </td>
-                    <td className="text-gray-500 max-w-[80px] truncate">
-                      {account.note || '-'}
-                    </td>
                     <td>
-                      <div className="flex items-center gap-1">
+                      <div className="flex items-center gap-1 flex-wrap">
+                        <button
+                          onClick={() => openDefaultReplyModal(account)}
+                          className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded hover:bg-green-50 dark:hover:bg-green-900/30 transition-colors"
+                          title="默认回复"
+                        >
+                          <MessageSquare className="w-3.5 h-3.5 text-green-500" />
+                          <span className="text-green-600 dark:text-green-400">默认回复</span>
+                        </button>
                         <button
                           onClick={() => handleToggleEnabled(account)}
                           className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
@@ -704,14 +810,58 @@ export function Accounts() {
                   <textarea
                     value={editCookie}
                     onChange={(e) => setEditCookie(e.target.value)}
-                    className="input-ios h-28 resize-none font-mono text-xs"
+                    className="input-ios h-20 resize-none font-mono text-xs"
                     placeholder="更新Cookie值"
                   />
                   <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
                     当前Cookie长度: {editCookie.length} 字符
                   </p>
                 </div>
-                {/* AI回复和默认回复设置请在"自动回复"页面配置 */}
+
+                {/* 自动确认发货 */}
+                <div className="flex items-center justify-between py-3 border-t border-slate-100 dark:border-slate-700">
+                  <div>
+                    <p className="font-medium text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                      <CheckCircle className="w-4 h-4 text-green-500" />
+                      自动确认发货
+                    </p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">开启后系统会自动确认发货</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setEditAutoConfirm(!editAutoConfirm)}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                      editAutoConfirm ? 'bg-blue-600' : 'bg-slate-300 dark:bg-slate-600'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                        editAutoConfirm ? 'translate-x-6' : 'translate-x-1'
+                      }`}
+                    />
+                  </button>
+                </div>
+
+                {/* 暂停时间 */}
+                <div className="input-group">
+                  <label className="input-label flex items-center gap-2">
+                    <Clock className="w-4 h-4 text-amber-500" />
+                    暂停时间（分钟）
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="1440"
+                    value={editPauseDuration}
+                    onChange={(e) => setEditPauseDuration(parseInt(e.target.value) || 0)}
+                    className="input-ios"
+                    placeholder="0"
+                  />
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                    检测到手动发出消息后，自动回复暂停的时间。设置为0表示不暂停。
+                  </p>
+                </div>
+
                 <p className="text-xs text-slate-500 dark:text-slate-400 pt-2">
                   提示：AI回复和默认回复设置请在"自动回复"页面配置
                 </p>
@@ -732,6 +882,66 @@ export function Accounts() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* 默认回复管理弹窗 */}
+      {activeModal === 'default-reply' && defaultReplyAccount && (
+        <div className="modal-overlay">
+          <div className="modal-content max-w-lg">
+            <div className="modal-header">
+              <h2 className="modal-title">默认回复管理</h2>
+              <button onClick={closeModal} className="modal-close">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="modal-body space-y-4">
+              <div className="input-group">
+                <label className="input-label">账号</label>
+                <input
+                  type="text"
+                  value={defaultReplyAccount.id}
+                  disabled
+                  className="input-ios bg-slate-100 dark:bg-slate-700"
+                />
+              </div>
+              <div className="input-group">
+                <label className="input-label">默认回复内容</label>
+                <textarea
+                  value={defaultReplyContent}
+                  onChange={(e) => setDefaultReplyContent(e.target.value)}
+                  className="input-ios h-32 resize-none"
+                  placeholder="输入默认回复内容，留空表示不使用默认回复"
+                />
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  当没有匹配到任何关键词时，将使用此默认回复。留空表示不自动回复。
+                </p>
+              </div>
+              <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                <p className="text-xs text-blue-600 dark:text-blue-400">
+                  <strong>支持变量：</strong><br />
+                  <code className="bg-blue-100 dark:bg-blue-800 px-1 rounded">{'{send_user_name}'}</code> - 用户昵称<br />
+                  <code className="bg-blue-100 dark:bg-blue-800 px-1 rounded">{'{send_user_id}'}</code> - 用户ID<br />
+                  <code className="bg-blue-100 dark:bg-blue-800 px-1 rounded">{'{send_message}'}</code> - 用户消息内容
+                </p>
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button type="button" onClick={closeModal} className="btn-ios-secondary" disabled={defaultReplySaving}>
+                取消
+              </button>
+              <button onClick={handleSaveDefaultReply} className="btn-ios-primary" disabled={defaultReplySaving}>
+                {defaultReplySaving ? (
+                  <span className="flex items-center gap-2">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    保存中...
+                  </span>
+                ) : (
+                  '保存'
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}

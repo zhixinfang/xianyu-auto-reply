@@ -96,16 +96,28 @@ export const generateQRLogin = (): Promise<{ success: boolean; session_id?: stri
 }
 
 // 检查扫码登录状态
-export const checkQRLoginStatus = (sessionId: string): Promise<{
+// 后端直接返回 { status: ..., message?: ..., account_info?: ... }，没有 success 字段
+export const checkQRLoginStatus = async (sessionId: string): Promise<{
   success: boolean
-  status: 'pending' | 'scanned' | 'success' | 'expired' | 'cancelled' | 'verification_required' | 'processing' | 'already_processed'
+  status: 'pending' | 'scanned' | 'success' | 'expired' | 'cancelled' | 'verification_required' | 'processing' | 'already_processed' | 'error'
   message?: string
   account_info?: {
     account_id: string
     is_new_account: boolean
   }
 }> => {
-  return get(`/qr-login/check/${sessionId}`)
+  const result = await get<{
+    status: string
+    message?: string
+    account_info?: { account_id: string; is_new_account: boolean }
+  }>(`/qr-login/check/${sessionId}`)
+  // 后端没有返回 success 字段，根据 status 判断
+  return {
+    success: result.status !== 'error',
+    status: result.status as 'pending' | 'scanned' | 'success' | 'expired' | 'cancelled' | 'verification_required' | 'processing' | 'already_processed' | 'error',
+    message: result.message,
+    account_info: result.account_info,
+  }
 }
 
 // 检查密码登录状态
@@ -116,4 +128,44 @@ export const checkPasswordLoginStatus = (sessionId: string): Promise<{
   account_id?: string
 }> => {
   return get(`/password-login/status/${sessionId}`)
+}
+
+// AI 回复设置接口 - 与后端 AIReplySettings 模型对应
+export interface AIReplySettings {
+  ai_enabled: boolean
+  model_name?: string
+  api_key?: string
+  base_url?: string
+  max_discount_percent?: number
+  max_discount_amount?: number
+  max_bargain_rounds?: number
+  custom_prompts?: string
+  // 兼容旧字段（前端内部使用）
+  enabled?: boolean
+}
+
+// 获取AI回复设置
+export const getAIReplySettings = (cookieId: string): Promise<AIReplySettings> => {
+  return get(`/ai-reply-settings/${cookieId}`)
+}
+
+// 更新AI回复设置
+export const updateAIReplySettings = (cookieId: string, settings: Partial<AIReplySettings>): Promise<ApiResponse> => {
+  // 转换字段名以匹配后端
+  const payload: Record<string, unknown> = {
+    ai_enabled: settings.ai_enabled ?? settings.enabled ?? false,
+    model_name: settings.model_name ?? 'qwen-plus',
+    api_key: settings.api_key ?? '',
+    base_url: settings.base_url ?? 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    max_discount_percent: settings.max_discount_percent ?? 10,
+    max_discount_amount: settings.max_discount_amount ?? 100,
+    max_bargain_rounds: settings.max_bargain_rounds ?? 3,
+    custom_prompts: settings.custom_prompts ?? '',
+  }
+  return put(`/ai-reply-settings/${cookieId}`, payload)
+}
+
+// 获取所有账号的AI回复设置
+export const getAllAIReplySettings = (): Promise<Record<string, AIReplySettings>> => {
+  return get('/ai-reply-settings')
 }

@@ -90,14 +90,14 @@ export function Orders() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3 sm:space-y-4">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
         <div>
           <h1 className="page-title">订单管理</h1>
           <p className="page-description">查看和管理所有订单信息</p>
         </div>
-        <button onClick={loadOrders} className="btn-ios-secondary ">
+        <button onClick={loadOrders} className="btn-ios-secondary w-full sm:w-auto">
           <RefreshCw className="w-4 h-4" />
           刷新
         </button>
@@ -110,7 +110,7 @@ export function Orders() {
         className="vben-card"
       >
         <div className="vben-card-body">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
             <div className="input-group">
               <label className="input-label">筛选账号</label>
               <Select

@@ -64,7 +64,7 @@ export const getSystemLogs = async (params?: { page?: number; limit?: number; le
 
 // 清空系统日志
 export const clearSystemLogs = (): Promise<ApiResponse> => {
-  return del('/admin/logs')
+  return post('/logs/clear')
 }
 
 // ========== 风控日志 ==========
@@ -106,16 +106,38 @@ export const getRiskLogs = async (params?: { page?: number; limit?: number; cook
   return { success: true, data: logs, total: result.total }
 }
 
-// 清空风控日志
-export const clearRiskLogs = (): Promise<ApiResponse> => {
-  return del('/admin/risk-control-logs')
+// 清空风控日志 - 后端暂未实现批量删除接口
+export const clearRiskLogs = async (): Promise<ApiResponse> => {
+  // 后端只有单条删除接口 DELETE /risk-control-logs/{log_id}
+  // 暂时返回提示信息
+  return { success: false, message: '后端暂未实现批量清空风控日志接口' }
 }
 
 // ========== 数据管理 ==========
 
-// 导出数据
-export const exportData = (type: string): Promise<Blob> => {
-  return get(`/admin/backup/download?type=${type}`, { responseType: 'blob' }) as Promise<Blob>
+// 导出数据 - 后端只支持导出整个数据库
+export const exportData = async (type: string): Promise<Blob> => {
+  // 后端 /admin/backup/download 不支持 type 参数，只能导出整个数据库
+  // 如果需要导出特定表数据，可以使用 /admin/data/{table_name} 获取后转换为 JSON
+  if (type === 'all') {
+    const token = localStorage.getItem('auth_token')
+    const response = await fetch(`/admin/backup/download?token=${token}`)
+    if (!response.ok) throw new Error('导出失败')
+    return response.blob()
+  }
+  
+  // 导出特定表数据
+  const tableMap: Record<string, string> = {
+    accounts: 'cookies',
+    keywords: 'keywords',
+    items: 'item_info',
+    orders: 'orders',
+    cards: 'cards',
+  }
+  const tableName = tableMap[type] || type
+  const data = await get<{ data: unknown[] }>(`/admin/data/${tableName}`)
+  const jsonStr = JSON.stringify(data.data || [], null, 2)
+  return new Blob([jsonStr], { type: 'application/json' })
 }
 
 // 导入数据
@@ -125,5 +147,19 @@ export const importData = (formData: FormData): Promise<ApiResponse> => {
 
 // 清理数据
 export const cleanupData = (type: string): Promise<ApiResponse> => {
-  return del(`/admin/data/${type}`)
+  // 清理类型映射表名
+  const tableMap: Record<string, string> = {
+    logs: 'logs',
+    orders: 'orders',
+    cards_used: 'cards',
+    all_data: 'all',
+  }
+  const tableName = tableMap[type] || type
+  
+  // 如果是清空日志，使用通用接口
+  if (type === 'logs') {
+    return post('/logs/clear')
+  }
+  
+  return del(`/admin/data/${tableName}`)
 }

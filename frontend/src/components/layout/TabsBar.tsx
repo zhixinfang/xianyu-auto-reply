@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { X, Home } from 'lucide-react'
 import { create } from 'zustand'
+import { persist, createJSONStorage } from 'zustand/middleware'
 import { cn } from '@/utils/cn'
 
 interface Tab {
@@ -39,34 +40,42 @@ const routeTitles: Record<string, string> = {
   '/about': '关于',
 }
 
-export const useTabsStore = create<TabsStore>((set, get) => ({
-  tabs: [{ path: '/dashboard', title: '仪表盘', closable: false }],
-  activeTab: '/dashboard',
-  
-  addTab: (tab) => {
-    const { tabs } = get()
-    const exists = tabs.find(t => t.path === tab.path)
-    if (!exists) {
-      set({ tabs: [...tabs, tab], activeTab: tab.path })
-    } else {
-      set({ activeTab: tab.path })
+export const useTabsStore = create<TabsStore>()(
+  persist(
+    (set, get) => ({
+      tabs: [{ path: '/dashboard', title: '仪表盘', closable: false }],
+      activeTab: '/dashboard',
+      
+      addTab: (tab) => {
+        const { tabs } = get()
+        const exists = tabs.find(t => t.path === tab.path)
+        if (!exists) {
+          set({ tabs: [...tabs, tab], activeTab: tab.path })
+        } else {
+          set({ activeTab: tab.path })
+        }
+      },
+      
+      removeTab: (path) => {
+        const { tabs, activeTab } = get()
+        const newTabs = tabs.filter(t => t.path !== path)
+        
+        // 如果关闭的是当前标签，切换到最后一个标签
+        if (activeTab === path && newTabs.length > 0) {
+          set({ tabs: newTabs, activeTab: newTabs[newTabs.length - 1].path })
+        } else {
+          set({ tabs: newTabs })
+        }
+      },
+      
+      setActiveTab: (path) => set({ activeTab: path }),
+    }),
+    {
+      name: 'tabs-storage',
+      storage: createJSONStorage(() => localStorage),
     }
-  },
-  
-  removeTab: (path) => {
-    const { tabs, activeTab } = get()
-    const newTabs = tabs.filter(t => t.path !== path)
-    
-    // 如果关闭的是当前标签，切换到最后一个标签
-    if (activeTab === path && newTabs.length > 0) {
-      set({ tabs: newTabs, activeTab: newTabs[newTabs.length - 1].path })
-    } else {
-      set({ tabs: newTabs })
-    }
-  },
-  
-  setActiveTab: (path) => set({ activeTab: path }),
-}))
+  )
+)
 
 export function TabsBar() {
   const location = useLocation()
@@ -106,27 +115,30 @@ export function TabsBar() {
   }
 
   return (
-    <div className="tabs-bar">
-      {tabs.map((tab) => (
-        <div
-          key={tab.path}
-          onClick={() => handleTabClick(tab.path)}
-          className={cn(
-            activeTab === tab.path ? 'tab-item-active' : 'tab-item'
-          )}
-        >
-          {tab.path === '/dashboard' && <Home className="w-3.5 h-3.5" />}
-          <span>{tab.title}</span>
-          {tab.closable && (
-            <button
-              onClick={(e) => handleTabClose(e, tab.path)}
-              className="tab-close"
-            >
-              <X className="w-3 h-3" />
-            </button>
-          )}
-        </div>
-      ))}
+    <div className="tabs-bar overflow-x-auto scrollbar-hide">
+      <div className="flex min-w-max">
+        {tabs.map((tab) => (
+          <div
+            key={tab.path}
+            onClick={() => handleTabClick(tab.path)}
+            className={cn(
+              activeTab === tab.path ? 'tab-item-active' : 'tab-item',
+              'whitespace-nowrap flex-shrink-0'
+            )}
+          >
+            {tab.path === '/dashboard' && <Home className="w-3.5 h-3.5" />}
+            <span className="text-xs sm:text-sm">{tab.title}</span>
+            {tab.closable && (
+              <button
+                onClick={(e) => handleTabClose(e, tab.path)}
+                className="tab-close"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
     </div>
   )
 }

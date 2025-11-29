@@ -1,4 +1,5 @@
 import axios, { AxiosError, AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios'
+import { useAuthStore } from '@/store/authStore'
 
 // 创建 axios 实例
 const request: AxiosInstance = axios.create({
@@ -31,9 +32,12 @@ request.interceptors.response.use(
   (error: AxiosError) => {
     if (error.response?.status === 401) {
       // Token 过期或无效，清除并跳转登录
-      localStorage.removeItem('auth_token')
-      localStorage.removeItem('user_info')
-      window.location.href = '/login'
+      try {
+        // 统一通过 Zustand 清理登录状态，确保 isAuthenticated、token 与本地存储一致
+        useAuthStore.getState().clearAuth()
+      } catch {
+        // ignore
+      }
     }
     return Promise.reject(error)
   }

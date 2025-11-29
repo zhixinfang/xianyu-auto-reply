@@ -13,6 +13,7 @@ interface UIState {
   loading: boolean
   toasts: Toast[]
   toggleSidebar: () => void
+  setSidebarCollapsed: (collapsed: boolean) => void
   setSidebarMobileOpen: (open: boolean) => void
   setLoading: (loading: boolean) => void
   addToast: (toast: Omit<Toast, 'id'>) => void
@@ -27,6 +28,10 @@ export const useUIStore = create<UIState>((set) => ({
 
   toggleSidebar: () => {
     set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed }))
+  },
+
+  setSidebarCollapsed: (collapsed) => {
+    set({ sidebarCollapsed: collapsed })
   },
 
   setSidebarMobileOpen: (open) => {

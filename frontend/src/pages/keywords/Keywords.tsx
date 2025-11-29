@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import type { FormEvent, ChangeEvent } from 'react'
 import { motion } from 'framer-motion'
-import { MessageSquare, RefreshCw, Plus, Edit2, Trash2, Upload, Download } from 'lucide-react'
+import { MessageSquare, RefreshCw, Plus, Edit2, Trash2, Upload, Download, Info } from 'lucide-react'
 import { getKeywords, deleteKeyword, addKeyword, updateKeyword, exportKeywords, importKeywords as importKeywordsApi } from '@/api/keywords'
 import { getAccounts } from '@/api/accounts'
 import { useUIStore } from '@/store/uiStore'
@@ -39,8 +39,10 @@ export function Keywords() {
     try {
       setLoading(true)
       const data = await getKeywords(selectedAccount)
-      setKeywords(data)
+      // 确保 data 是数组，防止后端返回非数组或请求失败时出错
+      setKeywords(Array.isArray(data) ? data : [])
     } catch {
+      setKeywords([])
       addToast({ type: 'error', message: '加载关键词列表失败' })
     } finally {
       setLoading(false)
@@ -52,13 +54,20 @@ export function Keywords() {
       return
     }
     try {
+      setLoading(true)
       const data = await getAccounts()
       setAccounts(data)
-      if (data.length > 0 && !selectedAccount) {
-        setSelectedAccount(data[0].id)
+      if (data.length > 0) {
+        if (!selectedAccount) {
+          setSelectedAccount(data[0].id)
+        }
+      } else {
+        setSelectedAccount('')
       }
     } catch {
       // ignore
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -289,6 +298,28 @@ export function Keywords() {
         </div>
       </motion.div>
 
+      {/* 变量提示说明 */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.05 }}
+        className="vben-card bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800"
+      >
+        <div className="vben-card-body py-3">
+          <div className="flex items-start gap-3">
+            <Info className="w-5 h-5 text-blue-500 flex-shrink-0 mt-0.5" />
+            <div className="text-sm">
+              <p className="font-medium text-blue-700 dark:text-blue-300 mb-1">支持变量替换</p>
+              <div className="text-blue-600 dark:text-blue-400 space-y-0.5">
+                <p><code className="bg-blue-100 dark:bg-blue-800 px-1 rounded">{'{send_user_name}'}</code> - 用户昵称</p>
+                <p><code className="bg-blue-100 dark:bg-blue-800 px-1 rounded">{'{send_user_id}'}</code> - 用户ID</p>
+                <p><code className="bg-blue-100 dark:bg-blue-800 px-1 rounded">{'{send_message}'}</code> - 用户消息内容</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </motion.div>
+
       {/* Keywords List */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
@@ -416,8 +447,11 @@ export function Keywords() {
                     value={replyText}
                     onChange={(e) => setReplyText(e.target.value)}
                     className="input-ios h-28 resize-none"
-                    placeholder="请输入自动回复内容"
+                    placeholder="请输入自动回复内容，留空表示不回复"
                   />
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                    回复内容留空时，匹配到关键词但不会自动回复，可用于屏蔽特定消息
+                  </p>
                 </div>
                 <div className="flex items-center justify-between pt-2">
                   <div>

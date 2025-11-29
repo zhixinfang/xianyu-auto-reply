@@ -1,11 +1,11 @@
-import { get, put } from '@/utils/request'
+import { get, put, post } from '@/utils/request'
 import type { ApiResponse, SystemSettings } from '@/types'
 
 // 获取系统设置
 export const getSystemSettings = async (): Promise<{ success: boolean; data?: SystemSettings }> => {
   const data = await get<Record<string, unknown>>('/system-settings')
   // 将字符串 'true'/'false' 转换为布尔值
-  const booleanFields = ['registration_enabled', 'show_login_info', 'login_captcha_enabled', 'show_default_login']
+  const booleanFields = ['registration_enabled', 'show_default_login_info', 'login_captcha_enabled']
   const converted: SystemSettings = {}
   for (const [key, value] of Object.entries(data)) {
     if (booleanFields.includes(key)) {
@@ -41,11 +41,22 @@ export const updateAISettings = (data: Record<string, unknown>): Promise<ApiResp
   return put('/ai-reply-settings', data)
 }
 
-// TODO: 测试 AI 连接需要指定 cookie_id，后端接口为 POST /ai-reply-test/{cookie_id}
-// 系统设置页面的测试按钮暂时无法使用，需要先选择账号
-export const testAIConnection = async (): Promise<ApiResponse> => {
-  // 后端需要有效的 cookie_id，这里返回提示信息
-  return { success: false, message: 'AI 测试需要先选择一个账号，请在账号管理页面的 AI 设置中测试' }
+// 测试 AI 连接 - 需要指定 cookie_id
+export const testAIConnection = async (cookieId?: string): Promise<ApiResponse> => {
+  if (!cookieId) {
+    return { success: false, message: '请先选择一个账号进行测试' }
+  }
+  try {
+    const result = await post<{ success?: boolean; message?: string; reply?: string }>(`/ai-reply-test/${cookieId}`, {
+      message: '你好，这是一条测试消息'
+    })
+    if (result.reply) {
+      return { success: true, message: `AI 回复: ${result.reply}` }
+    }
+    return { success: result.success ?? true, message: result.message || 'AI 连接测试成功' }
+  } catch (error) {
+    return { success: false, message: 'AI 连接测试失败' }
+  }
 }
 
 // 获取邮件设置
@@ -65,4 +76,45 @@ export const updateEmailSettings = (data: Record<string, unknown>): Promise<ApiR
 // 当前后端的 /send-verification-code 接口只支持 'register' 和 'login' 类型
 export const testEmailSend = async (_email: string): Promise<ApiResponse> => {
   return { success: false, message: '邮件测试功能暂未实现，请检查 SMTP 配置后直接保存' }
+}
+
+// 修改密码
+export const changePassword = async (data: { current_password: string; new_password: string }): Promise<ApiResponse> => {
+  return post('/change-password', data)
+}
+
+// 获取备份文件列表（管理员）
+export const getBackupList = async (): Promise<{ backups: Array<{ filename: string; size: number; size_mb: number; modified_time: string }>; total: number }> => {
+  return get('/admin/backup/list')
+}
+
+// 下载数据库备份（管理员）
+export const downloadDatabaseBackup = (): string => {
+  const token = localStorage.getItem('auth_token')
+  return `/admin/backup/download?token=${token}`
+}
+
+// 上传数据库备份（管理员）
+export const uploadDatabaseBackup = async (file: File): Promise<ApiResponse> => {
+  const formData = new FormData()
+  formData.append('backup_file', file)
+  return post('/admin/backup/upload', formData)
+}
+
+// 刷新系统缓存
+export const reloadSystemCache = async (): Promise<ApiResponse> => {
+  return post('/admin/reload-cache')
+}
+
+// 导出用户备份
+export const exportUserBackup = (): string => {
+  const token = localStorage.getItem('auth_token')
+  return `/backup/export?token=${token}`
+}
+
+// 导入用户备份
+export const importUserBackup = async (file: File): Promise<ApiResponse> => {
+  const formData = new FormData()
+  formData.append('file', file)
+  return post('/backup/import', formData)
 }

@@ -16,6 +16,7 @@ interface DashboardStats {
   totalOrders: number
 }
 
+
 export function Dashboard() {
   const { addToast } = useUIStore()
   const { isAuthenticated, token, _hasHydrated } = useAuthStore()
@@ -73,6 +74,7 @@ export function Dashboard() {
       } catch {
         // ignore
       }
+
 
       setStats({
         totalAccounts: accountsWithKeywords.length,
@@ -133,21 +135,22 @@ export function Dashboard() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3 sm:space-y-4">
       {/* Page header */}
-      <div className="page-header flex-between">
+      <div className="page-header flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
         <div>
           <h1 className="page-title">仪表盘</h1>
           <p className="page-description">系统概览和统计信息</p>
         </div>
         <button onClick={loadDashboard} className="btn-ios-secondary">
           <RefreshCw className="w-4 h-4" />
-          刷新数据
+          <span className="hidden sm:inline">刷新数据</span>
+          <span className="sm:hidden">刷新</span>
         </button>
       </div>
 
       {/* Stats cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4">
         {statCards.map((card, index) => {
           const Icon = card.icon
           return (

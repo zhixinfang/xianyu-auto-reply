@@ -20,6 +20,11 @@ export default defineConfig({
       '/login': {
         target: 'http://localhost:8080',
         changeOrigin: true,
+        bypass: (req) => {
+          if (req.method === 'GET') {
+            return '/index.html'
+          }
+        },
       },
       '/verify': {
         target: 'http://localhost:8080',
@@ -29,23 +34,7 @@ export default defineConfig({
         target: 'http://localhost:8080',
         changeOrigin: true,
       },
-      '/keywords': {
-        target: 'http://localhost:8080',
-        changeOrigin: true,
-      },
-      '/cards': {
-        target: 'http://localhost:8080',
-        changeOrigin: true,
-      },
       '/delivery-rules': {
-        target: 'http://localhost:8080',
-        changeOrigin: true,
-      },
-      '/notification-channels': {
-        target: 'http://localhost:8080',
-        changeOrigin: true,
-      },
-      '/message-notifications': {
         target: 'http://localhost:8080',
         changeOrigin: true,
       },
@@ -61,23 +50,7 @@ export default defineConfig({
         target: 'http://localhost:8080',
         changeOrigin: true,
       },
-      '/admin/users': {
-        target: 'http://localhost:8080',
-        changeOrigin: true,
-      },
-      '/admin/logs': {
-        target: 'http://localhost:8080',
-        changeOrigin: true,
-      },
-      '/admin/risk-control-logs': {
-        target: 'http://localhost:8080',
-        changeOrigin: true,
-      },
       '/admin/backup': {
-        target: 'http://localhost:8080',
-        changeOrigin: true,
-      },
-      '/admin/data': {
         target: 'http://localhost:8080',
         changeOrigin: true,
       },
@@ -110,10 +83,6 @@ export default defineConfig({
         changeOrigin: true,
       },
       '/register': {
-        target: 'http://localhost:8080',
-        changeOrigin: true,
-      },
-      '/items': {
         target: 'http://localhost:8080',
         changeOrigin: true,
       },
@@ -156,6 +125,87 @@ export default defineConfig({
       '/default-reply': {
         target: 'http://localhost:8080',
         changeOrigin: true,
+      },
+      '/static': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+      },
+      '/backup': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+      },
+      '/project-stats': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+      },
+      '/change-password': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+      },
+      '/search': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+      },
+      // 商品管理 - 前端有 /items 路由，需要区分浏览器访问和 API 请求
+      '/items': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+        bypass: (req) => {
+          // 浏览器直接访问（Accept 包含 text/html）时，让前端路由处理
+          if (req.headers.accept?.includes('text/html')) {
+            return '/index.html'
+          }
+        },
+      },
+      // 卡券管理 - 前端有 /cards 路由
+      '/cards': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+        bypass: (req) => {
+          if (req.headers.accept?.includes('text/html')) {
+            return '/index.html'
+          }
+        },
+      },
+      // 通知渠道 - 前端有 /notification-channels 路由
+      '/notification-channels': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+        bypass: (req) => {
+          if (req.headers.accept?.includes('text/html')) {
+            return '/index.html'
+          }
+        },
+      },
+      // 消息通知 - 前端有 /message-notifications 路由
+      '/message-notifications': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+        bypass: (req) => {
+          if (req.headers.accept?.includes('text/html')) {
+            return '/index.html'
+          }
+        },
+      },
+      // 关键词 - 前端有 /keywords 路由
+      '/keywords': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+        bypass: (req) => {
+          if (req.headers.accept?.includes('text/html')) {
+            return '/index.html'
+          }
+        },
+      },
+      // 订单 - 前端有 /orders 路由
+      '/orders': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+        bypass: (req) => {
+          if (req.headers.accept?.includes('text/html')) {
+            return '/index.html'
+          }
+        },
       },
     },
   },

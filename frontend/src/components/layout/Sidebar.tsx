@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { NavLink } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
@@ -19,6 +20,8 @@ import {
   Info,
   Menu,
   X,
+  PanelLeftClose,
+  PanelLeft,
 } from 'lucide-react'
 import { useAuthStore } from '@/store/authStore'
 import { useUIStore } from '@/store/uiStore'
@@ -59,7 +62,24 @@ const bottomNavItems: NavItem[] = [
 
 export function Sidebar() {
   const { user } = useAuthStore()
-  const { sidebarMobileOpen, setSidebarMobileOpen } = useUIStore()
+  const { sidebarCollapsed, sidebarMobileOpen, setSidebarMobileOpen, setSidebarCollapsed } = useUIStore()
+
+  // 监听窗口大小变化：
+  // <640px 抽屉（不依赖 collapsed）；640-1024px 自动收缩；>1024px 展开
+  useEffect(() => {
+    const handleResize = () => {
+      const width = window.innerWidth
+      if (width >= 640 && width < 1024) {
+        setSidebarCollapsed(true)
+      } else if (width >= 1024) {
+        setSidebarCollapsed(false)
+      }
+    }
+
+    handleResize() // 初始化
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [setSidebarCollapsed])
 
   const closeMobileSidebar = () => {
     setSidebarMobileOpen(false)
@@ -67,13 +87,17 @@ export function Sidebar() {
 
   const NavItemComponent = ({ item }: { item: NavItem }) => {
     const Icon = item.icon
+    // 移动端抽屉模式下，始终显示文字
+    const showLabel = sidebarMobileOpen || !sidebarCollapsed
     return (
       <NavLink
         to={item.path}
         onClick={closeMobileSidebar}
+        title={!showLabel ? item.label : undefined}
         className={({ isActive }) =>
           cn(
             'flex items-center gap-3 px-3 py-2.5 rounded-md text-sm transition-all duration-150',
+            !showLabel && 'justify-center px-2',
             isActive 
               ? 'bg-blue-600 text-white dark:text-white hover:text-white hover:bg-blue-700 shadow-sm'
               : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/10'
@@ -81,58 +105,69 @@ export function Sidebar() {
         }
       >
         <Icon className="w-4 h-4 flex-shrink-0" />
-        <span className="truncate">{item.label}</span>
+        {showLabel && <span className="truncate">{item.label}</span>}
       </NavLink>
     )
   }
 
   return (
     <>
-      {/* Mobile overlay */}
-      {sidebarMobileOpen && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40 lg:hidden"
-          onClick={closeMobileSidebar}
-        />
-      )}
+      {/* Mobile overlay - 点击关闭侧边栏（仅在 <640px 显示） */}
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: sidebarMobileOpen ? 1 : 0 }}
+        transition={{ duration: 0.2 }}
+        className={cn(
+          'fixed inset-0 bg-black/60 z-40 sm:hidden',
+          sidebarMobileOpen ? 'pointer-events-auto' : 'pointer-events-none'
+        )}
+        onClick={closeMobileSidebar}
+      />
 
       {/* Sidebar */}
       <motion.aside
         initial={false}
-        animate={{
-          x: sidebarMobileOpen ? 0 : undefined,
-        }}
         className={cn(
-          'fixed top-0 left-0 h-screen w-56 z-50',
+          'fixed top-0 left-0 h-screen z-50',
           'bg-white dark:bg-[#001529]',
           'flex flex-col',
           'transition-transform duration-200 ease-out',
           'border-r border-slate-200 dark:border-slate-700',
-          'lg:translate-x-0',
-          !sidebarMobileOpen && '-translate-x-full lg:translate-x-0'
+          // <640px 抽屉：根据 sidebarMobileOpen 控制显隐；>=640px 常驻
+          sidebarMobileOpen ? 'translate-x-0' : '-translate-x-full sm:translate-x-0',
+          // 宽度：移动端抽屉 288px，桌面根据收缩状态
+          sidebarMobileOpen ? 'w-72' : sidebarCollapsed ? 'w-16' : 'w-56'
         )}
       >
         {/* Header */}
-        <div className="h-14 flex items-center justify-between px-4 border-b border-slate-200 dark:border-slate-700">
+        <div className={cn(
+          'h-14 flex items-center border-b border-slate-200 dark:border-slate-700',
+          (!sidebarMobileOpen && sidebarCollapsed) ? 'justify-center px-2' : 'justify-between px-4'
+        )}>
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-blue-500 flex items-center justify-center">
+            <div className="w-8 h-8 rounded-lg bg-blue-500 flex items-center justify-center flex-shrink-0">
               <MessageSquare className="w-4 h-4 text-white" />
             </div>
-            <span className="font-semibold text-sm text-slate-900 dark:text-white">闲鱼管理系统</span>
+            {(sidebarMobileOpen || !sidebarCollapsed) && (
+              <span className="font-semibold text-sm text-slate-900 dark:text-white whitespace-nowrap">闲鱼管理系统</span>
+            )}
           </div>
-          <button
-            onClick={closeMobileSidebar}
-            className="lg:hidden p-1.5 hover:bg-slate-100 dark:hover:bg-white/10 rounded transition-colors text-slate-400 hover:text-slate-900 dark:hover:text-white"
-          >
-            <X className="w-4 h-4" />
-          </button>
+          {/* 移动端抽屉打开时显示关闭按钮 */}
+          {sidebarMobileOpen && (
+            <button
+              onClick={closeMobileSidebar}
+              className="sm:hidden p-1.5 hover:bg-slate-100 dark:hover:bg-white/10 rounded transition-colors text-slate-400 hover:text-slate-900 dark:hover:text-white"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-0.5 sidebar-scrollbar">
+        <nav className={cn(
+          'flex-1 overflow-y-auto py-3 space-y-0.5 sidebar-scrollbar',
+          (!sidebarMobileOpen && sidebarCollapsed) ? 'px-1.5' : 'px-2'
+        )}>
           {mainNavItems.map((item) => (
             <NavItemComponent key={item.path} item={item} />
           ))}
@@ -140,42 +175,65 @@ export function Sidebar() {
           {/* Admin section */}
           {user?.is_admin && (
             <>
-              <div className="pt-4 pb-2 px-3">
-                <p className="text-xs font-medium text-slate-400 dark:text-gray-500 uppercase tracking-wider">
-                  管理员
-                </p>
-              </div>
+              {(sidebarMobileOpen || !sidebarCollapsed) && (
+                <div className="pt-4 pb-2 px-3">
+                  <p className="text-xs font-medium text-slate-400 dark:text-gray-500 uppercase tracking-wider">
+                    管理员
+                  </p>
+                </div>
+              )}
+              {(!sidebarMobileOpen && sidebarCollapsed) && <div className="pt-2 border-t border-slate-200 dark:border-slate-700 mt-2" />}
               {adminNavItems.map((item) => (
                 <NavItemComponent key={item.path} item={item} />
               ))}
             </>
           )}
 
-          <div className="pt-4 pb-2 px-3">
-            <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">
-              其他
-            </p>
-          </div>
+          {(sidebarMobileOpen || !sidebarCollapsed) && (
+            <div className="pt-4 pb-2 px-3">
+              <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">
+                其他
+              </p>
+            </div>
+          )}
+          {(!sidebarMobileOpen && sidebarCollapsed) && <div className="pt-2 border-t border-slate-200 dark:border-slate-700 mt-2" />}
           {bottomNavItems.map((item) => (
             <NavItemComponent key={item.path} item={item} />
           ))}
         </nav>
 
+        {/* Collapse toggle button - 只在 lg 以上显示 */}
+        <div className="hidden lg:flex items-center justify-center p-2 border-t border-slate-200 dark:border-slate-700">
+          <button
+            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+            className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-white/10 transition-colors text-slate-400 hover:text-slate-600 dark:hover:text-white"
+            title={sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'}
+          >
+            {sidebarCollapsed ? <PanelLeft className="w-4 h-4" /> : <PanelLeftClose className="w-4 h-4" />}
+          </button>
+        </div>
       </motion.aside>
 
-      {/* Mobile toggle button */}
-      <button
+      {/* Mobile toggle button - 只在 <640px 且侧边栏关闭时显示 */}
+      <motion.button
+        initial={{ opacity: 0, scale: 0.9 }}
+        animate={{ 
+          opacity: sidebarMobileOpen ? 0 : 1, 
+          scale: sidebarMobileOpen ? 0.9 : 1
+        }}
+        transition={{ duration: 0.15 }}
         onClick={() => setSidebarMobileOpen(true)}
         className={cn(
-          'fixed top-3 left-3 z-30 lg:hidden',
-          'w-10 h-10 rounded-md',
+          'fixed top-2.5 left-2.5 z-50 sm:hidden',
+          'w-8 h-8 rounded-md',
           'bg-blue-500 text-white shadow-md',
           'flex items-center justify-center',
-          'hover:bg-blue-600 transition-colors'
+          'hover:bg-blue-600 active:scale-95 transition-all',
+          sidebarMobileOpen && 'pointer-events-none'
         )}
       >
-        <Menu className="w-5 h-5" />
-      </button>
+        <Menu className="w-4 h-4" />
+      </motion.button>
     </>
   )
 }

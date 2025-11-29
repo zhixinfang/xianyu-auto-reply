@@ -36,9 +36,12 @@ export const updateItem = (cookieId: string, itemId: string, data: Partial<Item>
 }
 
 // 获取商品回复列表
-export const getItemReplies = (cookieId?: string): Promise<{ success: boolean; data: ItemReply[] }> => {
+export const getItemReplies = async (cookieId?: string): Promise<{ success: boolean; data: ItemReply[] }> => {
   const params = cookieId ? `/cookie/${cookieId}` : ''
-  return get(`/itemReplays${params}`)
+  const result = await get<{ items?: ItemReply[] } | ItemReply[]>(`/itemReplays${params}`)
+  // 后端返回 { items: [...] } 格式
+  const items = Array.isArray(result) ? result : (result.items || [])
+  return { success: true, data: items }
 }
 
 // 添加商品回复

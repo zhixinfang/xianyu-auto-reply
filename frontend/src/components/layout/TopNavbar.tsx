@@ -34,13 +34,14 @@ export function TopNavbar() {
 
   return (
     <div className="top-navbar">
-      {/* 左侧 - 面包屑或标题 */}
-      <div className="flex items-center gap-2">
-        <span className="text-sm text-slate-500 dark:text-slate-400">欢迎使用闲鱼管理系统</span>
+      {/* 左侧 - 面包屑或标题（<640px 留空间给汉堡菜单） */}
+      <div className="flex items-center gap-2 ml-12 sm:ml-0">
+        <span className="text-sm text-slate-500 dark:text-slate-400 hidden sm:inline">欢迎使用闲鱼管理系统</span>
+        <span className="text-sm text-slate-500 dark:text-slate-400 sm:hidden">闲鱼管理</span>
       </div>
 
       {/* 右侧 - 工具栏 */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1 sm:gap-2">
         {/* 主题切换 */}
         <button
           onClick={toggleTheme}
@@ -57,7 +58,7 @@ export function TopNavbar() {
         <div className="relative">
           <button
             onClick={() => setShowUserMenu(!showUserMenu)}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-md
+            className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 rounded-md
                        text-slate-700 dark:text-slate-200
                        hover:bg-slate-100 dark:hover:bg-slate-700
                        transition-colors duration-150"
@@ -66,7 +67,7 @@ export function TopNavbar() {
               {(user?.username || 'U').charAt(0).toUpperCase()}
             </div>
             <span className="text-sm font-medium hidden sm:inline">{user?.username || '用户'}</span>
-            <ChevronDown className="w-4 h-4 text-slate-400" />
+            <ChevronDown className="w-4 h-4 text-slate-400 hidden sm:block" />
           </button>
 
           {/* 下拉菜单 */}

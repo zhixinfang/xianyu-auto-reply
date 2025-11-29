@@ -171,8 +171,7 @@ export interface SystemSettings {
   ai_base_url?: string
   default_reply?: string
   registration_enabled?: boolean
-  show_default_login?: boolean
-  show_login_info?: boolean
+  show_default_login_info?: boolean
   login_captcha_enabled?: boolean
   smtp_host?: string
   smtp_port?: number

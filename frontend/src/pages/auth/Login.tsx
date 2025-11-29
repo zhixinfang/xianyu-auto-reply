@@ -257,7 +257,7 @@ export function Login() {
       </motion.div>
 
       {/* Right side - Login form */}
-      <div className="flex-1 flex items-center justify-center p-6">
+      <div className="flex-1 flex items-center justify-center p-4 sm:p-6">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -278,14 +278,14 @@ export function Login() {
           </motion.div>
 
           {/* Login Card */}
-          <div className="bg-white dark:bg-slate-800 rounded-lg shadow-sm border border-slate-200 dark:border-slate-700 p-8">
+          <div className="bg-white dark:bg-slate-800 rounded-lg shadow-sm border border-slate-200 dark:border-slate-700 p-5 sm:p-8">
             <div className="mb-6">
               <h2 className="text-xl vben-card-title text-slate-900 dark:text-white">登录</h2>
               <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">欢迎回来，请登录您的账号</p>
             </div>
 
             {/* Login type tabs */}
-            <div className="flex border-b border-slate-200 dark:border-slate-700 mb-6">
+            <div className="flex border-b border-slate-200 dark:border-slate-700 mb-4 sm:mb-6 overflow-x-auto scrollbar-hide">
               {[
                 { type: 'username' as const, label: '账号登录' },
                 { type: 'email-password' as const, label: '邮箱密码' },
@@ -295,7 +295,7 @@ export function Login() {
                   key={tab.type}
                   onClick={() => setLoginType(tab.type)}
                   className={cn(
-                    'px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors',
+                    'px-3 sm:px-4 py-2 sm:py-2.5 text-xs sm:text-sm font-medium border-b-2 -mb-px transition-colors whitespace-nowrap flex-shrink-0',
                     loginType === tab.type
                       ? 'text-blue-600 dark:text-blue-400 border-blue-600 dark:border-blue-400'
                       : 'text-slate-500 dark:text-slate-400 border-transparent hover:text-slate-700 dark:hover:text-slate-300'
@@ -306,7 +306,7 @@ export function Login() {
               ))}
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form onSubmit={handleSubmit} className="space-y-3 sm:space-y-4">
               {/* Username login */}
               {loginType === 'username' && (
                 <>
