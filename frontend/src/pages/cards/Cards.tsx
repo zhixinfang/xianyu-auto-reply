@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import type { FormEvent, ChangeEvent } from 'react'
-import { Ticket, RefreshCw, Plus, Trash2, X, Loader2, Power, PowerOff, Edit2, Upload } from 'lucide-react'
+import { Ticket, RefreshCw, Plus, Trash2, X, Loader2, Power, PowerOff, Edit2 } from 'lucide-react'
 import { getCards, deleteCard, createCard, updateCard, type CardData } from '@/api/cards'
 import { useUIStore } from '@/store/uiStore'
 import { PageLoading } from '@/components/common/Loading'

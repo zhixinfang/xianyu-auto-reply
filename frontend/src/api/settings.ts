@@ -5,7 +5,7 @@ import type { ApiResponse, SystemSettings } from '@/types'
 export const getSystemSettings = async (): Promise<{ success: boolean; data?: SystemSettings }> => {
   const data = await get<Record<string, unknown>>('/system-settings')
   // 将字符串 'true'/'false' 转换为布尔值
-  const booleanFields = ['registration_enabled', 'show_default_login_info', 'login_captcha_enabled']
+  const booleanFields = ['registration_enabled', 'show_default_login_info', 'login_captcha_enabled', 'smtp_use_tls', 'smtp_use_ssl']
   const converted: SystemSettings = {}
   for (const [key, value] of Object.entries(data)) {
     if (booleanFields.includes(key)) {

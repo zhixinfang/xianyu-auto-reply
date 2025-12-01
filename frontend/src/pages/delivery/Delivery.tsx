@@ -3,19 +3,19 @@ import type { FormEvent } from 'react'
 import { motion } from 'framer-motion'
 import { Truck, RefreshCw, Plus, Edit2, Trash2, Power, PowerOff, X, Loader2 } from 'lucide-react'
 import { getDeliveryRules, deleteDeliveryRule, updateDeliveryRule, addDeliveryRule } from '@/api/delivery'
-import { getCards } from '@/api/cards'
+import { getCards, type CardData } from '@/api/cards'
 import { useUIStore } from '@/store/uiStore'
 import { useAuthStore } from '@/store/authStore'
 import { PageLoading } from '@/components/common/Loading'
 import { Select } from '@/components/common/Select'
-import type { DeliveryRule, Card } from '@/types'
+import type { DeliveryRule } from '@/types'
 
 export function Delivery() {
   const { addToast } = useUIStore()
   const { isAuthenticated, token, _hasHydrated } = useAuthStore()
   const [loading, setLoading] = useState(true)
   const [rules, setRules] = useState<DeliveryRule[]>([])
-  const [cards, setCards] = useState<Card[]>([])
+  const [cards, setCards] = useState<CardData[]>([])
   
   // 弹窗状态
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -290,7 +290,7 @@ export function Delivery() {
                       { value: '', label: '请选择卡券' },
                       ...cards.map((card) => ({
                         value: String(card.id),
-                        label: card.keyword || card.card_content?.substring(0, 20) || `卡券 ${card.id}`,
+                        label: card.name || card.text_content?.substring(0, 20) || `卡券 ${card.id}`,
                       })),
                     ]}
                     placeholder="请选择卡券"

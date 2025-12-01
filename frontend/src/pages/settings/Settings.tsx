@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Settings as SettingsIcon, Save, Bot, Mail, Shield, RefreshCw, Key, Database, Download, Upload, Archive } from 'lucide-react'
+import { Settings as SettingsIcon, Save, Bot, Mail, Shield, RefreshCw, Key, Download, Upload, Archive } from 'lucide-react'
 import { getSystemSettings, updateSystemSettings, testAIConnection, testEmailSend, changePassword, downloadDatabaseBackup, uploadDatabaseBackup, reloadSystemCache, exportUserBackup, importUserBackup } from '@/api/settings'
 import { getAccounts } from '@/api/accounts'
 import { useUIStore } from '@/store/uiStore'
@@ -283,7 +283,7 @@ export function Settings() {
                 <label className="switch-ios">
                   <input
                     type="checkbox"
-                    checked={settings?.registration_enabled ?? true}
+                    checked={Boolean(settings?.registration_enabled ?? true)}
                     onChange={(e) => setSettings(s => s ? { ...s, registration_enabled: e.target.checked } : null)}
                   />
                   <span className="switch-slider"></span>
@@ -298,7 +298,7 @@ export function Settings() {
                 <label className="switch-ios">
                   <input
                     type="checkbox"
-                    checked={settings?.show_default_login_info ?? true}
+                    checked={Boolean(settings?.show_default_login_info ?? true)}
                     onChange={(e) => setSettings(s => s ? { ...s, show_default_login_info: e.target.checked } : null)}
                   />
                   <span className="switch-slider"></span>
@@ -311,7 +311,7 @@ export function Settings() {
           <div className="vben-card">
             <div className="vben-card-header">
               <h2 className="vben-card-title">
-                <Bot className="w-4 h-4 text-green-500" />
+                <Bot className="w-4 h-4" />
                 AI 设置
               </h2>
             </div>
@@ -325,6 +325,7 @@ export function Settings() {
                   placeholder="https://api.openai.com/v1"
                   className="input-ios"
                 />
+                <p className="text-xs text-slate-400 mt-1">无需补全 /chat/completions</p>
               </div>
               <div className="input-group">
                 <label className="input-label">API Key</label>
@@ -345,6 +346,7 @@ export function Settings() {
                   placeholder="gpt-3.5-turbo"
                   className="input-ios"
                 />
+                <p className="text-xs text-slate-400 mt-1">如: gpt-3.5-turbo、gpt-4、claude-3-sonnet</p>
               </div>
               <div className="flex items-end gap-2">
                 <div className="flex-1">
@@ -364,6 +366,14 @@ export function Settings() {
                   {testingAI ? '测试中...' : '测试 AI 连接'}
                 </button>
               </div>
+              <div className="bg-slate-50 dark:bg-slate-800/50 rounded-lg p-3 text-xs text-slate-500 dark:text-slate-400">
+                <p className="font-medium mb-1">常见 AI 服务配置:</p>
+                <ul className="space-y-0.5 list-disc list-inside">
+                  <li>OpenAI: https://api.openai.com/v1</li>
+                  
+                  <li>国内中转: 使用服务商提供的 API 地址</li>
+                </ul>
+              </div>
             </div>
           </div>
         </div>
@@ -374,53 +384,95 @@ export function Settings() {
           <div className="vben-card">
             <div className="vben-card-header">
               <h2 className="vben-card-title">
-                <Mail className="w-4 h-4 text-amber-500" />
-                邮件设置
+                <Mail className="w-4 h-4" />
+                SMTP邮件配置
               </h2>
             </div>
             <div className="vben-card-body space-y-4">
+              <p className="text-sm text-slate-500 dark:text-slate-400">配置SMTP服务器用于发送注册验证码等邮件通知</p>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="input-group">
-                  <label className="input-label">SMTP 服务器</label>
+                  <label className="input-label">SMTP服务器</label>
                   <input
                     type="text"
-                    value={settings?.smtp_host || ''}
-                    onChange={(e) => setSettings(s => s ? { ...s, smtp_host: e.target.value } : null)}
-                    placeholder="smtp.example.com"
+                    value={settings?.smtp_server || ''}
+                    onChange={(e) => setSettings(s => s ? { ...s, smtp_server: e.target.value } : null)}
+                    placeholder="smtp.qq.com"
                     className="input-ios"
                   />
+                  <p className="text-xs text-slate-400 mt-1">如：smtp.qq.com、smtp.gmail.com</p>
                 </div>
                 <div className="input-group">
-                  <label className="input-label">端口</label>
+                  <label className="input-label">SMTP端口</label>
                   <input
                     type="number"
-                    value={settings?.smtp_port || 465}
+                    value={settings?.smtp_port || 587}
                     onChange={(e) => setSettings(s => s ? { ...s, smtp_port: parseInt(e.target.value) } : null)}
-                    placeholder="465"
+                    placeholder="587"
                     className="input-ios"
                   />
+                  <p className="text-xs text-slate-400 mt-1">通常为587(TLS)或465(SSL)</p>
                 </div>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="input-group">
-                  <label className="input-label">发件人邮箱</label>
+                  <label className="input-label">发件邮箱</label>
                   <input
                     type="email"
                     value={settings?.smtp_user || ''}
                     onChange={(e) => setSettings(s => s ? { ...s, smtp_user: e.target.value } : null)}
-                    placeholder="noreply@example.com"
+                    placeholder="your-email@qq.com"
                     className="input-ios"
                   />
+                  <p className="text-xs text-slate-400 mt-1">用于发送邮件的邮箱地址</p>
                 </div>
                 <div className="input-group">
-                  <label className="input-label">密码/授权码</label>
+                  <label className="input-label">邮箱密码/授权码</label>
                   <input
                     type="password"
                     value={settings?.smtp_password || ''}
                     onChange={(e) => setSettings(s => s ? { ...s, smtp_password: e.target.value } : null)}
-                    placeholder="••••••••"
+                    placeholder="输入密码或授权码"
                     className="input-ios"
                   />
+                  <p className="text-xs text-slate-400 mt-1">邮箱密码或应用专用密码(QQ邮箱需要授权码)</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="input-group">
+                  <label className="input-label">发件人显示名（可选）</label>
+                  <input
+                    type="text"
+                    value={settings?.smtp_from || ''}
+                    onChange={(e) => setSettings(s => s ? { ...s, smtp_from: e.target.value } : null)}
+                    placeholder="闲鱼自动回复系统"
+                    className="input-ios"
+                  />
+                  <p className="text-xs text-slate-400 mt-1">邮件发件人显示的名称，留空则使用邮箱地址</p>
+                </div>
+                <div className="input-group">
+                  <label className="input-label">加密方式</label>
+                  <div className="flex gap-4 mt-2">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(settings?.smtp_use_tls ?? true)}
+                        onChange={(e) => setSettings(s => s ? { ...s, smtp_use_tls: e.target.checked } : null)}
+                        className="w-4 h-4 rounded border-slate-300"
+                      />
+                      <span className="text-sm">启用TLS</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(settings?.smtp_use_ssl ?? false)}
+                        onChange={(e) => setSettings(s => s ? { ...s, smtp_use_ssl: e.target.checked } : null)}
+                        className="w-4 h-4 rounded border-slate-300"
+                      />
+                      <span className="text-sm">启用SSL</span>
+                    </label>
+                  </div>
+                  <p className="text-xs text-slate-400 mt-1">TLS和SSL二选一，推荐TLS</p>
                 </div>
               </div>
               <button onClick={handleTestEmail} className="btn-ios-secondary">
@@ -433,12 +485,12 @@ export function Settings() {
           <div className="vben-card">
             <div className="vben-card-header">
               <h2 className="vben-card-title">
-                <Shield className="w-4 h-4 text-red-500" />
+                <Shield className="w-4 h-4" />
                 安全设置
               </h2>
             </div>
-            <div className="vben-card-body">
-              <div className="flex items-center justify-between py-3">
+            <div className="vben-card-body space-y-4">
+              <div className="flex items-center justify-between py-2">
                 <div>
                   <p className="font-medium text-slate-900 dark:text-slate-100">启用登录验证码</p>
                   <p className="text-sm text-slate-500 dark:text-slate-400">登录时需要输入图形验证码</p>
@@ -446,27 +498,62 @@ export function Settings() {
                 <label className="switch-ios">
                   <input
                     type="checkbox"
-                    checked={settings?.login_captcha_enabled ?? false}
+                    checked={Boolean(settings?.login_captcha_enabled ?? false)}
                     onChange={(e) => setSettings(s => s ? { ...s, login_captcha_enabled: e.target.checked } : null)}
                   />
                   <span className="switch-slider"></span>
                 </label>
               </div>
+              {user?.is_admin && (
+                <>
+                  <div className="border-t border-slate-100 dark:border-slate-700 pt-4">
+                    <label className="input-label flex items-center gap-2">
+                      QQ回复消息API秘钥
+                      <span className="text-xs bg-slate-500 text-white px-1.5 py-0.5 rounded">管理员</span>
+                    </label>
+                    <div className="flex gap-2 mt-1">
+                      <input
+                        type="password"
+                        value={settings?.qq_reply_secret_key || ''}
+                        onChange={(e) => setSettings(s => s ? { ...s, qq_reply_secret_key: e.target.value } : null)}
+                        placeholder="请输入API秘钥"
+                        className="input-ios flex-1"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const key = Array.from(crypto.getRandomValues(new Uint8Array(16)))
+                            .map(b => b.toString(16).padStart(2, '0')).join('')
+                          setSettings(s => s ? { ...s, qq_reply_secret_key: key } : null)
+                          addToast({ type: 'success', message: '已生成随机秘钥，请保存设置' })
+                        }}
+                        className="btn-ios-secondary whitespace-nowrap"
+                      >
+                        生成秘钥
+                      </button>
+                    </div>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                      用于验证 /send-message API接口的访问权限，修改后需更新所有使用该API的应用
+                    </p>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>
       </div>
 
-      {/* 密码修改 */}
-      <div className="vben-card">
-        <div className="vben-card-header">
-          <h2 className="vben-card-title">
-            <Key className="w-4 h-4 text-purple-500" />
-            修改密码
-          </h2>
-        </div>
-        <div className="vben-card-body">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      {/* 密码修改和数据备份 - 双列布局 */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* 密码修改 */}
+        <div className="vben-card">
+          <div className="vben-card-header">
+            <h2 className="vben-card-title">
+              <Key className="w-4 h-4" />
+              修改密码
+            </h2>
+          </div>
+          <div className="vben-card-body space-y-4">
             <div className="input-group">
               <label className="input-label">当前密码</label>
               <input
@@ -497,8 +584,6 @@ export function Settings() {
                 className="input-ios"
               />
             </div>
-          </div>
-          <div className="mt-4">
             <button
               onClick={handleChangePassword}
               disabled={changingPassword}
@@ -509,101 +594,76 @@ export function Settings() {
             </button>
           </div>
         </div>
-      </div>
 
-      {/* 数据备份 */}
-      <div className="vben-card">
-        <div className="vben-card-header">
-          <h2 className="vben-card-title">
-            <Archive className="w-4 h-4 text-blue-500" />
-            数据备份
-          </h2>
-        </div>
-        <div className="vben-card-body">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* 数据备份 */}
+        <div className="vben-card">
+          <div className="vben-card-header">
+            <h2 className="vben-card-title">
+              <Archive className="w-4 h-4" />
+              数据备份
+            </h2>
+          </div>
+          <div className="vben-card-body space-y-4">
             {/* 用户数据备份 */}
-            <div className="relative overflow-hidden rounded-xl border border-slate-200 dark:border-slate-700 bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-slate-800 dark:to-slate-800">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-blue-100 dark:bg-blue-900/20 rounded-full -translate-y-1/2 translate-x-1/2 opacity-50"></div>
-              <div className="relative p-6">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="w-12 h-12 rounded-xl bg-blue-500 flex items-center justify-center shadow-lg shadow-blue-500/30">
-                    <Download className="w-6 h-6 text-white" />
-                  </div>
-                  <div>
-                    <h3 className="font-semibold text-slate-900 dark:text-slate-100">用户数据备份</h3>
-                    <p className="text-sm text-slate-500 dark:text-slate-400">导出您的账号、关键词、卡券等数据</p>
-                  </div>
-                </div>
-                <div className="flex flex-wrap gap-3">
-                  <button onClick={handleExportUserBackup} className="btn-ios-primary">
-                    <Download className="w-4 h-4" />
-                    导出备份
-                  </button>
-                  <label className="btn-ios-secondary cursor-pointer">
-                    <Upload className="w-4 h-4" />
-                    导入备份
-                    <input
-                      ref={userBackupFileRef}
-                      type="file"
-                      accept=".json"
-                      className="hidden"
-                      onChange={handleImportUserBackup}
-                    />
-                  </label>
-                </div>
+            <div>
+              <p className="font-medium text-slate-900 dark:text-slate-100 mb-1">用户数据备份</p>
+              <p className="text-sm text-slate-500 dark:text-slate-400 mb-2">导出您的账号、关键词、卡券等数据</p>
+              <div className="flex flex-wrap gap-2">
+                <button onClick={handleExportUserBackup} className="btn-ios-primary">
+                  <Download className="w-4 h-4" />
+                  导出备份
+                </button>
+                <label className="btn-ios-secondary cursor-pointer">
+                  <Upload className="w-4 h-4" />
+                  导入备份
+                  <input
+                    ref={userBackupFileRef}
+                    type="file"
+                    accept=".json"
+                    className="hidden"
+                    onChange={handleImportUserBackup}
+                  />
+                </label>
               </div>
             </div>
 
             {/* 管理员数据库备份 */}
             {user?.is_admin && (
-              <div className="relative overflow-hidden rounded-xl border border-red-200 dark:border-red-800 bg-gradient-to-br from-red-50 to-rose-50 dark:from-red-900/20 dark:to-rose-900/20">
-                <div className="absolute top-0 right-0 w-32 h-32 bg-red-100 dark:bg-red-900/30 rounded-full -translate-y-1/2 translate-x-1/2 opacity-50"></div>
-                <div className="relative p-6">
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="w-12 h-12 rounded-xl bg-red-500 flex items-center justify-center shadow-lg shadow-red-500/30">
-                      <Database className="w-6 h-6 text-white" />
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h3 className="font-semibold text-red-900 dark:text-red-100">数据库备份</h3>
-                        <span className="text-xs bg-red-500 text-white px-2 py-0.5 rounded-full font-medium">管理员</span>
-                      </div>
-                      <p className="text-sm text-red-700 dark:text-red-300">完整备份或恢复整个数据库</p>
-                    </div>
-                  </div>
-                  <div className="flex flex-wrap gap-3 mb-4">
-                    <button onClick={handleDownloadBackup} className="btn-ios-primary bg-red-500 hover:bg-red-600 focus:ring-red-500">
-                      <Download className="w-4 h-4" />
-                      下载数据库
-                    </button>
-                    <label className="btn-ios-secondary cursor-pointer">
-                      {uploadingBackup ? <ButtonLoading /> : <Upload className="w-4 h-4" />}
-                      恢复数据库
-                      <input
-                        ref={backupFileRef}
-                        type="file"
-                        accept=".db"
-                        className="hidden"
-                        onChange={handleUploadBackup}
-                        disabled={uploadingBackup}
-                      />
-                    </label>
-                    <button
-                      onClick={handleReloadCache}
-                      disabled={reloadingCache}
-                      className="btn-ios-secondary"
-                    >
-                      {reloadingCache ? <ButtonLoading /> : <RefreshCw className="w-4 h-4" />}
-                      刷新缓存
-                    </button>
-                  </div>
-                  <div className="flex items-start gap-2 p-3 bg-red-100/50 dark:bg-red-900/30 rounded-lg">
-                    <span className="text-red-600 dark:text-red-400 text-lg">⚠️</span>
-                    <p className="text-xs text-red-700 dark:text-red-300">
-                      恢复数据库将覆盖所有当前数据，请谨慎操作
-                    </p>
-                  </div>
+              <div className="border-t border-slate-200 dark:border-slate-700 pt-4">
+                <div className="flex items-center gap-2 mb-1">
+                  <p className="font-medium text-slate-900 dark:text-slate-100">数据库备份</p>
+                  <span className="text-xs bg-slate-500 text-white px-1.5 py-0.5 rounded">管理员</span>
                 </div>
+                <p className="text-sm text-slate-500 dark:text-slate-400 mb-2">完整备份或恢复整个数据库</p>
+                <div className="flex flex-wrap gap-2 mb-2">
+                  <button onClick={handleDownloadBackup} className="btn-ios-primary">
+                    <Download className="w-4 h-4" />
+                    下载数据库
+                  </button>
+                  <label className="btn-ios-secondary cursor-pointer">
+                    {uploadingBackup ? <ButtonLoading /> : <Upload className="w-4 h-4" />}
+                    恢复数据库
+                    <input
+                      ref={backupFileRef}
+                      type="file"
+                      accept=".db"
+                      className="hidden"
+                      onChange={handleUploadBackup}
+                      disabled={uploadingBackup}
+                    />
+                  </label>
+                  <button
+                    onClick={handleReloadCache}
+                    disabled={reloadingCache}
+                    className="btn-ios-secondary"
+                  >
+                    {reloadingCache ? <ButtonLoading /> : <RefreshCw className="w-4 h-4" />}
+                    刷新缓存
+                  </button>
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  注意：恢复数据库将覆盖所有当前数据，请谨慎操作
+                </p>
               </div>
             )}
           </div>

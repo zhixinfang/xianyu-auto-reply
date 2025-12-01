@@ -48,8 +48,8 @@ export interface SystemLog {
 export const getSystemLogs = async (params?: { page?: number; limit?: number; level?: string }): Promise<{ success: boolean; data?: SystemLog[]; total?: number }> => {
   const query = new URLSearchParams()
   if (params?.page) query.set('page', String(params.page))
-  if (params?.limit) query.set('limit', String(params.limit))
-  if (params?.level) query.set('level', params.level)
+  if (params?.limit) query.set('lines', String(params.limit))  // 后端用 lines 参数
+  if (params?.level) query.set('level', params.level.toUpperCase())
   const result = await get<{ logs?: string[]; total?: number }>(`/admin/logs?${query.toString()}`)
   // 后端返回 { logs: [...] } 格式，转换为 SystemLog 数组
   const logs: SystemLog[] = (result.logs || []).map((log, index) => ({
@@ -162,4 +162,26 @@ export const cleanupData = (type: string): Promise<ApiResponse> => {
   }
   
   return del(`/admin/data/${tableName}`)
+}
+
+// 获取表数据
+export interface TableData {
+  success: boolean
+  data: Record<string, unknown>[]
+  columns: string[]
+  count: number
+}
+
+export const getTableData = async (tableName: string): Promise<TableData> => {
+  return get<TableData>(`/admin/data/${tableName}`)
+}
+
+// 清空表数据
+export const clearTableData = (tableName: string): Promise<ApiResponse> => {
+  return del(`/admin/data/${tableName}`)
+}
+
+// 删除表记录
+export const deleteTableRecord = (tableName: string, recordId: string): Promise<ApiResponse> => {
+  return del(`/admin/data/${tableName}/${recordId}`)
 }

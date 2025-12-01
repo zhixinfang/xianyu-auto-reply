@@ -50,11 +50,18 @@ export default defineConfig({
         target: 'http://localhost:8080',
         changeOrigin: true,
       },
-      '/admin/backup': {
+      // 管理员API - 前端有 /admin/* 路由，需要区分浏览器访问和 API 请求
+      '/admin': {
         target: 'http://localhost:8080',
         changeOrigin: true,
+        bypass: (req) => {
+          // 浏览器直接访问（Accept 包含 text/html）时，让前端路由处理
+          if (req.headers.accept?.includes('text/html')) {
+            return '/index.html'
+          }
+        },
       },
-      '/admin/cookies': {
+      '/risk-control-logs': {
         target: 'http://localhost:8080',
         changeOrigin: true,
       },
@@ -197,15 +204,10 @@ export default defineConfig({
           }
         },
       },
-      // 订单 - 前端有 /orders 路由
-      '/orders': {
+      // 订单 API - 后端路径是 /api/orders
+      '/api/orders': {
         target: 'http://localhost:8080',
         changeOrigin: true,
-        bypass: (req) => {
-          if (req.headers.accept?.includes('text/html')) {
-            return '/index.html'
-          }
-        },
       },
     },
   },

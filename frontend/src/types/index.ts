@@ -43,11 +43,14 @@ export interface AccountDetail extends Account {
 
 // 关键词相关类型
 export interface Keyword {
-  id: string
-  cookie_id: string
+  id?: string
+  cookie_id?: string
   keyword: string
   reply: string
-  fuzzy_match: boolean
+  item_id?: string      // 绑定的商品ID，空表示通用关键词
+  type?: 'text' | 'image' | 'item' | 'normal'  // 关键词类型
+  image_url?: string    // 图片类型关键词的图片URL
+  fuzzy_match?: boolean
   created_at?: string
   updated_at?: string
 }
@@ -144,7 +147,7 @@ export interface NotificationChannel {
   id: string
   cookie_id?: string
   name: string
-  type: 'webhook' | 'email' | 'telegram' | 'wechat' | 'dingtalk' | 'feishu'
+  type: 'qq' | 'dingtalk' | 'feishu' | 'bark' | 'email' | 'webhook' | 'wechat' | 'telegram'
   channel_type?: string
   channel_name?: string
   channel_config?: string
@@ -173,10 +176,16 @@ export interface SystemSettings {
   registration_enabled?: boolean
   show_default_login_info?: boolean
   login_captcha_enabled?: boolean
-  smtp_host?: string
+  // SMTP邮件配置
+  smtp_server?: string
   smtp_port?: number
   smtp_user?: string
   smtp_password?: string
+  smtp_from?: string
+  smtp_use_tls?: boolean
+  smtp_use_ssl?: boolean
+  // API安全
+  qq_reply_secret_key?: string
   [key: string]: unknown
 }
 

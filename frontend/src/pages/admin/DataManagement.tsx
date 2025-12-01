@@ -1,243 +1,190 @@
-import { useState, useRef } from 'react'
-
-import { Database, Download, Upload, Trash2, AlertTriangle, Loader2 } from 'lucide-react'
-import { exportData, cleanupData, importData } from '@/api/admin'
+import { useState, useEffect } from 'react'
+import { Database, RefreshCw, Trash2, Table } from 'lucide-react'
+import { getTableData, clearTableData } from '@/api/admin'
 import { useUIStore } from '@/store/uiStore'
-import { ButtonLoading } from '@/components/common/Loading'
+import { useAuthStore } from '@/store/authStore'
+import { PageLoading, ButtonLoading } from '@/components/common/Loading'
+import { Select } from '@/components/common/Select'
 
-const dataTypes = [
-  { id: 'accounts', name: '账号数据', desc: '导出所有闲鱼账号信息' },
-  { id: 'keywords', name: '关键词数据', desc: '导出所有自动回复关键词' },
-  { id: 'items', name: '商品数据', desc: '导出所有商品信息' },
-  { id: 'orders', name: '订单数据', desc: '导出所有订单信息' },
-  { id: 'cards', name: '卡券数据', desc: '导出所有卡券信息' },
-  { id: 'all', name: '全部数据', desc: '导出所有系统数据' },
-]
-
-const cleanupTypes = [
-  { id: 'logs', name: '清理日志', desc: '清理超过30天的系统日志', danger: false },
-  { id: 'orders', name: '清理订单', desc: '清理已完成的历史订单', danger: false },
-  { id: 'cards_used', name: '清理已用卡券', desc: '清理已使用的卡券记录', danger: false },
-  { id: 'all_data', name: '清空所有数据', desc: '危险操作！清除所有用户数据', danger: true },
+// 可选择的数据表
+const tableOptions = [
+  { value: 'default_replies', label: '默认回复表' },
+  { value: 'keywords', label: '关键词表' },
+  { value: 'cookies', label: '账号表' },
+  { value: 'cards', label: '卡券表' },
+  { value: 'orders', label: '订单表' },
+  { value: 'item_info', label: '商品信息表' },
+  { value: 'notification_channels', label: '通知渠道表' },
+  { value: 'delivery_rules', label: '发货规则表' },
+  { value: 'risk_control_logs', label: '风控日志表' },
 ]
 
 export function DataManagement() {
   const { addToast } = useUIStore()
-  const [exporting, setExporting] = useState<string | null>(null)
-  const [cleaning, setCleaning] = useState<string | null>(null)
-  const [importing, setImporting] = useState(false)
-  const fileInputRef = useRef<HTMLInputElement>(null)
+  const { isAuthenticated, token, _hasHydrated } = useAuthStore()
+  const [loading, setLoading] = useState(false)
+  const [selectedTable, setSelectedTable] = useState('default_replies')
+  const [tableData, setTableData] = useState<Record<string, unknown>[]>([])
+  const [columns, setColumns] = useState<string[]>([])
+  const [count, setCount] = useState(0)
+  const [clearing, setClearing] = useState(false)
 
-  const handleExport = async (type: string) => {
+  const loadTableData = async () => {
+    if (!_hasHydrated || !isAuthenticated || !token) return
     try {
-      setExporting(type)
-      const blob = await exportData(type)
-      const url = window.URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `xianyu_${type}_${new Date().toISOString().split('T')[0]}.json`
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      window.URL.revokeObjectURL(url)
-      addToast({ type: 'success', message: '导出成功' })
-    } catch {
-      addToast({ type: 'error', message: '导出失败' })
-    } finally {
-      setExporting(null)
-    }
-  }
-
-  const handleCleanup = async (type: string, danger: boolean) => {
-    const confirmMsg = danger 
-      ? '⚠️ 这是一个危险操作！将会清除所有用户数据，此操作不可恢复！确定要继续吗？'
-      : '确定要执行此清理操作吗？'
-    
-    if (!confirm(confirmMsg)) return
-    if (danger && !confirm('再次确认：是否真的要清空所有数据？')) return
-
-    try {
-      setCleaning(type)
-      const result = await cleanupData(type)
+      setLoading(true)
+      const result = await getTableData(selectedTable)
       if (result.success) {
-        addToast({ type: 'success', message: '清理完成' })
+        setTableData(result.data || [])
+        setColumns(result.columns || [])
+        setCount(result.count || 0)
       } else {
-        addToast({ type: 'error', message: result.message || '清理失败' })
+        addToast({ type: 'error', message: '加载数据失败' })
       }
     } catch {
-      addToast({ type: 'error', message: '清理失败' })
+      addToast({ type: 'error', message: '加载数据失败' })
     } finally {
-      setCleaning(null)
+      setLoading(false)
     }
   }
 
-  const handleImportClick = () => {
-    fileInputRef.current?.click()
-  }
-
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-
-    if (!file.name.endsWith('.json')) {
-      addToast({ type: 'error', message: '请选择 JSON 格式的文件' })
-      return
+  useEffect(() => {
+    if (_hasHydrated && isAuthenticated && token) {
+      loadTableData()
     }
+  }, [_hasHydrated, isAuthenticated, token, selectedTable])
 
-    if (!confirm('确定要导入此数据吗？这将覆盖现有数据！')) {
-      e.target.value = ''
-      return
-    }
+  const handleClearTable = async () => {
+    if (!confirm(`确定要清空 ${tableOptions.find(t => t.value === selectedTable)?.label} 吗？此操作不可恢复！`)) return
+    if (!confirm('再次确认：是否真的要清空该表的所有数据？')) return
 
-    setImporting(true)
     try {
-      const formData = new FormData()
-      formData.append('file', file)
-      const result = await importData(formData)
+      setClearing(true)
+      const result = await clearTableData(selectedTable)
       if (result.success) {
-        addToast({ type: 'success', message: '数据导入成功' })
+        addToast({ type: 'success', message: '清空成功' })
+        loadTableData()
       } else {
-        addToast({ type: 'error', message: result.message || '导入失败' })
+        addToast({ type: 'error', message: result.message || '清空失败' })
       }
     } catch {
-      addToast({ type: 'error', message: '导入失败' })
+      addToast({ type: 'error', message: '清空失败' })
     } finally {
-      setImporting(false)
-      e.target.value = ''
+      setClearing(false)
     }
+  }
+
+  if (!_hasHydrated) {
+    return <PageLoading />
   }
 
   return (
     <div className="space-y-4">
-      {/* Header */}
-      <div className="page-header">
-        <h1 className="page-title">数据管理</h1>
-        <p className="page-description">导入导出和清理系统数据</p>
-      </div>
-
-      {/* 双列布局 */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* 左列 - 数据导出 */}
-        <div className="vben-card">
-          <div className="vben-card-header">
-            <h2 className="vben-card-title">
-              <Download className="w-4 h-4 text-blue-500" />
-              数据导出
-            </h2>
-          </div>
-          <div className="vben-card-body">
-            <div className="space-y-3">
-              {dataTypes.map((type) => (
-                <div
-                  key={type.id}
-                  className="flex items-center justify-between p-3 rounded-lg border border-slate-200 dark:border-slate-700 
-                           hover:border-blue-300 dark:hover:border-blue-600 hover:bg-blue-50/50 dark:hover:bg-blue-900/20 transition-colors"
-                >
-                  <div>
-                    <h3 className="font-medium text-slate-900 dark:text-slate-100 text-sm">{type.name}</h3>
-                    <p className="text-xs text-slate-500 dark:text-slate-400">{type.desc}</p>
-                  </div>
-                  <button
-                    onClick={() => handleExport(type.id)}
-                    disabled={exporting !== null}
-                    className="btn-ios-secondary py-1.5 px-3 text-xs"
-                  >
-                    {exporting === type.id ? <ButtonLoading /> : <Download className="w-3.5 h-3.5" />}
-                  </button>
-                </div>
-              ))}
+      {/* 数据表选择 */}
+      <div className="vben-card">
+        <div className="vben-card-header">
+          <h2 className="vben-card-title">
+            <Table className="w-4 h-4" />
+            数据表选择
+          </h2>
+        </div>
+        <div className="vben-card-body">
+          <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 items-end">
+            <div className="sm:col-span-6">
+              <label className="input-label mb-1">选择数据表</label>
+              <Select
+                value={selectedTable}
+                onChange={setSelectedTable}
+                options={tableOptions}
+                placeholder="选择数据表"
+              />
+            </div>
+            <div className="sm:col-span-2 text-center py-2 px-4 bg-slate-50 dark:bg-slate-800/50 rounded-lg">
+              <p className="text-xs text-slate-500 dark:text-slate-400">数据统计</p>
+              <p className="text-xl font-bold text-slate-900 dark:text-slate-100">{count}</p>
+              <p className="text-xs text-slate-400">条记录</p>
+            </div>
+            <div className="sm:col-span-4 flex justify-end">
+              <button
+                onClick={loadTableData}
+                disabled={loading}
+                className="btn-ios-primary w-full sm:w-auto"
+              >
+                {loading ? <ButtonLoading /> : <RefreshCw className="w-4 h-4" />}
+                刷新数据
+              </button>
             </div>
           </div>
         </div>
+      </div>
 
-        {/* 右列 */}
-        <div className="space-y-4">
-          {/* 数据导入 */}
-          <div className="vben-card">
-            <div className="vben-card-header">
-              <h2 className="vben-card-title">
-                <Upload className="w-4 h-4 text-emerald-500" />
-                数据导入
-              </h2>
+      {/* 数据表展示 */}
+      <div className="vben-card">
+        <div className="vben-card-header flex items-center justify-between">
+          <h2 className="vben-card-title">
+            <Database className="w-4 h-4" />
+            {tableOptions.find(t => t.value === selectedTable)?.label || selectedTable}
+          </h2>
+          <button
+            onClick={handleClearTable}
+            disabled={clearing || count === 0}
+            className="btn-ios-danger text-sm"
+          >
+            {clearing ? <ButtonLoading /> : <Trash2 className="w-4 h-4" />}
+            清空
+          </button>
+        </div>
+        <div className="vben-card-body p-0">
+          {loading ? (
+            <div className="p-8 text-center">
+              <ButtonLoading />
+              <p className="text-slate-500 mt-2">加载中...</p>
             </div>
-            <div className="p-5">
-              <div
-                onClick={handleImportClick}
-                className="border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-lg p-6 text-center
-                          hover:border-emerald-400 dark:hover:border-emerald-500 hover:bg-emerald-50/50 dark:hover:bg-emerald-900/20 
-                          transition-colors cursor-pointer"
-              >
-                {importing ? (
-                  <>
-                    <Loader2 className="w-10 h-10 text-emerald-500 mx-auto mb-3 animate-spin" />
-                    <p className="text-slate-600 dark:text-slate-400 text-sm">正在导入数据...</p>
-                  </>
-                ) : (
-                  <>
-                    <Database className="w-10 h-10 text-slate-400 dark:text-slate-500 mx-auto mb-3" />
-                    <p className="text-slate-600 dark:text-slate-300 text-sm mb-1">点击选择文件上传</p>
-                    <p className="text-xs text-slate-400 dark:text-slate-500">支持 JSON 格式的导出数据文件</p>
-                  </>
-                )}
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".json"
-                  onChange={handleFileChange}
-                  className="hidden"
-                />
-              </div>
+          ) : tableData.length === 0 ? (
+            <div className="p-8 text-center">
+              <Database className="w-12 h-12 text-slate-300 dark:text-slate-600 mx-auto mb-3" />
+              <p className="text-slate-500 dark:text-slate-400">该表暂无数据</p>
             </div>
-          </div>
-
-          {/* 数据清理 */}
-          <div className="vben-card">
-            <div className="vben-card-header">
-              <h2 className="vben-card-title">
-                <Trash2 className="w-4 h-4 text-amber-500" />
-                数据清理
-              </h2>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm table-fixed">
+                <thead className="bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-700">
+                  <tr>
+                    {columns.map((col, index) => (
+                      <th
+                        key={col}
+                        className={`px-4 py-3 text-left font-medium text-slate-700 dark:text-slate-300 ${
+                          index === 0 ? 'w-32' : 'min-w-[120px]'
+                        }`}
+                      >
+                        {col}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
+                  {tableData.slice(0, 100).map((row, idx) => (
+                    <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-slate-800/30">
+                      {columns.map((col) => (
+                        <td
+                          key={col}
+                          className="px-4 py-3 text-slate-600 dark:text-slate-400 truncate"
+                          title={String(row[col] ?? '')}
+                        >
+                          {String(row[col] ?? '-')}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {tableData.length > 100 && (
+                <div className="p-3 text-center text-sm text-slate-500 bg-slate-50 dark:bg-slate-800/30 border-t border-slate-200 dark:border-slate-700">
+                  仅显示前 100 条记录，共 {tableData.length} 条
+                </div>
+              )}
             </div>
-            <div className="vben-card-body">
-              <div className="space-y-3">
-                {cleanupTypes.map((type) => (
-                  <div
-                    key={type.id}
-                    className={`flex items-center justify-between p-3 rounded-lg border transition-colors ${
-                      type.danger 
-                        ? 'border-red-200 dark:border-red-800 bg-red-50/50 dark:bg-red-900/20' 
-                        : 'border-slate-200 dark:border-slate-700 hover:border-amber-300 dark:hover:border-amber-600 hover:bg-amber-50/50 dark:hover:bg-amber-900/20'
-                    }`}
-                  >
-                    <div className="flex items-start gap-2">
-                      {type.danger && (
-                        <AlertTriangle className="w-4 h-4 text-red-500 mt-0.5 flex-shrink-0" />
-                      )}
-                      <div>
-                        <h3 className={`font-medium text-sm ${type.danger ? 'text-red-700 dark:text-red-400' : 'text-slate-900 dark:text-slate-100'}`}>
-                          {type.name}
-                        </h3>
-                        <p className={`text-xs mt-0.5 ${type.danger ? 'text-red-600 dark:text-red-400' : 'text-slate-500 dark:text-slate-400'}`}>
-                          {type.desc}
-                        </p>
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => handleCleanup(type.id, type.danger)}
-                      disabled={cleaning !== null}
-                      className={`py-1.5 px-3 text-xs rounded-md font-medium transition-colors ${
-                        type.danger
-                          ? 'bg-red-500 text-white hover:bg-red-600'
-                          : 'btn-ios-secondary'
-                      }`}
-                    >
-                      {cleaning === type.id ? <ButtonLoading /> : '执行'}
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
+          )}
         </div>
       </div>
     </div>
