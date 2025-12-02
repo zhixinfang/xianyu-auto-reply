@@ -199,10 +199,10 @@ export function Orders() {
                   </td>
                 </tr>
               ) : (
-                filteredOrders.map((order) => {
+                filteredOrders.map((order, index) => {
                   const status = statusMap[order.status] || statusMap.unknown
                   return (
-                    <tr key={order.id}>
+                    <tr key={order.id || order.order_id || index}>
                       <td className="font-mono text-sm">{order.order_id}</td>
                       <td className="text-sm">{order.item_id}</td>
                       <td className="text-sm">{order.buyer_id}</td>

@@ -113,7 +113,7 @@ export function ItemReplies() {
         cookie_id: editingReply?.cookie_id || selectedAccount,
         item_id: formItemId.trim(),
         title: formTitle.trim() || undefined,
-        reply: formReply.trim(),
+        reply_content: formReply.trim(),  // 后端期望的字段名是 reply_content
       }
 
       if (editingReply) {

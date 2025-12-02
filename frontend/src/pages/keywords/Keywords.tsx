@@ -474,8 +474,8 @@ export function Keywords() {
                   </td>
                 </tr>
               ) : (
-                keywords.map((keyword) => (
-                  <tr key={keyword.id}>
+                keywords.map((keyword, index) => (
+                  <tr key={keyword.id || `keyword-${index}`}>
                     <td className="font-medium">
                       <code className="bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 px-2 py-1 rounded">
                         {keyword.keyword}

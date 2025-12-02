@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react'
 import path from 'path'
 
 // https://vitejs.dev/config/
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   plugins: [react()],
   resolve: {
     alias: {
@@ -213,6 +213,9 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
+    // 资源放在 assets 目录，通过 base 配置让引用路径为 /static/assets/
     assetsDir: 'assets',
   },
-})
+  // 只在生产构建时使用 /static/ 作为 base，开发模式使用 /
+  base: command === 'build' ? '/static/' : '/',
+}))
