@@ -63,3 +63,13 @@ export const deleteItemReply = (cookieId: string, itemId: string): Promise<ApiRe
 export const batchDeleteItemReplies = (items: { cookie_id: string; item_id: string }[]): Promise<ApiResponse> => {
   return del('/item-reply/batch', { data: { items } })
 }
+
+// 更新商品多数量发货状态
+export const updateItemMultiQuantityDelivery = (cookieId: string, itemId: string, enabled: boolean): Promise<ApiResponse> => {
+  return put(`/items/${cookieId}/${itemId}/multi-quantity-delivery`, { multi_quantity_delivery: enabled })
+}
+
+// 更新商品多规格状态
+export const updateItemMultiSpec = (cookieId: string, itemId: string, enabled: boolean): Promise<ApiResponse> => {
+  return put(`/items/${cookieId}/${itemId}/multi-spec`, { is_multi_spec: enabled })
+}

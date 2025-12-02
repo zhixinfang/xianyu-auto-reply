@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Package, RefreshCw, Search, Trash2, Download, CheckSquare, Square, Loader2, ExternalLink } from 'lucide-react'
-import { getItems, deleteItem, fetchItemsFromAccount, batchDeleteItems } from '@/api/items'
+import { getItems, deleteItem, fetchItemsFromAccount, batchDeleteItems, updateItemMultiQuantityDelivery, updateItemMultiSpec } from '@/api/items'
 import { getAccounts } from '@/api/accounts'
 import { useUIStore } from '@/store/uiStore'
 import { PageLoading } from '@/components/common/Loading'
@@ -153,6 +153,30 @@ export function Items() {
     }
   }
 
+  // 切换多数量发货状态
+  const handleToggleMultiQuantity = async (item: Item) => {
+    try {
+      const newStatus = !item.multi_quantity_delivery
+      await updateItemMultiQuantityDelivery(item.cookie_id, item.item_id, newStatus)
+      addToast({ type: 'success', message: `多数量发货已${newStatus ? '开启' : '关闭'}` })
+      loadItems()
+    } catch {
+      addToast({ type: 'error', message: '操作失败' })
+    }
+  }
+
+  // 切换多规格状态
+  const handleToggleMultiSpec = async (item: Item) => {
+    try {
+      const newStatus = !(item.is_multi_spec || item.has_sku)
+      await updateItemMultiSpec(item.cookie_id, item.item_id, newStatus)
+      addToast({ type: 'success', message: `多规格已${newStatus ? '开启' : '关闭'}` })
+      loadItems()
+    } catch {
+      addToast({ type: 'error', message: '操作失败' })
+    }
+  }
+
   const filteredItems = items.filter((item) => {
     if (!searchKeyword) return true
     const keyword = searchKeyword.toLowerCase()
@@ -275,6 +299,7 @@ export function Items() {
                 <th>商品标题</th>
                 <th>价格</th>
                 <th>多规格</th>
+                <th>多数量发货</th>
                 <th>更新时间</th>
                 <th>操作</th>
               </tr>
@@ -282,7 +307,7 @@ export function Items() {
             <tbody>
               {filteredItems.length === 0 ? (
                 <tr>
-                  <td colSpan={8}>
+                  <td colSpan={9}>
                     <div className="empty-state py-8">
                       <Package className="empty-state-icon" />
                       <p className="text-gray-500">暂无商品数据</p>
@@ -336,9 +361,30 @@ export function Items() {
                       {item.item_price || (item.price ? `¥${item.price}` : '-')}
                     </td>
                     <td>
-                      <span className={(item.is_multi_spec || item.has_sku) ? 'badge-success' : 'badge-gray'}>
-                        {(item.is_multi_spec || item.has_sku) ? '是' : '否'}
-                      </span>
+                      <button
+                        onClick={() => handleToggleMultiSpec(item)}
+                        className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
+                          (item.is_multi_spec || item.has_sku)
+                            ? 'bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400' 
+                            : 'bg-gray-100 text-gray-500 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400'
+                        }`}
+                        title={(item.is_multi_spec || item.has_sku) ? '点击关闭多规格' : '点击开启多规格'}
+                      >
+                        {(item.is_multi_spec || item.has_sku) ? '已开启' : '已关闭'}
+                      </button>
+                    </td>
+                    <td>
+                      <button
+                        onClick={() => handleToggleMultiQuantity(item)}
+                        className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
+                          item.multi_quantity_delivery 
+                            ? 'bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400' 
+                            : 'bg-gray-100 text-gray-500 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400'
+                        }`}
+                        title={item.multi_quantity_delivery ? '点击关闭多数量发货' : '点击开启多数量发货'}
+                      >
+                        {item.multi_quantity_delivery ? '已开启' : '已关闭'}
+                      </button>
                     </td>
                     <td className="text-gray-500 text-xs">
                       {item.updated_at ? new Date(item.updated_at).toLocaleString() : '-'}
