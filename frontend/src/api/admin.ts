@@ -1,4 +1,4 @@
-import { get, post, del } from '@/utils/request'
+import { del, get, post } from '@/utils/request'
 import type { ApiResponse, User } from '@/types'
 
 // ========== 用户管理 ==========
@@ -125,7 +125,7 @@ export const exportData = async (type: string): Promise<Blob> => {
     if (!response.ok) throw new Error('导出失败')
     return response.blob()
   }
-  
+
   // 导出特定表数据
   const tableMap: Record<string, string> = {
     accounts: 'cookies',
@@ -155,12 +155,12 @@ export const cleanupData = (type: string): Promise<ApiResponse> => {
     all_data: 'all',
   }
   const tableName = tableMap[type] || type
-  
+
   // 如果是清空日志，使用通用接口
   if (type === 'logs') {
     return post('/logs/clear')
   }
-  
+
   return del(`/admin/data/${tableName}`)
 }
 
@@ -184,4 +184,38 @@ export const clearTableData = (tableName: string): Promise<ApiResponse> => {
 // 删除表记录
 export const deleteTableRecord = (tableName: string, recordId: string): Promise<ApiResponse> => {
   return del(`/admin/data/${tableName}/${recordId}`)
+}
+
+// ========== 日志管理 ==========
+
+// 获取日志文件列表
+export const getLogFiles = async (): Promise<{ files: string[] }> => {
+  return get('/admin/log-files')
+}
+
+// 导出日志
+export const exportLogs = (): string => {
+  const token = localStorage.getItem('auth_token')
+  return `/admin/logs/export?token=${token}`
+}
+
+// ========== 管理员统计 ==========
+
+export interface AdminStats {
+  total_users: number
+  total_cookies: number
+  total_cards: number
+  total_keywords: number
+  total_orders: number
+  active_cookies: number
+}
+
+// 获取管理员统计数据
+export const getAdminStats = async (): Promise<{ success: boolean; data?: AdminStats }> => {
+  try {
+    const data = await get<AdminStats>('/admin/stats')
+    return { success: true, data }
+  } catch {
+    return { success: false }
+  }
 }

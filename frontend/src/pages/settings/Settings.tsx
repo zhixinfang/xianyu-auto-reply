@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Settings as SettingsIcon, Save, Bot, Mail, Shield, RefreshCw, Key, Download, Upload, Archive } from 'lucide-react'
+import { Settings as SettingsIcon, Save, Bot, Mail, Shield, RefreshCw, Key, Download, Upload, Archive, Eye, EyeOff, Copy } from 'lucide-react'
 import { getSystemSettings, updateSystemSettings, testAIConnection, testEmailSend, changePassword, downloadDatabaseBackup, uploadDatabaseBackup, reloadSystemCache, exportUserBackup, importUserBackup } from '@/api/settings'
 import { getAccounts } from '@/api/accounts'
 import { useUIStore } from '@/store/uiStore'
@@ -31,6 +31,9 @@ export function Settings() {
   const [accounts, setAccounts] = useState<Account[]>([])
   const [testAccountId, setTestAccountId] = useState('')
   const [testingAI, setTestingAI] = useState(false)
+
+  // QQ秘钥显示状态
+  const [showQQSecret, setShowQQSecret] = useState(false)
 
   const loadSettings = async () => {
     if (!_hasHydrated || !isAuthenticated || !token) return
@@ -512,13 +515,38 @@ export function Settings() {
                       <span className="text-xs bg-slate-500 text-white px-1.5 py-0.5 rounded">管理员</span>
                     </label>
                     <div className="flex gap-2 mt-1">
-                      <input
-                        type="password"
-                        value={settings?.qq_reply_secret_key || ''}
-                        onChange={(e) => setSettings(s => s ? { ...s, qq_reply_secret_key: e.target.value } : null)}
-                        placeholder="请输入API秘钥"
-                        className="input-ios flex-1"
-                      />
+                      <div className="relative flex-1">
+                        <input
+                          type={showQQSecret ? 'text' : 'password'}
+                          value={settings?.qq_reply_secret_key || ''}
+                          onChange={(e) => setSettings(s => s ? { ...s, qq_reply_secret_key: e.target.value } : null)}
+                          placeholder="请输入API秘钥"
+                          className="input-ios w-full pr-20"
+                        />
+                        <div className="absolute right-2 top-1/2 -translate-y-1/2 flex gap-1">
+                          <button
+                            type="button"
+                            onClick={() => setShowQQSecret(!showQQSecret)}
+                            className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+                            title={showQQSecret ? '隐藏' : '显示'}
+                          >
+                            {showQQSecret ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (settings?.qq_reply_secret_key) {
+                                navigator.clipboard.writeText(settings.qq_reply_secret_key)
+                                addToast({ type: 'success', message: '已复制到剪贴板' })
+                              }
+                            }}
+                            className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+                            title="复制"
+                          >
+                            <Copy className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
                       <button
                         type="button"
                         onClick={() => {

@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
-import { Users, MessageSquare, Activity, ShoppingCart, RefreshCw } from 'lucide-react'
+import { Activity, MessageSquare, RefreshCw, Shield, ShoppingCart, Users } from 'lucide-react'
 import { getAccountDetails } from '@/api/accounts'
 import { getKeywords } from '@/api/keywords'
 import { getOrders } from '@/api/orders'
+import { type AdminStats, getAdminStats } from '@/api/admin'
 import { useUIStore } from '@/store/uiStore'
 import { useAuthStore } from '@/store/authStore'
 import { PageLoading } from '@/components/common/Loading'
@@ -19,7 +20,7 @@ interface DashboardStats {
 
 export function Dashboard() {
   const { addToast } = useUIStore()
-  const { isAuthenticated, token, _hasHydrated } = useAuthStore()
+  const { isAuthenticated, token, _hasHydrated, user } = useAuthStore()
   const [loading, setLoading] = useState(true)
   const [stats, setStats] = useState<DashboardStats>({
     totalAccounts: 0,
@@ -28,6 +29,7 @@ export function Dashboard() {
     totalOrders: 0,
   })
   const [accounts, setAccounts] = useState<AccountDetail[]>([])
+  const [adminStats, setAdminStats] = useState<AdminStats | null>(null)
 
   const loadDashboard = async () => {
     if (!_hasHydrated || !isAuthenticated || !token) return
@@ -49,7 +51,7 @@ export function Dashboard() {
           } catch {
             return { ...account, keywordCount: 0 }
           }
-        })
+        }),
       )
 
       // 计算统计数据
@@ -84,6 +86,18 @@ export function Dashboard() {
       })
 
       setAccounts(accountsWithKeywords)
+
+      // 管理员获取全局统计
+      if (user?.is_admin) {
+        try {
+          const adminResult = await getAdminStats()
+          if (adminResult.success && adminResult.data) {
+            setAdminStats(adminResult.data)
+          }
+        } catch {
+          // ignore
+        }
+      }
     } catch {
       addToast({ type: 'error', message: '加载仪表盘数据失败' })
     } finally {
@@ -154,8 +168,8 @@ export function Dashboard() {
         {statCards.map((card, index) => {
           const Icon = card.icon
           return (
-            <motion.div 
-              key={card.label} 
+            <motion.div
+              key={card.label}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: index * 0.1, duration: 0.3 }}
@@ -173,8 +187,53 @@ export function Dashboard() {
         })}
       </div>
 
+      {/* Admin Stats - 管理员专属 */}
+      {user?.is_admin && adminStats && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3, duration: 0.3 }}
+          className="vben-card"
+        >
+          <div className="vben-card-header">
+            <h2 className="vben-card-title flex items-center gap-2">
+              <Shield className="w-4 h-4" />
+              全局统计（管理员）
+            </h2>
+          </div>
+          <div className="vben-card-body">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+              <div className="text-center p-3 bg-slate-50 dark:bg-slate-800 rounded-lg">
+                <p className="text-2xl font-bold text-blue-600">{adminStats.total_users}</p>
+                <p className="text-sm text-slate-500">总用户数</p>
+              </div>
+              <div className="text-center p-3 bg-slate-50 dark:bg-slate-800 rounded-lg">
+                <p className="text-2xl font-bold text-green-600">{adminStats.total_cookies}</p>
+                <p className="text-sm text-slate-500">总账号数</p>
+              </div>
+              <div className="text-center p-3 bg-slate-50 dark:bg-slate-800 rounded-lg">
+                <p className="text-2xl font-bold text-amber-600">{adminStats.active_cookies}</p>
+                <p className="text-sm text-slate-500">活跃账号</p>
+              </div>
+              <div className="text-center p-3 bg-slate-50 dark:bg-slate-800 rounded-lg">
+                <p className="text-2xl font-bold text-purple-600">{adminStats.total_cards}</p>
+                <p className="text-sm text-slate-500">总卡券数</p>
+              </div>
+              <div className="text-center p-3 bg-slate-50 dark:bg-slate-800 rounded-lg">
+                <p className="text-2xl font-bold text-cyan-600">{adminStats.total_keywords}</p>
+                <p className="text-sm text-slate-500">总关键词</p>
+              </div>
+              <div className="text-center p-3 bg-slate-50 dark:bg-slate-800 rounded-lg">
+                <p className="text-2xl font-bold text-rose-600">{adminStats.total_orders}</p>
+                <p className="text-sm text-slate-500">总订单数</p>
+              </div>
+            </div>
+          </div>
+        </motion.div>
+      )}
+
       {/* Accounts table */}
-      <motion.div 
+      <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.4, duration: 0.3 }}
@@ -213,10 +272,29 @@ export function Dashboard() {
                       <td className="font-medium text-blue-600 dark:text-blue-400">{account.id}</td>
                       <td>{keywordCount}</td>
                       <td>
-                        <span className={`inline-flex items-center gap-1.5 ${!isEnabled ? 'text-gray-400' : keywordCount > 0 ? 'text-green-600' : 'text-gray-500'}`}>
-                          <span className={`status-dot ${!isEnabled ? 'status-dot-danger' : keywordCount > 0 ? 'status-dot-success' : 'bg-gray-300'}`} />
-                          {!isEnabled ? '已禁用' : keywordCount > 0 ? '活跃' : '无关键词'}
-                        </span>
+                        {(() => {
+                          const statusClass = !isEnabled
+                            ? 'text-gray-400'
+                            : keywordCount > 0
+                              ? 'text-green-600'
+                              : 'text-gray-500'
+                          const dotClass = !isEnabled
+                            ? 'status-dot-danger'
+                            : keywordCount > 0
+                              ? 'status-dot-success'
+                              : 'bg-gray-300'
+                          const statusText = !isEnabled
+                            ? '已禁用'
+                            : keywordCount > 0
+                              ? '活跃'
+                              : '无关键词'
+                          return (
+                            <span className={`inline-flex items-center gap-1.5 ${statusClass}`}>
+                              <span className={`status-dot ${dotClass}`} />
+                              {statusText}
+                            </span>
+                          )
+                        })()}
                       </td>
                       <td className="text-gray-500">
                         {account.updated_at

@@ -194,6 +194,9 @@ export interface ApiResponse<T = unknown> {
   success: boolean
   message?: string
   data?: T
+  // 后端兼容字段
+  msg?: string
+  detail?: string
 }
 
 // 分页相关类型

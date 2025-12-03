@@ -1,14 +1,14 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { Plus, RefreshCw, QrCode, Key, Edit2, Trash2, Power, PowerOff, X, Loader2, Clock, CheckCircle, MessageSquare, Bot } from 'lucide-react'
-import { getAccountDetails, deleteAccount, updateAccountCookie, updateAccountStatus, updateAccountRemark, addAccount, generateQRLogin, checkQRLoginStatus, passwordLogin, updateAccountAutoConfirm, updateAccountPauseDuration, getAllAIReplySettings, updateAIReplySettings, type AIReplySettings } from '@/api/accounts'
+import { getAccountDetails, deleteAccount, updateAccountCookie, updateAccountStatus, updateAccountRemark, addAccount, generateQRLogin, checkQRLoginStatus, passwordLogin, updateAccountAutoConfirm, updateAccountPauseDuration, getAllAIReplySettings, getAIReplySettings, updateAIReplySettings, type AIReplySettings } from '@/api/accounts'
 import { getKeywords, getDefaultReply, updateDefaultReply } from '@/api/keywords'
 import { useUIStore } from '@/store/uiStore'
 import { useAuthStore } from '@/store/authStore'
 import { PageLoading } from '@/components/common/Loading'
 import type { AccountDetail } from '@/types'
 
-type ModalType = 'qrcode' | 'password' | 'manual' | 'edit' | 'default-reply' | null
+type ModalType = 'qrcode' | 'password' | 'manual' | 'edit' | 'default-reply' | 'ai-settings' | null
 
 interface AccountWithKeywordCount extends AccountDetail {
   keywordCount?: number
@@ -52,12 +52,22 @@ export function Accounts() {
   const [editPauseDuration, setEditPauseDuration] = useState(0)
   const [editSaving, setEditSaving] = useState(false)
 
+  // AI设置状态
+  const [aiSettingsAccount, setAiSettingsAccount] = useState<AccountWithKeywordCount | null>(null)
+  const [aiEnabled, setAiEnabled] = useState(false)
+  const [aiMaxDiscountPercent, setAiMaxDiscountPercent] = useState(10)
+  const [aiMaxDiscountAmount, setAiMaxDiscountAmount] = useState(100)
+  const [aiMaxBargainRounds, setAiMaxBargainRounds] = useState(3)
+  const [aiCustomPrompts, setAiCustomPrompts] = useState('')
+  const [aiSettingsSaving, setAiSettingsSaving] = useState(false)
+  const [aiSettingsLoading, setAiSettingsLoading] = useState(false)
+
   const loadAccounts = async () => {
     if (!_hasHydrated || !isAuthenticated || !token) return
     try {
       setLoading(true)
       const data = await getAccountDetails()
-      
+
       // 获取所有账号的AI回复设置
       let aiSettings: Record<string, AIReplySettings> = {}
       try {
@@ -65,27 +75,27 @@ export function Accounts() {
       } catch {
         // ignore
       }
-      
+
       // 为每个账号获取关键词数量
       const accountsWithKeywords = await Promise.all(
         data.map(async (account) => {
           try {
             const keywords = await getKeywords(account.id)
-            return { 
-              ...account, 
+            return {
+              ...account,
               keywordCount: keywords.length,
-              aiEnabled: aiSettings[account.id]?.enabled || false
+              aiEnabled: aiSettings[account.id]?.ai_enabled ?? aiSettings[account.id]?.enabled ?? false,
             }
           } catch {
-            return { 
-              ...account, 
+            return {
+              ...account,
               keywordCount: 0,
-              aiEnabled: aiSettings[account.id]?.enabled || false
+              aiEnabled: aiSettings[account.id]?.ai_enabled ?? aiSettings[account.id]?.enabled ?? false,
             }
           }
-        })
+        }),
       )
-      
+
       setAccounts(accountsWithKeywords)
     } catch {
       addToast({ type: 'error', message: '加载账号列表失败' })
@@ -168,7 +178,7 @@ export function Accounts() {
               type: 'success',
               message: result.account_info?.is_new_account
                 ? `新账号 ${result.account_info.account_id} 添加成功`
-                : result.account_info?.account_id 
+                : result.account_info?.account_id
                   ? `账号 ${result.account_info.account_id} 登录成功`
                   : '账号登录成功',
             })
@@ -263,12 +273,13 @@ export function Accounts() {
         id: manualAccountId.trim(),
         cookie: manualCookie.trim(),
       })
-      if (result.success) {
+      // 后端返回 {msg: 'success'} 或 {success: true}
+      if (result.success || result.msg === 'success') {
         addToast({ type: 'success', message: '账号添加成功' })
         closeModal()
         loadAccounts()
       } else {
-        addToast({ type: 'error', message: result.message || '添加失败' })
+        addToast({ type: 'error', message: result.message || result.detail || '添加失败' })
       }
     } catch {
       addToast({ type: 'error', message: '添加账号失败' })
@@ -316,12 +327,12 @@ export function Accounts() {
     try {
       // 分别调用不同的 API 更新不同字段
       const promises: Promise<unknown>[] = []
-      
+
       // 更新备注
       if (editNote.trim() !== (editingAccount.note || '')) {
         promises.push(updateAccountRemark(editingAccount.id, editNote.trim()))
       }
-      
+
       // 更新 Cookie 值
       if (editCookie.trim() && editCookie.trim() !== editingAccount.cookie) {
         promises.push(updateAccountCookie(editingAccount.id, editCookie.trim()))
@@ -336,7 +347,7 @@ export function Accounts() {
       if (editPauseDuration !== (editingAccount.pause_duration || 0)) {
         promises.push(updateAccountPauseDuration(editingAccount.id, editPauseDuration))
       }
-      
+
       await Promise.all(promises)
       addToast({ type: 'success', message: '账号信息已更新' })
       closeModal()
@@ -383,12 +394,55 @@ export function Accounts() {
     const newEnabled = !account.aiEnabled
     try {
       await updateAIReplySettings(account.id, { enabled: newEnabled })
-      setAccounts(prev => prev.map(a => 
-        a.id === account.id ? { ...a, aiEnabled: newEnabled } : a
+      setAccounts(prev => prev.map(a =>
+        a.id === account.id ? { ...a, aiEnabled: newEnabled } : a,
       ))
       addToast({ type: 'success', message: `AI回复已${newEnabled ? '开启' : '关闭'}` })
     } catch {
       addToast({ type: 'error', message: '操作失败' })
+    }
+  }
+
+  // ==================== AI设置管理 ====================
+  const openAISettings = async (account: AccountWithKeywordCount) => {
+    setAiSettingsAccount(account)
+    setActiveModal('ai-settings')
+    setAiSettingsLoading(true)
+    try {
+      const settings = await getAIReplySettings(account.id)
+      setAiEnabled(settings.enabled ?? false)
+      setAiMaxDiscountPercent(settings.max_discount_percent ?? 10)
+      setAiMaxDiscountAmount(settings.max_discount_amount ?? 100)
+      setAiMaxBargainRounds(settings.max_bargain_rounds ?? 3)
+      setAiCustomPrompts(settings.custom_prompts ?? '')
+    } catch {
+      addToast({ type: 'error', message: '加载AI设置失败' })
+    } finally {
+      setAiSettingsLoading(false)
+    }
+  }
+
+  const handleSaveAISettings = async () => {
+    if (!aiSettingsAccount) return
+    try {
+      setAiSettingsSaving(true)
+      await updateAIReplySettings(aiSettingsAccount.id, {
+        enabled: aiEnabled,
+        max_discount_percent: aiMaxDiscountPercent,
+        max_discount_amount: aiMaxDiscountAmount,
+        max_bargain_rounds: aiMaxBargainRounds,
+        custom_prompts: aiCustomPrompts,
+      })
+      // 更新本地状态
+      setAccounts(prev => prev.map(a =>
+        a.id === aiSettingsAccount.id ? { ...a, aiEnabled } : a,
+      ))
+      addToast({ type: 'success', message: 'AI设置已保存' })
+      closeModal()
+    } catch {
+      addToast({ type: 'error', message: '保存失败' })
+    } finally {
+      setAiSettingsSaving(false)
     }
   }
 
@@ -545,6 +599,14 @@ export function Accounts() {
                     </td>
                     <td>
                       <div className="flex items-center gap-1 flex-wrap">
+                        <button
+                          onClick={() => openAISettings(account)}
+                          className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded hover:bg-purple-50 dark:hover:bg-purple-900/30 transition-colors"
+                          title="AI设置"
+                        >
+                          <Bot className="w-3.5 h-3.5 text-purple-500" />
+                          <span className="text-purple-600 dark:text-purple-400">AI设置</span>
+                        </button>
                         <button
                           onClick={() => openDefaultReplyModal(account)}
                           className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded hover:bg-green-50 dark:hover:bg-green-900/30 transition-colors"
@@ -933,6 +995,109 @@ export function Accounts() {
               </button>
               <button onClick={handleSaveDefaultReply} className="btn-ios-primary" disabled={defaultReplySaving}>
                 {defaultReplySaving ? (
+                  <span className="flex items-center gap-2">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    保存中...
+                  </span>
+                ) : (
+                  '保存'
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* AI设置弹窗 */}
+      {activeModal === 'ai-settings' && aiSettingsAccount && (
+        <div className="modal-overlay">
+          <div className="modal-content max-w-lg">
+            <div className="modal-header">
+              <h2 className="modal-title">AI回复设置</h2>
+              <button onClick={closeModal} className="modal-close">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="modal-body space-y-4">
+              {aiSettingsLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="w-6 h-6 animate-spin text-blue-500" />
+                </div>
+              ) : (
+                <>
+                  <div className="input-group">
+                    <label className="input-label">账号</label>
+                    <input
+                      type="text"
+                      value={aiSettingsAccount.id}
+                      disabled
+                      className="input-ios bg-slate-100 dark:bg-slate-700"
+                    />
+                  </div>
+
+                  <div className="border-t border-slate-200 dark:border-slate-700 pt-4 mt-2">
+                    <h3 className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-3">议价设置</h3>
+                    <div className="grid grid-cols-3 gap-3">
+                      <div className="input-group">
+                        <label className="input-label text-xs">最大折扣(%)</label>
+                        <input
+                          type="number"
+                          value={aiMaxDiscountPercent}
+                          onChange={(e) => setAiMaxDiscountPercent(Number(e.target.value))}
+                          className="input-ios"
+                          min="0"
+                          max="100"
+                        />
+                      </div>
+                      <div className="input-group">
+                        <label className="input-label text-xs">最大减价(元)</label>
+                        <input
+                          type="number"
+                          value={aiMaxDiscountAmount}
+                          onChange={(e) => setAiMaxDiscountAmount(Number(e.target.value))}
+                          className="input-ios"
+                          min="0"
+                        />
+                      </div>
+                      <div className="input-group">
+                        <label className="input-label text-xs">最大议价轮数</label>
+                        <input
+                          type="number"
+                          value={aiMaxBargainRounds}
+                          onChange={(e) => setAiMaxBargainRounds(Number(e.target.value))}
+                          className="input-ios"
+                          min="1"
+                          max="10"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="input-group">
+                    <label className="input-label">自定义提示词 (JSON格式)</label>
+                    <textarea
+                      value={aiCustomPrompts}
+                      onChange={(e) => setAiCustomPrompts(e.target.value)}
+                      className="input-ios h-32 resize-none font-mono text-xs"
+                      placeholder='{"classify": "分类提示词", "price": "议价提示词", "tech": "技术提示词", "default": "默认提示词"}'
+                    />
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                      留空使用系统默认提示词。格式：{`{"classify": "...", "price": "...", "tech": "...", "default": "..."}`}
+                    </p>
+                  </div>
+                </>
+              )}
+            </div>
+            <div className="modal-footer">
+              <button type="button" onClick={closeModal} className="btn-ios-secondary" disabled={aiSettingsSaving}>
+                取消
+              </button>
+              <button
+                onClick={handleSaveAISettings}
+                className="btn-ios-primary"
+                disabled={aiSettingsSaving || aiSettingsLoading}
+              >
+                {aiSettingsSaving ? (
                   <span className="flex items-center gap-2">
                     <Loader2 className="w-4 h-4 animate-spin" />
                     保存中...

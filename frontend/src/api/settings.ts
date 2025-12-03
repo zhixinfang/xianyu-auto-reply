@@ -1,4 +1,4 @@
-import { get, put, post } from '@/utils/request'
+import { get, post, put } from '@/utils/request'
 import type { ApiResponse, SystemSettings } from '@/types'
 
 // 获取系统设置
@@ -22,9 +22,14 @@ export const updateSystemSettings = async (data: Partial<SystemSettings>): Promi
   // 逐个更新设置项，确保 value 是字符串
   const promises = Object.entries(data).map(([key, value]) => {
     // 将布尔值和数字转换为字符串
-    const stringValue = typeof value === 'boolean' ? (value ? 'true' : 'false') 
-                      : typeof value === 'number' ? String(value)
-                      : value
+    let stringValue: string
+    if (typeof value === 'boolean') {
+      stringValue = value ? 'true' : 'false'
+    } else if (typeof value === 'number') {
+      stringValue = String(value)
+    } else {
+      stringValue = value as string
+    }
     return put(`/system-settings/${key}`, { value: stringValue })
   })
   await Promise.all(promises)
@@ -48,7 +53,7 @@ export const testAIConnection = async (cookieId?: string): Promise<ApiResponse> 
   }
   try {
     const result = await post<{ success?: boolean; message?: string; reply?: string }>(`/ai-reply-test/${cookieId}`, {
-      message: '你好，这是一条测试消息'
+      message: '你好，这是一条测试消息',
     })
     if (result.reply) {
       return { success: true, message: `AI 回复: ${result.reply}` }
@@ -66,8 +71,8 @@ export const getEmailSettings = (): Promise<{ success: boolean; data?: Record<st
 
 // 更新邮件设置
 export const updateEmailSettings = (data: Record<string, unknown>): Promise<ApiResponse> => {
-  const promises = Object.entries(data).map(([key, value]) => 
-    put(`/system-settings/${key}`, { value })
+  const promises = Object.entries(data).map(([key, value]) =>
+    put(`/system-settings/${key}`, { value }),
   )
   return Promise.all(promises).then(() => ({ success: true, message: '设置已保存' }))
 }
@@ -117,4 +122,35 @@ export const importUserBackup = async (file: File): Promise<ApiResponse> => {
   const formData = new FormData()
   formData.append('file', file)
   return post('/backup/import', formData)
+}
+
+// ========== 用户设置 ==========
+
+export interface UserSettings {
+  [key: string]: {
+    value: string
+    description?: string
+    updated_at?: string
+  }
+}
+
+// 获取用户设置
+export const getUserSettings = async (): Promise<{ success: boolean; data?: UserSettings }> => {
+  const data = await get<UserSettings>('/user-settings')
+  return { success: true, data }
+}
+
+// 获取单个用户设置
+export const getUserSetting = async (key: string): Promise<{ success: boolean; value?: string }> => {
+  try {
+    const data = await get<{ value: string }>(`/user-settings/${key}`)
+    return { success: true, value: data.value }
+  } catch {
+    return { success: false }
+  }
+}
+
+// 更新用户设置
+export const updateUserSetting = async (key: string, value: string, description?: string): Promise<ApiResponse> => {
+  return put(`/user-settings/${key}`, { value, description })
 }

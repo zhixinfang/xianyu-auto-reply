@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
-import { FileText, RefreshCw, Trash2, AlertCircle, AlertTriangle, Info } from 'lucide-react'
-import { getSystemLogs, clearSystemLogs, type SystemLog } from '@/api/admin'
+import { FileText, RefreshCw, Trash2, AlertCircle, AlertTriangle, Info, Download } from 'lucide-react'
+import { getSystemLogs, clearSystemLogs, exportLogs, type SystemLog } from '@/api/admin'
 import { useUIStore } from '@/store/uiStore'
 import { useAuthStore } from '@/store/authStore'
 import { PageLoading } from '@/components/common/Loading'
@@ -95,6 +95,13 @@ export function Logs() {
           <p className="page-description">查看系统运行日志</p>
         </div>
         <div className="flex gap-2">
+          <button
+            onClick={() => window.open(exportLogs(), '_blank')}
+            className="btn-ios-primary"
+          >
+            <Download className="w-4 h-4" />
+            导出日志
+          </button>
           <button onClick={handleClear} className="btn-ios-danger">
             <Trash2 className="w-4 h-4" />
             清空日志
