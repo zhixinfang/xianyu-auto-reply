@@ -1,12 +1,12 @@
-import { useState, useEffect } from 'react'
-import { Package, RefreshCw, Search, Trash2, Download, CheckSquare, Square, Loader2, ExternalLink } from 'lucide-react'
-import { getItems, deleteItem, fetchItemsFromAccount, batchDeleteItems, updateItemMultiQuantityDelivery, updateItemMultiSpec } from '@/api/items'
+import { useEffect, useState } from 'react'
+import { CheckSquare, Download, Edit2, ExternalLink, Loader2, Package, RefreshCw, Search, Square, Trash2, X } from 'lucide-react'
+import { batchDeleteItems, deleteItem, fetchItemsFromAccount, getItems, updateItem, updateItemMultiQuantityDelivery, updateItemMultiSpec } from '@/api/items'
 import { getAccounts } from '@/api/accounts'
 import { useUIStore } from '@/store/uiStore'
 import { PageLoading } from '@/components/common/Loading'
 import { useAuthStore } from '@/store/authStore'
 import { Select } from '@/components/common/Select'
-import type { Item, Account } from '@/types'
+import type { Account, Item } from '@/types'
 
 export function Items() {
   const { addToast } = useUIStore()
@@ -19,6 +19,11 @@ export function Items() {
   const [selectedIds, setSelectedIds] = useState<Set<string | number>>(new Set())
   const [fetching, setFetching] = useState(false)
   const [fetchProgress, setFetchProgress] = useState({ current: 0, total: 0 })
+
+  // 编辑弹窗状态
+  const [editingItem, setEditingItem] = useState<Item | null>(null)
+  const [editDetail, setEditDetail] = useState('')
+  const [editSaving, setEditSaving] = useState(false)
 
   const loadItems = async () => {
     if (!_hasHydrated || !isAuthenticated || !token) {
@@ -54,7 +59,7 @@ export function Items() {
       while (hasMore) {
         setFetchProgress({ current: page, total: page })
         const result = await fetchItemsFromAccount(selectedAccount, page)
-        
+
         if (result.success) {
           const fetchedCount = (result as { count?: number }).count || 0
           totalFetched += fetchedCount
@@ -177,6 +182,30 @@ export function Items() {
     }
   }
 
+  // 打开编辑弹窗
+  const handleEdit = (item: Item) => {
+    setEditingItem(item)
+    setEditDetail(item.item_detail || item.desc || '')
+  }
+
+  // 保存编辑
+  const handleSaveEdit = async () => {
+    if (!editingItem) return
+    setEditSaving(true)
+    try {
+      await updateItem(editingItem.cookie_id, editingItem.item_id, {
+        item_detail: editDetail,
+      })
+      addToast({ type: 'success', message: '商品详情已更新' })
+      setEditingItem(null)
+      loadItems()
+    } catch {
+      addToast({ type: 'error', message: '更新失败' })
+    } finally {
+      setEditSaving(false)
+    }
+  }
+
   const filteredItems = items.filter((item) => {
     if (!searchKeyword) return true
     const keyword = searchKeyword.toLowerCase()
@@ -208,8 +237,8 @@ export function Items() {
               删除选中 ({selectedIds.size})
             </button>
           )}
-          <button 
-            onClick={handleFetchItems} 
+          <button
+            onClick={handleFetchItems}
             disabled={fetching}
             className="btn-ios-primary"
           >
@@ -278,10 +307,10 @@ export function Items() {
           <span className="badge-primary">{filteredItems.length} 个商品</span>
         </div>
         <div className="overflow-x-auto">
-          <table className="table-ios">
+          <table className="table-ios min-w-[900px]">
             <thead>
               <tr>
-                <th className="w-10">
+                <th className="w-10 whitespace-nowrap">
                   <button
                     onClick={toggleSelectAll}
                     className="p-1 hover:bg-gray-100 rounded"
@@ -294,14 +323,14 @@ export function Items() {
                     )}
                   </button>
                 </th>
-                <th>账号ID</th>
-                <th>商品ID</th>
-                <th>商品标题</th>
-                <th>价格</th>
-                <th>多规格</th>
-                <th>多数量发货</th>
-                <th>更新时间</th>
-                <th>操作</th>
+                <th className="whitespace-nowrap">账号ID</th>
+                <th className="whitespace-nowrap">商品ID</th>
+                <th className="whitespace-nowrap">商品标题</th>
+                <th className="whitespace-nowrap">价格</th>
+                <th className="whitespace-nowrap">多规格</th>
+                <th className="whitespace-nowrap">多数量发货</th>
+                <th className="whitespace-nowrap">更新时间</th>
+                <th className="whitespace-nowrap sticky right-0 bg-slate-50 dark:bg-slate-800">操作</th>
               </tr>
             </thead>
             <tbody>
@@ -331,7 +360,7 @@ export function Items() {
                     </td>
                     <td className="font-medium text-blue-600 dark:text-blue-400">{item.cookie_id}</td>
                     <td className="text-xs text-gray-500">
-                      <a 
+                      <a
                         href={`https://www.goofish.com/item?id=${item.item_id}`}
                         target="_blank"
                         rel="noopener noreferrer"
@@ -342,15 +371,15 @@ export function Items() {
                       </a>
                     </td>
                     <td className="max-w-[280px]">
-                      <div 
-                        className="font-medium line-clamp-2 cursor-help" 
+                      <div
+                        className="font-medium line-clamp-2 cursor-help"
                         title={item.item_title || item.title || '-'}
                       >
                         {item.item_title || item.title || '-'}
                       </div>
                       {(item.item_detail || item.desc) && (
-                        <div 
-                          className="text-xs text-gray-400 line-clamp-1 mt-0.5 cursor-help" 
+                        <div
+                          className="text-xs text-gray-400 line-clamp-1 mt-0.5 cursor-help"
                           title={item.item_detail || item.desc}
                         >
                           {item.item_detail || item.desc}
@@ -365,7 +394,7 @@ export function Items() {
                         onClick={() => handleToggleMultiSpec(item)}
                         className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
                           (item.is_multi_spec || item.has_sku)
-                            ? 'bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400' 
+                            ? 'bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400'
                             : 'bg-gray-100 text-gray-500 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400'
                         }`}
                         title={(item.is_multi_spec || item.has_sku) ? '点击关闭多规格' : '点击开启多规格'}
@@ -377,8 +406,8 @@ export function Items() {
                       <button
                         onClick={() => handleToggleMultiQuantity(item)}
                         className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
-                          item.multi_quantity_delivery 
-                            ? 'bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400' 
+                          item.multi_quantity_delivery
+                            ? 'bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400'
                             : 'bg-gray-100 text-gray-500 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400'
                         }`}
                         title={item.multi_quantity_delivery ? '点击关闭多数量发货' : '点击开启多数量发货'}
@@ -389,14 +418,23 @@ export function Items() {
                     <td className="text-gray-500 text-xs">
                       {item.updated_at ? new Date(item.updated_at).toLocaleString() : '-'}
                     </td>
-                    <td>
-                      <button
-                        onClick={() => handleDelete(item)}
-                        className="table-action-btn hover:!bg-red-50"
-                        title="删除"
-                      >
-                        <Trash2 className="w-4 h-4 text-red-500" />
-                      </button>
+                    <td className="sticky right-0 bg-white dark:bg-slate-900">
+                      <div className="flex gap-1">
+                        <button
+                          onClick={() => handleEdit(item)}
+                          className="table-action-btn hover:!bg-blue-50"
+                          title="编辑"
+                        >
+                          <Edit2 className="w-4 h-4 text-blue-500" />
+                        </button>
+                        <button
+                          onClick={() => handleDelete(item)}
+                          className="table-action-btn hover:!bg-red-50"
+                          title="删除"
+                        >
+                          <Trash2 className="w-4 h-4 text-red-500" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -405,6 +443,73 @@ export function Items() {
           </table>
         </div>
       </div>
+
+      {/* 编辑弹窗 */}
+      {editingItem && (
+        <div className="modal-overlay">
+          <div className="modal-content max-w-lg">
+            <div className="modal-header">
+              <h2 className="modal-title">编辑商品</h2>
+              <button onClick={() => setEditingItem(null)} className="modal-close">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="modal-body space-y-4">
+              <div className="input-group">
+                <label className="input-label">商品ID</label>
+                <input
+                  type="text"
+                  value={editingItem.item_id}
+                  disabled
+                  className="input-ios bg-slate-100 dark:bg-slate-700"
+                />
+              </div>
+              <div className="input-group">
+                <label className="input-label">商品标题</label>
+                <input
+                  type="text"
+                  value={editingItem.item_title || editingItem.title || ''}
+                  disabled
+                  className="input-ios bg-slate-100 dark:bg-slate-700"
+                />
+              </div>
+              <div className="input-group">
+                <label className="input-label">商品详情</label>
+                <textarea
+                  value={editDetail}
+                  onChange={(e) => setEditDetail(e.target.value)}
+                  className="input-ios h-32 resize-none"
+                  placeholder="输入商品详情..."
+                />
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button
+                type="button"
+                onClick={() => setEditingItem(null)}
+                className="btn-ios-secondary"
+                disabled={editSaving}
+              >
+                取消
+              </button>
+              <button
+                onClick={handleSaveEdit}
+                className="btn-ios-primary"
+                disabled={editSaving}
+              >
+                {editSaving ? (
+                  <span className="flex items-center gap-2">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    保存中...
+                  </span>
+                ) : (
+                  '保存'
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
