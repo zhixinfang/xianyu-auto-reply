@@ -20,20 +20,28 @@ export const getSystemSettings = async (): Promise<{ success: boolean; data?: Sy
 // 更新系统设置
 export const updateSystemSettings = async (data: Partial<SystemSettings>): Promise<ApiResponse> => {
   // 逐个更新设置项，确保 value 是字符串
-  const promises = Object.entries(data).map(([key, value]) => {
-    // 将布尔值和数字转换为字符串
-    let stringValue: string
-    if (typeof value === 'boolean') {
-      stringValue = value ? 'true' : 'false'
-    } else if (typeof value === 'number') {
-      stringValue = String(value)
-    } else {
-      stringValue = value as string
-    }
-    return put(`/system-settings/${key}`, { value: stringValue })
-  })
-  await Promise.all(promises)
-  return { success: true, message: '设置已保存' }
+  const promises = Object.entries(data)
+    .filter(([, value]) => value !== undefined && value !== null) // 过滤掉空值
+    .map(([key, value]) => {
+      // 将布尔值和数字转换为字符串
+      let stringValue: string
+      if (typeof value === 'boolean') {
+        stringValue = value ? 'true' : 'false'
+      } else if (typeof value === 'number') {
+        stringValue = String(value)
+      } else {
+        stringValue = String(value ?? '')
+      }
+      return put(`/system-settings/${key}`, { value: stringValue })
+    })
+
+  try {
+    await Promise.all(promises)
+    return { success: true, message: '设置已保存' }
+  } catch (error) {
+    console.error('保存设置失败:', error)
+    return { success: false, message: '保存设置失败' }
+  }
 }
 
 // 获取 AI 设置
@@ -59,8 +67,11 @@ export const testAIConnection = async (cookieId?: string): Promise<ApiResponse> 
       return { success: true, message: `AI 回复: ${result.reply}` }
     }
     return { success: result.success ?? true, message: result.message || 'AI 连接测试成功' }
-  } catch (error) {
-    return { success: false, message: 'AI 连接测试失败' }
+  } catch (error: unknown) {
+    // 提取后端返回的错误信息
+    const axiosError = error as { response?: { data?: { detail?: string; message?: string } } }
+    const detail = axiosError.response?.data?.detail || axiosError.response?.data?.message
+    return { success: false, message: detail || 'AI 连接测试失败' }
   }
 }
 
