@@ -10,6 +10,7 @@ import { Items } from '@/pages/items/Items'
 import { Orders } from '@/pages/orders/Orders'
 import { Keywords } from '@/pages/keywords/Keywords'
 import { About } from '@/pages/about/About'
+import { Disclaimer } from '@/pages/disclaimer/Disclaimer'
 import { Cards } from '@/pages/cards/Cards'
 import { Delivery } from '@/pages/delivery/Delivery'
 import { NotificationChannels } from '@/pages/notifications/NotificationChannels'
@@ -21,6 +22,7 @@ import { Users } from '@/pages/admin/Users'
 import { Logs } from '@/pages/admin/Logs'
 import { RiskLogs } from '@/pages/admin/RiskLogs'
 import { DataManagement } from '@/pages/admin/DataManagement'
+import { DisclaimerModal } from '@/components/common/DisclaimerModal'
 import { verifyToken } from '@/api/auth'
 import { Toast } from '@/components/common/Toast'
 
@@ -28,6 +30,7 @@ import { Toast } from '@/components/common/Toast'
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, setAuth, clearAuth, token: storeToken, _hasHydrated } = useAuthStore()
   const [authState, setAuthState] = useState<'checking' | 'authenticated' | 'unauthenticated'>('checking')
+  const [showDisclaimer, setShowDisclaimer] = useState(false)
   const checkingRef = useRef(false)
 
   useEffect(() => {
@@ -63,6 +66,12 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
             is_admin: result.is_admin || false,
           })
           setAuthState('authenticated')
+          
+          // 检查是否已同意免责声明
+          const disclaimerAccepted = localStorage.getItem('disclaimer_accepted')
+          if (!disclaimerAccepted) {
+            setShowDisclaimer(true)
+          }
         } else {
           clearAuth()
           setAuthState('unauthenticated')
@@ -78,6 +87,17 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
     checkAuth()
   }, [_hasHydrated, isAuthenticated, storeToken, setAuth, clearAuth])
 
+  const handleDisclaimerAgree = () => {
+    localStorage.setItem('disclaimer_accepted', 'true')
+    setShowDisclaimer(false)
+  }
+
+  const handleDisclaimerDisagree = () => {
+    clearAuth()
+    setShowDisclaimer(false)
+    setAuthState('unauthenticated')
+  }
+
   // 等待 hydration 或检查完成
   if (!_hasHydrated || authState === 'checking') {
     return (
@@ -91,7 +111,16 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
     return <Navigate to="/login" replace />
   }
 
-  return <>{children}</>
+  return (
+    <>
+      {children}
+      <DisclaimerModal
+        isOpen={showDisclaimer}
+        onAgree={handleDisclaimerAgree}
+        onDisagree={handleDisclaimerDisagree}
+      />
+    </>
+  )
 }
 
 function App() {
@@ -126,6 +155,7 @@ function App() {
           <Route path="message-notifications" element={<MessageNotifications />} />
           <Route path="item-search" element={<ItemSearch />} />
           <Route path="settings" element={<Settings />} />
+          <Route path="disclaimer" element={<Disclaimer />} />
           <Route path="about" element={<About />} />
 
           {/* Admin routes */}

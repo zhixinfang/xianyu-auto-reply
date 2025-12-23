@@ -88,10 +88,16 @@ export const updateEmailSettings = (data: Record<string, unknown>): Promise<ApiR
   return Promise.all(promises).then(() => ({ success: true, message: '设置已保存' }))
 }
 
-// TODO: 测试邮件发送功能需要后端支持 type: 'test' 参数
-// 当前后端的 /send-verification-code 接口只支持 'register' 和 'login' 类型
-export const testEmailSend = async (_email: string): Promise<ApiResponse> => {
-  return { success: false, message: '邮件测试功能暂未实现，请检查 SMTP 配置后直接保存' }
+// 测试邮件发送功能
+export const testEmailSend = async (email: string): Promise<ApiResponse> => {
+  try {
+    const result = await post<ApiResponse>(`/system-settings/test-email?email=${encodeURIComponent(email)}`)
+    return result
+  } catch (error: unknown) {
+    const axiosError = error as { response?: { data?: { detail?: string; message?: string } } }
+    const detail = axiosError.response?.data?.detail || axiosError.response?.data?.message
+    return { success: false, message: detail || '发送测试邮件失败' }
+  }
 }
 
 // 修改密码（管理员）

@@ -89,6 +89,10 @@ export default defineConfig(({ command }) => ({
         target: 'http://localhost:8080',
         changeOrigin: true,
       },
+      '/geetest': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+      },
       '/register': {
         target: 'http://localhost:8080',
         changeOrigin: true,
@@ -132,6 +136,10 @@ export default defineConfig(({ command }) => ({
         changeOrigin: true,
       },
       '/keywords-import': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+      },
+      '/upload-image': {
         target: 'http://localhost:8080',
         changeOrigin: true,
       },

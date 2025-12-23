@@ -1734,7 +1734,7 @@ class XianyuLive:
                     # user_id=f"{self.cookie_id}_{int(time.time() * 1000)}",  # 使用唯一ID避免冲突
                     user_id=f"{self.cookie_id}",  # 使用唯一ID避免冲突
                     enable_learning=True,  # 启用学习功能
-                    headless=False  # 使用有头模式（可视化浏览器）
+                    headless=True  # 使用无头模式
                 )
 
                 # 在线程池中执行滑块验证
@@ -3500,9 +3500,6 @@ class XianyuLive:
                     logger.info(f"📱 解析后的配置数据: {config_data}")
 
                     match channel_type:
-                        case 'qq':
-                            logger.info(f"📱 开始发送QQ通知...")
-                            await self._send_qq_notification(config_data, notification_msg)
                         case 'ding_talk' | 'dingtalk':
                             logger.info(f"📱 开始发送钉钉通知...")
                             await self._send_dingtalk_notification(config_data, notification_msg)
@@ -3546,54 +3543,6 @@ class XianyuLive:
         except (json.JSONDecodeError, TypeError):
             # 兼容旧格式（直接字符串）
             return {"config": config}
-
-    async def _send_qq_notification(self, config_data: dict, message: str):
-        """发送QQ通知"""
-        try:
-            import aiohttp
-
-            logger.info(f"📱 QQ通知 - 开始处理配置数据: {config_data}")
-
-            # 解析配置（QQ号码）
-            qq_number = config_data.get('qq_number') or config_data.get('config', '')
-            qq_number = qq_number.strip() if qq_number else ''
-
-            logger.info(f"📱 QQ通知 - 解析到QQ号码: {qq_number}")
-
-            if not qq_number:
-                logger.warning("📱 QQ通知 - QQ号码配置为空，无法发送通知")
-                return
-
-            # 构建请求URL
-            api_url = "http://notice.zhinianblog.cn/sendPrivateMsg"
-            params = {
-                'qq': qq_number,
-                'msg': message
-            }
-
-            logger.info(f"📱 QQ通知 - 请求URL: {api_url}")
-            logger.info(f"📱 QQ通知 - 请求参数: qq={qq_number}, msg长度={len(message)}")
-
-            # 发送GET请求
-            async with aiohttp.ClientSession() as session:
-                async with session.get(api_url, params=params, timeout=10) as response:
-                    response_text = await response.text()
-                    logger.info(f"📱 QQ通知 - 响应状态: {response.status}")
-
-                    # 需求：502 视为成功，且不打印返回内容
-                    if response.status == 502:
-                        logger.info(f"📱 QQ通知发送成功: {qq_number} (状态码: {response.status})")
-                    elif response.status == 200:
-                        logger.info(f"📱 QQ通知发送成功: {qq_number} (状态码: {response.status})")
-                        logger.warning(f"📱 QQ通知 - 响应内容: {response_text}")
-                    else:
-                        logger.warning(f"📱 QQ通知发送失败: HTTP {response.status}")
-                        logger.warning(f"📱 QQ通知 - 响应内容: {response_text}")
-
-        except Exception as e:
-            logger.error(f"📱 发送QQ通知异常: {self._safe_str(e)}")
-            import traceback
-            logger.error(f"📱 QQ通知异常详情: {traceback.format_exc()}")
 
     async def _send_dingtalk_notification(self, config_data: dict, message: str):
         """发送钉钉通知"""
@@ -4129,9 +4078,6 @@ class XianyuLive:
                     config_data = self._parse_notification_config(channel_config)
 
                     match channel_type:
-                        case 'qq':
-                            await self._send_qq_notification(config_data, notification_msg)
-                            notification_sent = True
                         case 'ding_talk' | 'dingtalk':
                             await self._send_dingtalk_notification(config_data, notification_msg)
                             notification_sent = True
@@ -4283,9 +4229,6 @@ class XianyuLive:
                         config_data = self._parse_notification_config(channel_config)
 
                         match channel_type:
-                            case 'qq':
-                                await self._send_qq_notification(config_data, notification_message)
-                                logger.info(f"已发送自动发货通知到QQ")
                             case 'ding_talk' | 'dingtalk':
                                 await self._send_dingtalk_notification(config_data, notification_message)
                                 logger.info(f"已发送自动发货通知到钉钉")
@@ -4569,41 +4512,60 @@ class XianyuLive:
                         if spec_name and spec_value:
                             logger.info(f"获取到规格信息: {spec_name} = {spec_value}")
                         else:
-                            logger.warning(f"未能获取到规格信息，将使用兜底匹配")
+                            logger.warning(f"未能获取到规格信息，将跳过自动发货")
+                            return None
                     else:
-                        logger.warning(f"获取订单详情失败（返回类型: {type(order_detail).__name__}），将使用兜底匹配")
+                        logger.warning(f"获取订单详情失败（返回类型: {type(order_detail).__name__}），将跳过自动发货")
+                        return None
                 except Exception as e:
-                    logger.error(f"获取订单规格信息失败: {self._safe_str(e)}，将使用兜底匹配")
+                    logger.error(f"获取订单规格信息失败: {self._safe_str(e)}，将跳过自动发货")
+                    return None
 
-            # 智能匹配发货规则：优先精确匹配，然后兜底匹配
+            # 智能匹配发货规则：多规格商品只匹配多规格卡券，非多规格商品只匹配非多规格卡券
             delivery_rules = []
 
-            # 第一步：如果有规格信息，尝试精确匹配多规格发货规则
-            if spec_name and spec_value:
-                logger.info(f"尝试精确匹配多规格发货规则: {search_text[:50]}... [{spec_name}:{spec_value}]")
-                delivery_rules = db_manager.get_delivery_rules_by_keyword_and_spec(search_text, spec_name, spec_value)
-
-                if delivery_rules:
-                    logger.info(f"✅ 找到精确匹配的多规格发货规则: {len(delivery_rules)}个")
+            if is_multi_spec:
+                # 多规格商品：只匹配多规格发货规则
+                if spec_name and spec_value:
+                    logger.info(f"多规格商品，尝试匹配多规格发货规则: {search_text[:50]}... [{spec_name}:{spec_value}]")
+                    delivery_rules = db_manager.get_delivery_rules_by_keyword_and_spec(search_text, spec_name, spec_value)
+                    # 过滤只保留多规格卡券
+                    delivery_rules = [r for r in delivery_rules if r.get('is_multi_spec')]
+                    
+                    if delivery_rules:
+                        logger.info(f"✅ 找到匹配的多规格发货规则: {len(delivery_rules)}个")
+                    else:
+                        logger.warning(f"❌ 多规格商品未找到匹配的多规格发货规则，跳过自动发货")
+                        return None
                 else:
-                    logger.info(f"❌ 未找到精确匹配的多规格发货规则")
-
-            # 第二步：如果精确匹配失败，尝试兜底匹配（普通发货规则）
-            if not delivery_rules:
-                logger.info(f"尝试兜底匹配普通发货规则: {search_text[:50]}...")
+                    logger.warning(f"❌ 多规格商品但无规格信息，跳过自动发货")
+                    return None
+            else:
+                # 非多规格商品：只匹配非多规格发货规则
+                logger.info(f"非多规格商品，尝试匹配普通发货规则: {search_text[:50]}...")
                 delivery_rules = db_manager.get_delivery_rules_by_keyword(search_text)
-
+                # 过滤只保留非多规格卡券
+                delivery_rules = [r for r in delivery_rules if not r.get('is_multi_spec')]
+                
                 if delivery_rules:
-                    logger.info(f"✅ 找到兜底匹配的普通发货规则: {len(delivery_rules)}个")
+                    logger.info(f"✅ 找到匹配的普通发货规则: {len(delivery_rules)}个")
                 else:
-                    logger.info(f"❌ 未找到任何匹配的发货规则")
+                    logger.warning(f"❌ 非多规格商品未找到匹配的普通发货规则，跳过自动发货")
+                    return None
+
+            # 检查匹配到的卡券数量，只有唯一匹配时才自动发货
+            if len(delivery_rules) > 1:
+                rule_names = [f"{r['card_name']}({r.get('spec_name', '')}:{r.get('spec_value', '')})" if r.get('is_multi_spec') else r['card_name'] for r in delivery_rules]
+                logger.warning(f"❌ 匹配到多个发货规则({len(delivery_rules)}个)，无法确定使用哪个，跳过自动发货: {', '.join(rule_names)}")
+                return None
 
             if not delivery_rules:
                 logger.warning(f"未找到匹配的发货规则: {search_text[:50]}...")
                 return None
 
-            # 使用第一个匹配的规则（按关键字长度降序排列，优先匹配更精确的规则）
+            # 使用唯一匹配的规则
             rule = delivery_rules[0]
+            logger.info(f"✅ 唯一匹配发货规则: {rule['keyword']} -> {rule['card_name']} ({rule['card_type']})")
 
             # 保存商品信息到数据库（需要有商品标题才保存）
             # 尝试获取商品标题
@@ -4761,6 +4723,10 @@ class XianyuLive:
     def _process_delivery_content_with_description(self, delivery_content: str, card_description: str) -> str:
         """处理发货内容和备注信息，实现变量替换"""
         try:
+            # 如果是图片发送标记，不进行备注处理，直接返回
+            if delivery_content.startswith("__IMAGE_SEND__"):
+                return delivery_content
+            
             # 如果没有备注信息，直接返回发货内容
             if not card_description or not card_description.strip():
                 return delivery_content
@@ -7201,6 +7167,8 @@ class XianyuLive:
 
             # 如果不是同步包消息，直接返回
             if not self.is_sync_package(message_data):
+                # 添加调试日志，记录非同步包消息
+                logger.debug(f"【{self.cookie_id}】非同步包消息，跳过处理")
                 return
 
             # 获取并解密数据
@@ -7582,6 +7550,20 @@ class XianyuLive:
                         if not order_id:
                             logger.warning(f'[{msg_time}] 【{self.cookie_id}】❌ 未能提取到订单ID，无法执行免拼发货')
                             return
+
+                        # 更新订单的is_bargain字段为True（标记为小刀订单）
+                        try:
+                            from db_manager import db_manager
+                            db_manager.insert_or_update_order(
+                                order_id=order_id,
+                                item_id=item_id,
+                                buyer_id=send_user_id,
+                                cookie_id=self.cookie_id,
+                                is_bargain=True
+                            )
+                            logger.info(f'[{msg_time}] 【{self.cookie_id}】✅ 订单 {order_id} 已标记为小刀订单')
+                        except Exception as e:
+                            logger.error(f'[{msg_time}] 【{self.cookie_id}】标记小刀订单失败: {self._safe_str(e)}')
 
                         # 延迟2秒后执行免拼发货
                         logger.info(f'[{msg_time}] 【{self.cookie_id}】延迟2秒后执行免拼发货...')
