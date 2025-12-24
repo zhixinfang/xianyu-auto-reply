@@ -297,30 +297,12 @@ class XianyuSliderStealth:
         self.last_trajectory_params = {}
     
     def _check_date_validity(self) -> bool:
-        """检查日期有效性
+        """检查日期有效性 - 已禁用
         
         Returns:
-            bool: 如果当前日期小于 2025-11-30 返回 True，否则返回 False
+            bool: 始终返回 True
         """
-        try:
-            # 设置截止日期
-            expiry_date = datetime(2025, 12, 30)
-            current_date = datetime.now()
-            
-            # 计算剩余天数
-            remaining_days = (expiry_date - current_date).days
-            
-            if current_date < expiry_date:
-                logger.info(f"【{self.pure_user_id}】日期验证通过，剩余可用天数: {remaining_days} 天")
-                return True
-            else:
-                logger.error(f"【{self.pure_user_id}】日期验证失败！当前日期: {current_date.strftime('%Y-%m-%d')}, "
-                           f"截止日期: {expiry_date.strftime('%Y-%m-%d')}, "
-                           f"已过期: {abs(remaining_days)} 天")
-                return False
-        except Exception as e:
-            logger.error(f"【{self.pure_user_id}】日期验证出错: {str(e)}")
-            return False
+        return True
         
     def init_browser(self):
         """初始化浏览器 - 增强反检测版本"""
