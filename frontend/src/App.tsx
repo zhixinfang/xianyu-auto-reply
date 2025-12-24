@@ -67,8 +67,9 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
           })
           setAuthState('authenticated')
           
-          // 检查是否已同意免责声明
-          const disclaimerAccepted = localStorage.getItem('disclaimer_accepted')
+          // 检查是否已同意免责声明（针对每个用户）
+          const disclaimerKey = `disclaimer_accepted_${result.user_id}`
+          const disclaimerAccepted = localStorage.getItem(disclaimerKey)
           if (!disclaimerAccepted) {
             setShowDisclaimer(true)
           }
@@ -88,7 +89,11 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   }, [_hasHydrated, isAuthenticated, storeToken, setAuth, clearAuth])
 
   const handleDisclaimerAgree = () => {
-    localStorage.setItem('disclaimer_accepted', 'true')
+    // 使用用户ID存储免责声明同意状态
+    const userId = useAuthStore.getState().user?.user_id
+    if (userId) {
+      localStorage.setItem(`disclaimer_accepted_${userId}`, 'true')
+    }
     setShowDisclaimer(false)
   }
 

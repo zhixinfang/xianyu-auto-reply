@@ -167,6 +167,10 @@ export default defineConfig(({ command }) => ({
         target: 'http://localhost:8080',
         changeOrigin: true,
       },
+      '/check-default-password': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+      },
       '/logout': {
         target: 'http://localhost:8080',
         changeOrigin: true,

@@ -100,9 +100,9 @@ export const testEmailSend = async (email: string): Promise<ApiResponse> => {
   }
 }
 
-// 修改密码（管理员）
+// 修改密码（普通用户）
 export const changePassword = async (data: { current_password: string; new_password: string }): Promise<ApiResponse> => {
-  return post('/change-admin-password', data)
+  return post('/change-password', data)
 }
 
 // 获取备份文件列表（管理员）
@@ -170,4 +170,16 @@ export const getUserSetting = async (key: string): Promise<{ success: boolean; v
 // 更新用户设置
 export const updateUserSetting = async (key: string, value: string, description?: string): Promise<ApiResponse> => {
   return put(`/user-settings/${key}`, { value, description })
+}
+
+// 检查是否使用默认密码
+export const checkDefaultPassword = async (): Promise<{ using_default: boolean }> => {
+  try {
+    const result = await get<{ using_default: boolean }>('/api/check-default-password')
+    console.log('checkDefaultPassword result:', result)
+    return result
+  } catch (error) {
+    console.error('checkDefaultPassword error:', error)
+    return { using_default: false }
+  }
 }

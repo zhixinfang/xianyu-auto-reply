@@ -251,29 +251,36 @@ export function Settings() {
     return <PageLoading />
   }
 
+  const isAdmin = user?.is_admin
+
   return (
     <div className="space-y-4">
       {/* Header */}
       <div className="page-header flex-between flex-wrap gap-4">
         <div>
           <h1 className="page-title">系统设置</h1>
-          <p className="page-description">配置系统全局设置</p>
+          <p className="page-description">{isAdmin ? '配置系统全局设置' : '修改个人密码'}</p>
         </div>
         <div className="flex gap-2">
-          <button onClick={loadSettings} className="btn-ios-secondary">
-            <RefreshCw className="w-4 h-4" />
-            刷新
-          </button>
-          <button onClick={handleSave} disabled={saving} className="btn-ios-primary">
-            {saving ? <ButtonLoading /> : <Save className="w-4 h-4" />}
-            保存设置
-          </button>
+          {isAdmin && (
+            <>
+              <button onClick={loadSettings} className="btn-ios-secondary">
+                <RefreshCw className="w-4 h-4" />
+                刷新
+              </button>
+              <button onClick={handleSave} disabled={saving} className="btn-ios-primary">
+                {saving ? <ButtonLoading /> : <Save className="w-4 h-4" />}
+                保存设置
+              </button>
+            </>
+          )}
         </div>
       </div>
 
       {/* 双列布局 */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* 左列 */}
+        {/* 左列 - 仅管理员可见 */}
+        {isAdmin && (
         <div className="space-y-4">
           {/* General Settings */}
           <div className="vben-card">
@@ -424,10 +431,12 @@ export function Settings() {
             </div>
           </div>
         </div>
+        )}
 
         {/* 右列 */}
         <div className="space-y-4">
-          {/* Email Settings */}
+          {/* Email Settings - 仅管理员可见 */}
+          {isAdmin && (
           <div className="vben-card">
             <div className="vben-card-header">
               <h2 className="vben-card-title">
@@ -526,6 +535,7 @@ export function Settings() {
               </button>
             </div>
           </div>
+          )}
 
           {/* 密码修改 */}
           <div className="vben-card">

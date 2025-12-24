@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
-import { Plus, RefreshCw, QrCode, Key, Edit2, Trash2, Power, PowerOff, X, Loader2, Clock, CheckCircle, MessageSquare, Bot, Eye, EyeOff } from 'lucide-react'
+import { Plus, RefreshCw, QrCode, Key, Edit2, Trash2, Power, PowerOff, X, Loader2, Clock, CheckCircle, MessageSquare, Bot, Eye, EyeOff, AlertTriangle } from 'lucide-react'
 import { getAccountDetails, deleteAccount, updateAccountCookie, updateAccountStatus, updateAccountRemark, addAccount, generateQRLogin, checkQRLoginStatus, passwordLogin, updateAccountAutoConfirm, updateAccountPauseDuration, getAllAIReplySettings, getAIReplySettings, updateAIReplySettings, updateAccountLoginInfo, type AIReplySettings } from '@/api/accounts'
 import { getKeywords, getDefaultReply, updateDefaultReply } from '@/api/keywords'
+import { checkDefaultPassword } from '@/api/settings'
 import { useUIStore } from '@/store/uiStore'
 import { useAuthStore } from '@/store/authStore'
 import { PageLoading } from '@/components/common/Loading'
@@ -17,10 +18,14 @@ interface AccountWithKeywordCount extends AccountDetail {
 
 export function Accounts() {
   const { addToast } = useUIStore()
-  const { isAuthenticated, token, _hasHydrated } = useAuthStore()
+  const { isAuthenticated, token, _hasHydrated, user } = useAuthStore()
   const [loading, setLoading] = useState(true)
   const [accounts, setAccounts] = useState<AccountWithKeywordCount[]>([])
   const [activeModal, setActiveModal] = useState<ModalType>(null)
+  
+  // 默认密码检查状态
+  const [usingDefaultPassword, setUsingDefaultPassword] = useState(false)
+  const [showPasswordWarning, setShowPasswordWarning] = useState(false)
 
   // 默认回复管理状态
   const [defaultReplyAccount, setDefaultReplyAccount] = useState<AccountWithKeywordCount | null>(null)
@@ -114,6 +119,20 @@ export function Accounts() {
     loadAccounts()
   }, [_hasHydrated, isAuthenticated, token])
 
+  // 单独的 useEffect 检查默认密码
+  useEffect(() => {
+    if (!_hasHydrated || !isAuthenticated || !token || !user) return
+    
+    // 检查是否使用默认密码
+    const checkPassword = async () => {
+      if (user.is_admin) {
+        const result = await checkDefaultPassword()
+        setUsingDefaultPassword(result.using_default)
+      }
+    }
+    checkPassword()
+  }, [_hasHydrated, isAuthenticated, token, user])
+
   // 清理扫码检查定时器
   const clearQrCheck = useCallback(() => {
     if (qrCheckIntervalRef.current) {
@@ -139,6 +158,12 @@ export function Accounts() {
 
   // ==================== 扫码登录 ====================
   const startQRCodeLogin = async () => {
+    // 检查是否使用默认密码
+    if (usingDefaultPassword) {
+      setShowPasswordWarning(true)
+      return
+    }
+    
     setActiveModal('qrcode')
     setQrStatus('loading')
     try {
@@ -157,6 +182,15 @@ export function Accounts() {
       setQrStatus('error')
       addToast({ type: 'error', message: '生成二维码失败' })
     }
+  }
+  
+  // 检查默认密码后打开弹窗
+  const handleOpenModal = (modal: ModalType) => {
+    if (usingDefaultPassword && (modal === 'password' || modal === 'manual')) {
+      setShowPasswordWarning(true)
+      return
+    }
+    setActiveModal(modal)
   }
 
   const startQrCheck = (sessionId: string) => {
@@ -519,7 +553,7 @@ export function Accounts() {
 
             {/* 账号密码登录 */}
             <button
-              onClick={() => setActiveModal('password')}
+              onClick={() => handleOpenModal('password')}
               className="flex items-center gap-3 p-4 rounded-md border border-slate-200 dark:border-slate-700 
                          hover:border-blue-300 dark:hover:border-blue-700 hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-colors text-left"
             >
@@ -534,7 +568,7 @@ export function Accounts() {
 
             {/* 手动输入 */}
             <button
-              onClick={() => setActiveModal('manual')}
+              onClick={() => handleOpenModal('manual')}
               className="flex items-center gap-3 p-4 rounded-md border border-slate-200 dark:border-slate-700 
                          hover:border-blue-300 dark:hover:border-blue-700 hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-colors text-left"
             >
@@ -1189,6 +1223,48 @@ export function Accounts() {
                 ) : (
                   '保存'
                 )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 默认密码警告弹窗 */}
+      {showPasswordWarning && (
+        <div className="modal-overlay">
+          <div className="modal-content max-w-md">
+            <div className="modal-header">
+              <h2 className="modal-title flex items-center gap-2 text-amber-600">
+                <AlertTriangle className="w-5 h-5" />
+                安全提醒
+              </h2>
+              <button onClick={() => setShowPasswordWarning(false)} className="modal-close">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="modal-body">
+              <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-4 mb-4">
+                <p className="text-amber-800 dark:text-amber-200 text-sm">
+                  检测到您正在使用默认密码 <code className="bg-amber-100 dark:bg-amber-800 px-1 rounded">admin123</code>，
+                  为了账号安全，请先修改密码后再添加闲鱼账号。
+                </p>
+              </div>
+              <p className="text-slate-600 dark:text-slate-400 text-sm">
+                请前往 <strong>系统设置</strong> 页面修改您的登录密码。
+              </p>
+            </div>
+            <div className="modal-footer">
+              <button onClick={() => setShowPasswordWarning(false)} className="btn-ios-secondary">
+                稍后修改
+              </button>
+              <button
+                onClick={() => {
+                  setShowPasswordWarning(false)
+                  window.location.href = '/settings'
+                }}
+                className="btn-ios-primary"
+              >
+                立即修改密码
               </button>
             </div>
           </div>

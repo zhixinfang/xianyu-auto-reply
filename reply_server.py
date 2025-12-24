@@ -547,6 +547,7 @@ async def login(request: LoginRequest):
                 SESSION_TOKENS[token] = {
                     'user_id': user['id'],
                     'username': user['username'],
+                    'is_admin': user.get('is_admin', False) or user['username'] == ADMIN_USERNAME,
                     'timestamp': time.time()
                 }
 
@@ -582,6 +583,7 @@ async def login(request: LoginRequest):
             SESSION_TOKENS[token] = {
                 'user_id': user['id'],
                 'username': user['username'],
+                'is_admin': user.get('is_admin', False) or user['username'] == ADMIN_USERNAME,
                 'timestamp': time.time()
             }
 
@@ -628,6 +630,7 @@ async def login(request: LoginRequest):
         SESSION_TOKENS[token] = {
             'user_id': user['id'],
             'username': user['username'],
+            'is_admin': user.get('is_admin', False) or user['username'] == ADMIN_USERNAME,
             'timestamp': time.time()
         }
 
@@ -692,6 +695,63 @@ async def change_admin_password(request: ChangePasswordRequest, admin_user: Dict
     except Exception as e:
         logger.error(f"修改管理员密码异常: {e}")
         return {"success": False, "message": "系统错误"}
+
+
+# 普通用户修改密码接口
+@app.post('/change-password')
+async def change_user_password(request: ChangePasswordRequest, current_user: Dict[str, Any] = Depends(get_current_user)):
+    from db_manager import db_manager
+
+    try:
+        username = current_user.get('username')
+        user_id = current_user.get('user_id')
+        
+        if not username:
+            return {"success": False, "message": "无法获取用户信息"}
+
+        # 验证当前密码
+        if not db_manager.verify_user_password(username, request.current_password):
+            return {"success": False, "message": "当前密码错误"}
+
+        # 更新密码
+        success = db_manager.update_user_password(username, request.new_password)
+
+        if success:
+            logger.info(f"【{username}#{user_id}】用户密码修改成功")
+            return {"success": True, "message": "密码修改成功"}
+        else:
+            return {"success": False, "message": "密码修改失败"}
+
+    except Exception as e:
+        logger.error(f"修改用户密码异常: {e}")
+        return {"success": False, "message": "系统错误"}
+
+
+# 检查是否使用默认密码
+@app.get('/api/check-default-password')
+async def check_default_password(current_user: Dict[str, Any] = Depends(get_current_user)):
+    from db_manager import db_manager
+
+    try:
+        username = current_user.get('username')
+        is_admin = current_user.get('is_admin', False)
+        
+        logger.info(f"检查默认密码: username={username}, is_admin={is_admin}")
+        
+        # 只检查admin用户
+        if not is_admin or username != 'admin':
+            logger.info(f"非admin用户，跳过检查")
+            return {"using_default": False}
+
+        # 检查是否使用默认密码
+        using_default = db_manager.verify_user_password('admin', DEFAULT_ADMIN_PASSWORD)
+        logger.info(f"默认密码检查结果: {using_default}, DEFAULT_ADMIN_PASSWORD={DEFAULT_ADMIN_PASSWORD}")
+        
+        return {"using_default": using_default}
+
+    except Exception as e:
+        logger.error(f"检查默认密码异常: {e}")
+        return {"using_default": False}
 
 
 # 生成图形验证码接口
@@ -5915,7 +5975,7 @@ def delete_order(order_id: str, current_user: Dict[str, Any] = Depends(get_curre
 # 然后由 React Router 在客户端处理路由
 
 # 定义不需要返回前端页面的路径前缀（API 路径）
-API_PREFIXES = ['/api/', '/static/', '/health', '/login', '/logout', '/register', '/verify']
+API_PREFIXES = ['/api/', '/static/', '/health', '/login', '/logout', '/register', '/verify', '/check-default-password', '/change-password', '/change-admin-password']
 
 @app.get('/{path:path}', response_class=HTMLResponse)
 async def catch_all_route(path: str):
