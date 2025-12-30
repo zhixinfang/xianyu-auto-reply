@@ -322,6 +322,7 @@ class DBManager:
                 cookie_id TEXT PRIMARY KEY,
                 enabled BOOLEAN DEFAULT FALSE,
                 reply_content TEXT,
+                reply_image_url TEXT,
                 reply_once BOOLEAN DEFAULT FALSE,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -337,6 +338,15 @@ class DBManager:
             except sqlite3.OperationalError as e:
                 if "duplicate column name" not in str(e).lower():
                     logger.warning(f"添加 reply_once 字段失败: {e}")
+
+            # 添加 reply_image_url 字段（如果不存在）
+            try:
+                cursor.execute('ALTER TABLE default_replies ADD COLUMN reply_image_url TEXT')
+                self.conn.commit()
+                logger.info("已添加 reply_image_url 字段到 default_replies 表")
+            except sqlite3.OperationalError as e:
+                if "duplicate column name" not in str(e).lower():
+                    logger.warning(f"添加 reply_image_url 字段失败: {e}")
 
             # 创建指定商品回复表
             cursor.execute('''
@@ -1905,17 +1915,17 @@ class DBManager:
                 return {}
 
     # -------------------- 默认回复操作 --------------------
-    def save_default_reply(self, cookie_id: str, enabled: bool, reply_content: str = None, reply_once: bool = False):
+    def save_default_reply(self, cookie_id: str, enabled: bool, reply_content: str = None, reply_once: bool = False, reply_image_url: str = None):
         """保存默认回复设置"""
         with self.lock:
             try:
                 cursor = self.conn.cursor()
                 cursor.execute('''
-                INSERT OR REPLACE INTO default_replies (cookie_id, enabled, reply_content, reply_once, updated_at)
-                VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
-                ''', (cookie_id, enabled, reply_content, reply_once))
+                INSERT OR REPLACE INTO default_replies (cookie_id, enabled, reply_content, reply_image_url, reply_once, updated_at)
+                VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ''', (cookie_id, enabled, reply_content, reply_image_url, reply_once))
                 self.conn.commit()
-                logger.debug(f"保存默认回复设置: {cookie_id} -> {'启用' if enabled else '禁用'}, 只回复一次: {'是' if reply_once else '否'}")
+                logger.debug(f"保存默认回复设置: {cookie_id} -> {'启用' if enabled else '禁用'}, 只回复一次: {'是' if reply_once else '否'}, 图片: {reply_image_url}")
             except Exception as e:
                 logger.error(f"保存默认回复设置失败: {e}")
                 raise
@@ -1926,15 +1936,16 @@ class DBManager:
             try:
                 cursor = self.conn.cursor()
                 cursor.execute('''
-                SELECT enabled, reply_content, reply_once FROM default_replies WHERE cookie_id = ?
+                SELECT enabled, reply_content, reply_once, reply_image_url FROM default_replies WHERE cookie_id = ?
                 ''', (cookie_id,))
                 result = cursor.fetchone()
                 if result:
-                    enabled, reply_content, reply_once = result
+                    enabled, reply_content, reply_once, reply_image_url = result
                     return {
                         'enabled': bool(enabled),
                         'reply_content': reply_content or '',
-                        'reply_once': bool(reply_once) if reply_once is not None else False
+                        'reply_once': bool(reply_once) if reply_once is not None else False,
+                        'reply_image_url': reply_image_url or ''
                     }
                 return None
             except Exception as e:
@@ -1946,15 +1957,16 @@ class DBManager:
         with self.lock:
             try:
                 cursor = self.conn.cursor()
-                cursor.execute('SELECT cookie_id, enabled, reply_content, reply_once FROM default_replies')
+                cursor.execute('SELECT cookie_id, enabled, reply_content, reply_once, reply_image_url FROM default_replies')
 
                 result = {}
                 for row in cursor.fetchall():
-                    cookie_id, enabled, reply_content, reply_once = row
+                    cookie_id, enabled, reply_content, reply_once, reply_image_url = row
                     result[cookie_id] = {
                         'enabled': bool(enabled),
                         'reply_content': reply_content or '',
-                        'reply_once': bool(reply_once) if reply_once is not None else False
+                        'reply_once': bool(reply_once) if reply_once is not None else False,
+                        'reply_image_url': reply_image_url or ''
                     }
 
                 return result
@@ -2012,6 +2024,22 @@ class DBManager:
                 return True
             except Exception as e:
                 logger.error(f"删除默认回复设置失败: {e}")
+                self.conn.rollback()
+                return False
+
+    def update_default_reply_image_url(self, cookie_id: str, new_image_url: str) -> bool:
+        """更新默认回复的图片URL（用于将本地图片URL更新为CDN URL）"""
+        with self.lock:
+            try:
+                cursor = self.conn.cursor()
+                cursor.execute('''
+                UPDATE default_replies SET reply_image_url = ? WHERE cookie_id = ?
+                ''', (new_image_url, cookie_id))
+                self.conn.commit()
+                logger.debug(f"更新默认回复图片URL: {cookie_id} -> {new_image_url}")
+                return True
+            except Exception as e:
+                logger.error(f"更新默认回复图片URL失败: {e}")
                 self.conn.rollback()
                 return False
 

@@ -1734,7 +1734,7 @@ class XianyuLive:
                     # user_id=f"{self.cookie_id}_{int(time.time() * 1000)}",  # 使用唯一ID避免冲突
                     user_id=f"{self.cookie_id}",  # 使用唯一ID避免冲突
                     enable_learning=True,  # 启用学习功能
-                    headless=True  # 使用无头模式
+                    headless=False  # 使用无头模式
                 )
 
                 # 在线程池中执行滑块验证
@@ -3088,8 +3088,14 @@ class XianyuLive:
         except Exception as e:
             logger.error(f"调试消息结构时发生错误: {self._safe_str(e)}")
 
-    async def get_default_reply(self, send_user_name: str, send_user_id: str, send_message: str, chat_id: str, item_id: str = None) -> str:
-        """获取默认回复内容，支持指定商品回复、变量替换和只回复一次功能"""
+    async def get_default_reply(self, send_user_name: str, send_user_id: str, send_message: str, chat_id: str, item_id: str = None) -> dict:
+        """获取默认回复内容，支持指定商品回复、变量替换、只回复一次功能和图片发送
+        
+        Returns:
+            dict: 包含 'text' (文字回复) 和 'image_url' (图片URL，可选) 的字典
+                  或 None (无回复)
+                  或 "EMPTY_REPLY" (空回复标记)
+        """
         try:
             from db_manager import db_manager
 
@@ -3109,11 +3115,11 @@ class XianyuLive:
                             item_id=item_id
                         )
                         logger.info(f"【{self.cookie_id}】指定商品回复内容: {formatted_reply}")
-                        return formatted_reply
+                        return {'text': formatted_reply, 'image_url': None}
                     except Exception as format_error:
                         logger.error(f"指定商品回复变量替换失败: {self._safe_str(format_error)}")
                         # 如果变量替换失败，返回原始内容
-                        return reply_content
+                        return {'text': reply_content, 'image_url': None}
                 else:
                     logger.warning(f"【{self.cookie_id}】商品ID {item_id} 没有配置指定回复，使用默认回复")
 
@@ -3132,8 +3138,11 @@ class XianyuLive:
                     return None
 
             reply_content = default_reply_settings.get('reply_content', '')
-            if not reply_content or (reply_content and reply_content.strip() == ''):
-                logger.info(f"账号 {self.cookie_id} 默认回复内容为空，不进行回复")
+            reply_image_url = default_reply_settings.get('reply_image_url', '')
+            
+            # 如果文字和图片都为空，返回空回复标记
+            if (not reply_content or reply_content.strip() == '') and (not reply_image_url or reply_image_url.strip() == ''):
+                logger.info(f"账号 {self.cookie_id} 默认回复内容和图片都为空，不进行回复")
                 return "EMPTY_REPLY"  # 返回特殊标记表示不回复
 
             # 进行变量替换
@@ -3145,7 +3154,7 @@ class XianyuLive:
                     send_user_name=send_user_name,
                     send_user_id=send_user_id,
                     send_message=send_message
-                )
+                ) if reply_content else ''
 
                 if item_replay:
                     formatted_reply = item_replay.get('reply_content', '')
@@ -3155,12 +3164,12 @@ class XianyuLive:
                     db_manager.add_default_reply_record(self.cookie_id, chat_id)
                     logger.info(f"【{self.cookie_id}】记录默认回复: chat_id={chat_id}")
 
-                logger.info(f"【{self.cookie_id}】使用默认回复: {formatted_reply}")
-                return formatted_reply
+                logger.info(f"【{self.cookie_id}】使用默认回复: 文字={formatted_reply}, 图片={reply_image_url}")
+                return {'text': formatted_reply, 'image_url': reply_image_url if reply_image_url and reply_image_url.strip() else None}
             except Exception as format_error:
                 logger.error(f"默认回复变量替换失败: {self._safe_str(format_error)}")
                 # 如果变量替换失败，返回原始内容
-                return reply_content
+                return {'text': reply_content, 'image_url': reply_image_url if reply_image_url and reply_image_url.strip() else None}
 
         except Exception as e:
             logger.error(f"获取默认回复失败: {self._safe_str(e)}")
@@ -3329,6 +3338,45 @@ class XianyuLive:
 
         return False
 
+    async def _get_image_size_from_url(self, image_url: str) -> tuple:
+        """从URL获取图片尺寸
+        
+        Args:
+            image_url: 图片URL
+            
+        Returns:
+            (width, height) 元组，失败返回 (None, None)
+        """
+        import aiohttp
+        from io import BytesIO
+        
+        try:
+            logger.info(f"【{self.cookie_id}】开始从URL获取图片尺寸: {image_url[:80]}...")
+            
+            # 不接受AVIF格式（PIL默认不支持），让CDN返回WEBP/JPEG等格式
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'image/jpeg,image/png,image/gif,image/webp,*/*;q=0.8',
+                'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+                'Referer': 'https://www.goofish.com/',
+            }
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.get(image_url, headers=headers, timeout=aiohttp.ClientTimeout(total=10)) as response:
+                    if response.status == 200:
+                        image_data = await response.read()
+                        from PIL import Image
+                        with Image.open(BytesIO(image_data)) as img:
+                            width, height = img.size
+                            logger.info(f"【{self.cookie_id}】解析图片尺寸成功: {width}x{height}")
+                            return (width, height)
+                    else:
+                        logger.warning(f"【{self.cookie_id}】下载图片失败，HTTP状态码: {response.status}")
+        except Exception as e:
+            logger.warning(f"【{self.cookie_id}】从URL获取图片尺寸失败: {e}")
+        
+        return (None, None)
+
     async def _update_keyword_image_url(self, keyword: str, new_image_url: str):
         """更新关键词的图片URL"""
         try:
@@ -3352,6 +3400,18 @@ class XianyuLive:
                 logger.warning(f"卡券图片URL更新失败: 卡券ID={card_id}")
         except Exception as e:
             logger.error(f"更新卡券图片URL失败: {e}")
+
+    async def _update_default_reply_image_url(self, new_image_url: str):
+        """更新默认回复的图片URL为CDN URL"""
+        try:
+            from db_manager import db_manager
+            success = db_manager.update_default_reply_image_url(self.cookie_id, new_image_url)
+            if success:
+                logger.info(f"【{self.cookie_id}】默认回复图片URL已更新: {new_image_url}")
+            else:
+                logger.warning(f"【{self.cookie_id}】默认回复图片URL更新失败")
+        except Exception as e:
+            logger.error(f"【{self.cookie_id}】更新默认回复图片URL失败: {e}")
 
     async def get_ai_reply(self, send_user_name: str, send_user_id: str, send_message: str, item_id: str, chat_id: str):
         """获取AI回复"""
@@ -7095,12 +7155,87 @@ class XianyuLive:
                         reply_source = 'AI'  # 标记为AI回复
                     else:
                         # 3. 最后使用默认回复
-                        reply = await self.get_default_reply(send_user_name, send_user_id, send_message, chat_id, item_id)
-                        if reply == "EMPTY_REPLY":
+                        default_reply_result = await self.get_default_reply(send_user_name, send_user_id, send_message, chat_id, item_id)
+                        if default_reply_result == "EMPTY_REPLY":
                             # 默认回复内容为空，不进行任何回复
                             logger.info(f"[{msg_time}] 【{self.cookie_id}】默认回复内容为空，跳过自动回复")
                             return
-                        reply_source = '默认'  # 标记为默认回复
+                        
+                        # 处理默认回复（可能包含图片和文字）
+                        if default_reply_result and isinstance(default_reply_result, dict):
+                            reply_source = '默认'  # 标记为默认回复
+                            default_image_url = default_reply_result.get('image_url')
+                            default_text = default_reply_result.get('text')
+                            
+                            # 如果存在图片，先发送图片
+                            if default_image_url:
+                                try:
+                                    # 处理图片URL（上传到CDN如果需要）
+                                    final_image_url = default_image_url
+                                    image_width, image_height = 800, 600  # 默认尺寸
+                                    
+                                    if self._is_cdn_url(default_image_url):
+                                        # 已经是CDN链接，获取真实尺寸
+                                        logger.info(f"【{self.cookie_id}】默认回复使用CDN图片: {default_image_url}")
+                                        width, height = await self._get_image_size_from_url(default_image_url)
+                                        if width and height:
+                                            image_width, image_height = width, height
+                                    elif default_image_url.startswith('/static/uploads/') or default_image_url.startswith('static/uploads/'):
+                                        # 本地图片，需要上传到闲鱼CDN
+                                        local_image_path = default_image_url.replace('/static/uploads/', 'static/uploads/')
+                                        if os.path.exists(local_image_path):
+                                            logger.info(f"【{self.cookie_id}】准备上传默认回复本地图片到闲鱼CDN: {local_image_path}")
+                                            
+                                            from utils.image_uploader import ImageUploader
+                                            uploader = ImageUploader(self.cookies_str)
+                                            
+                                            async with uploader:
+                                                cdn_url = await uploader.upload_image(local_image_path)
+                                                if cdn_url:
+                                                    logger.info(f"【{self.cookie_id}】默认回复图片上传成功，CDN URL: {cdn_url}")
+                                                    final_image_url = cdn_url
+                                                    
+                                                    # 更新数据库中的图片URL为CDN URL
+                                                    await self._update_default_reply_image_url(cdn_url)
+                                                    
+                                                    # 获取实际图片尺寸
+                                                    from utils.image_utils import image_manager
+                                                    try:
+                                                        actual_width, actual_height = image_manager.get_image_size(local_image_path)
+                                                        if actual_width and actual_height:
+                                                            image_width, image_height = actual_width, actual_height
+                                                    except Exception as e:
+                                                        logger.warning(f"【{self.cookie_id}】获取图片尺寸失败，使用默认尺寸: {e}")
+                                                else:
+                                                    logger.error(f"【{self.cookie_id}】默认回复图片上传失败: {local_image_path}")
+                                                    final_image_url = None
+                                        else:
+                                            logger.error(f"【{self.cookie_id}】默认回复本地图片文件不存在: {local_image_path}")
+                                            final_image_url = None
+                                    else:
+                                        # 其他类型的URL，获取真实尺寸
+                                        width, height = await self._get_image_size_from_url(default_image_url)
+                                        if width and height:
+                                            image_width, image_height = width, height
+                                    
+                                    # 发送图片
+                                    if final_image_url:
+                                        await self.send_image_msg(websocket, chat_id, send_user_id, final_image_url, image_width, image_height)
+                                        msg_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+                                        logger.info(f"[{msg_time}] 【{reply_source}图片发出】用户: {send_user_name} (ID: {send_user_id}), 商品({item_id}): 图片 {final_image_url}")
+                                except Exception as e:
+                                    logger.error(f"【{self.cookie_id}】默认回复图片发送失败: {self._safe_str(e)}")
+                            
+                            # 然后发送文字（如果有）
+                            if default_text and default_text.strip():
+                                reply = default_text
+                            else:
+                                # 只有图片没有文字，已经发送完毕
+                                if default_image_url:
+                                    return
+                                reply = None
+                        else:
+                            reply = None
 
             # 注意：这里只有商品ID，没有标题和详情，根据新的规则不保存到数据库
             # 商品信息会在其他有完整信息的地方保存（如发货规则匹配时）

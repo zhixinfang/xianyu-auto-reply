@@ -98,16 +98,17 @@ export const batchDeleteKeywords = (cookieId: string, keywordIds: string[]): Pro
 }
 
 // 获取默认回复
-export const getDefaultReply = (cookieId: string): Promise<{ enabled?: boolean; reply_content?: string; reply_once?: boolean }> => {
+export const getDefaultReply = (cookieId: string): Promise<{ enabled?: boolean; reply_content?: string; reply_once?: boolean; reply_image_url?: string }> => {
   return get(`/default-reply/${cookieId}`)
 }
 
 // 更新默认回复
-export const updateDefaultReply = (cookieId: string, replyContent: string, enabled: boolean = true, replyOnce: boolean = false): Promise<ApiResponse> => {
+export const updateDefaultReply = (cookieId: string, replyContent: string, enabled: boolean = true, replyOnce: boolean = false, replyImageUrl: string = ''): Promise<ApiResponse> => {
   return put(`/default-reply/${cookieId}`, { 
     enabled, 
     reply_content: replyContent,
-    reply_once: replyOnce
+    reply_once: replyOnce,
+    reply_image_url: replyImageUrl
   })
 }
 
