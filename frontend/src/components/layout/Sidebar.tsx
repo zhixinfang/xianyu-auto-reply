@@ -40,7 +40,7 @@ const mainNavItems: NavItem[] = [
   { icon: Package, label: '商品管理', path: '/items' },
   { icon: ShoppingCart, label: '订单管理', path: '/orders' },
   { icon: MessageSquare, label: '自动回复', path: '/keywords' },
-  // { icon: MessageCircle, label: '指定商品回复', path: '/item-replies' },
+  { icon: MessageCircle, label: '指定商品回复', path: '/item-replies' },
   { icon: CreditCard, label: '卡券管理', path: '/cards' },
   { icon: Truck, label: '自动发货', path: '/delivery' },
   { icon: Bell, label: '通知渠道', path: '/notification-channels' },

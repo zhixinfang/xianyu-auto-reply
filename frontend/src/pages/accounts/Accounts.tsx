@@ -30,7 +30,9 @@ export function Accounts() {
   // 默认回复管理状态
   const [defaultReplyAccount, setDefaultReplyAccount] = useState<AccountWithKeywordCount | null>(null)
   const [defaultReplyContent, setDefaultReplyContent] = useState('')
+  const [defaultReplyImageUrl, setDefaultReplyImageUrl] = useState('')
   const [defaultReplySaving, setDefaultReplySaving] = useState(false)
+  const [uploadingDefaultReplyImage, setUploadingDefaultReplyImage] = useState(false)
 
   // 扫码登录状态
   const [qrCodeUrl, setQrCodeUrl] = useState('')
@@ -420,12 +422,14 @@ export function Accounts() {
   const openDefaultReplyModal = async (account: AccountWithKeywordCount) => {
     setDefaultReplyAccount(account)
     setDefaultReplyContent('')
+    setDefaultReplyImageUrl('')
     setActiveModal('default-reply')
     
     // 加载当前默认回复
     try {
       const result = await getDefaultReply(account.id)
       setDefaultReplyContent(result.reply_content || '')
+      setDefaultReplyImageUrl(result.reply_image_url || '')
     } catch {
       // ignore
     }
@@ -436,13 +440,46 @@ export function Accounts() {
     
     try {
       setDefaultReplySaving(true)
-      await updateDefaultReply(defaultReplyAccount.id, defaultReplyContent, true)
+      await updateDefaultReply(defaultReplyAccount.id, defaultReplyContent, true, false, defaultReplyImageUrl)
       addToast({ type: 'success', message: '默认回复已保存' })
       closeModal()
     } catch {
       addToast({ type: 'error', message: '保存失败' })
     } finally {
       setDefaultReplySaving(false)
+    }
+  }
+
+  // 上传默认回复图片
+  const handleUploadDefaultReplyImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    
+    try {
+      setUploadingDefaultReplyImage(true)
+      const formData = new FormData()
+      formData.append('image', file)
+      
+      const response = await fetch('/upload-image', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
+        },
+        body: formData
+      })
+      
+      const result = await response.json()
+      if (result.image_url) {
+        setDefaultReplyImageUrl(result.image_url)
+        addToast({ type: 'success', message: '图片上传成功' })
+      } else {
+        addToast({ type: 'error', message: result.detail || '图片上传失败' })
+      }
+    } catch {
+      addToast({ type: 'error', message: '图片上传失败' })
+    } finally {
+      setUploadingDefaultReplyImage(false)
+      e.target.value = ''
     }
   }
 
@@ -1097,6 +1134,48 @@ export function Accounts() {
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
                   当没有匹配到任何关键词时，将使用此默认回复。留空表示不自动回复。
                 </p>
+              </div>
+              <div className="input-group">
+                <label className="input-label">回复图片（可选）</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={defaultReplyImageUrl}
+                    onChange={(e) => setDefaultReplyImageUrl(e.target.value)}
+                    className="input-ios flex-1"
+                    placeholder="图片URL或上传图片"
+                  />
+                  <label className="btn-ios-secondary cursor-pointer">
+                    {uploadingDefaultReplyImage ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      '上传'
+                    )}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={handleUploadDefaultReplyImage}
+                      disabled={uploadingDefaultReplyImage}
+                    />
+                  </label>
+                </div>
+                {defaultReplyImageUrl && (
+                  <div className="mt-2 relative inline-block">
+                    <img
+                      src={defaultReplyImageUrl}
+                      alt="回复图片预览"
+                      className="max-w-32 max-h-32 rounded border border-slate-200 dark:border-slate-700"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setDefaultReplyImageUrl('')}
+                      className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                )}
               </div>
               <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
                 <p className="text-xs text-blue-600 dark:text-blue-400">

@@ -1327,6 +1327,7 @@ class CookieStatusIn(BaseModel):
 class DefaultReplyIn(BaseModel):
     enabled: bool
     reply_content: Optional[str] = None
+    reply_image_url: Optional[str] = None
     reply_once: bool = False
 
 
@@ -2656,8 +2657,8 @@ def update_default_reply(cid: str, reply_data: DefaultReplyIn, current_user: Dic
         if cid not in user_cookies:
             raise HTTPException(status_code=403, detail="无权限操作该Cookie")
 
-        db_manager.save_default_reply(cid, reply_data.enabled, reply_data.reply_content, reply_data.reply_once)
-        return {'msg': 'default reply updated', 'enabled': reply_data.enabled, 'reply_once': reply_data.reply_once}
+        db_manager.save_default_reply(cid, reply_data.enabled, reply_data.reply_content, reply_data.reply_once, reply_data.reply_image_url)
+        return {'msg': 'default reply updated', 'enabled': reply_data.enabled, 'reply_once': reply_data.reply_once, 'reply_image_url': reply_data.reply_image_url}
     except HTTPException:
         raise
     except Exception as e:
