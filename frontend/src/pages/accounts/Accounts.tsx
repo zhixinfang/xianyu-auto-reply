@@ -487,7 +487,12 @@ export function Accounts() {
   const handleToggleAI = async (account: AccountWithKeywordCount) => {
     const newEnabled = !account.aiEnabled
     try {
-      await updateAIReplySettings(account.id, { enabled: newEnabled })
+      // 先获取当前设置，避免覆盖其他字段（如custom_prompts）
+      const currentSettings = await getAIReplySettings(account.id)
+      await updateAIReplySettings(account.id, {
+        ...currentSettings,
+        enabled: newEnabled,
+      })
       setAccounts(prev => prev.map(a =>
         a.id === account.id ? { ...a, aiEnabled: newEnabled } : a,
       ))
@@ -504,7 +509,7 @@ export function Accounts() {
     setAiSettingsLoading(true)
     try {
       const settings = await getAIReplySettings(account.id)
-      setAiEnabled(settings.enabled ?? false)
+      setAiEnabled(settings.ai_enabled ?? settings.enabled ?? false)
       setAiMaxDiscountPercent(settings.max_discount_percent ?? 10)
       setAiMaxDiscountAmount(settings.max_discount_amount ?? 100)
       setAiMaxBargainRounds(settings.max_bargain_rounds ?? 3)
