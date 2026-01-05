@@ -16,6 +16,7 @@ const statusMap: Record<string, { label: string; class: string }> = {
   shipped: { label: '已发货', class: 'badge-success' },
   completed: { label: '已完成', class: 'badge-success' },
   refunding: { label: '退款中', class: 'badge-warning' },
+  refund_cancelled: { label: '退款撤销', class: 'badge-info' },
   cancelled: { label: '已关闭', class: 'badge-danger' },
   unknown: { label: '未知', class: 'badge-gray' },
 }

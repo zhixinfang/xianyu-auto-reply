@@ -332,27 +332,12 @@ logger.info("Web服务器启动，文件日志收集器已初始化")
 async def log_requests(request, call_next):
     start_time = time.time()
 
-    # 获取用户信息
-    user_info = "未登录"
-    try:
-        # 从请求头中获取Authorization
-        auth_header = request.headers.get("Authorization")
-        if auth_header and auth_header.startswith("Bearer "):
-            token = auth_header.split(" ")[1]
-            if token in SESSION_TOKENS:
-                token_data = SESSION_TOKENS[token]
-                # 检查token是否过期
-                if time.time() - token_data['timestamp'] <= TOKEN_EXPIRE_TIME:
-                    user_info = f"【{token_data['username']}#{token_data['user_id']}】"
-    except Exception:
-        pass
-
-    logger.info(f"🌐 {user_info} API请求: {request.method} {request.url.path}")
+    logger.info(f"🌐 API请求: {request.method} {request.url.path}")
 
     response = await call_next(request)
 
     process_time = time.time() - start_time
-    logger.info(f"✅ {user_info} API响应: {request.method} {request.url.path} - {response.status_code} ({process_time:.3f}s)")
+    logger.info(f"✅ API响应: {request.method} {request.url.path} - {response.status_code} ({process_time:.3f}s)")
 
     return response
 
