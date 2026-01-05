@@ -1829,6 +1829,10 @@ class DBManager:
         优先使用账号级别的设置，如果账号没有配置api_key/base_url/model_name，
         则从系统设置中读取全局AI配置作为默认值
         """
+        # 默认值常量，用于判断是否使用系统设置
+        DEFAULT_BASE_URL = 'https://dashscope.aliyuncs.com/compatible-mode/v1'
+        DEFAULT_MODEL = 'qwen-plus'
+        
         with self.lock:
             try:
                 cursor = self.conn.cursor()
@@ -1843,16 +1847,25 @@ class DBManager:
                 
                 # 获取系统级别的AI设置作为默认值
                 system_api_key = self.get_system_setting('ai_api_key') or ''
-                system_base_url = self.get_system_setting('ai_api_url') or 'https://dashscope.aliyuncs.com/compatible-mode/v1'
-                system_model = self.get_system_setting('ai_model') or 'qwen-plus'
+                system_base_url = self.get_system_setting('ai_api_url') or DEFAULT_BASE_URL
+                system_model = self.get_system_setting('ai_model') or DEFAULT_MODEL
                 
                 if result:
-                    # 账号有设置，但如果api_key/base_url/model_name为空，使用系统设置
+                    # 账号有设置，但如果api_key/base_url/model_name为空或等于默认值，使用系统设置
+                    account_model = result[1]
+                    account_api_key = result[2]
+                    account_base_url = result[3]
+                    
+                    # 如果账号值为空或等于硬编码默认值，则使用系统设置
+                    use_model = account_model if (account_model and account_model != DEFAULT_MODEL) else system_model
+                    use_api_key = account_api_key if account_api_key else system_api_key
+                    use_base_url = account_base_url if (account_base_url and account_base_url != DEFAULT_BASE_URL) else system_base_url
+                    
                     return {
                         'ai_enabled': bool(result[0]),
-                        'model_name': result[1] if result[1] else system_model,
-                        'api_key': result[2] if result[2] else system_api_key,
-                        'base_url': result[3] if result[3] else system_base_url,
+                        'model_name': use_model,
+                        'api_key': use_api_key,
+                        'base_url': use_base_url,
                         'max_discount_percent': result[4],
                         'max_discount_amount': result[5],
                         'max_bargain_rounds': result[6],
