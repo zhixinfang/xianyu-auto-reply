@@ -104,6 +104,11 @@ export function Settings() {
     }
     setTestingAI(true)
     try {
+      // 测试前先保存当前设置，确保使用最新配置
+      if (settings) {
+        await updateSystemSettings(settings)
+      }
+      
       const result = await testAIConnection(testAccountId)
       if (result.success) {
         addToast({ type: 'success', message: result.message || 'AI 连接测试成功' })
